@@ -1,0 +1,3 @@
+# Always LF, including on Windows: gofmt, Make and Docker all depend on it.
+* text=auto eol=lf
+*.png binary
