@@ -61,6 +61,11 @@ Node web server environment: `DEXTRO_API_URL` (default `http://localhost:8080`),
 - SQL lives in `internal/db/queries`, generating into `internal/db/dbgen`. Migrations live in `internal/db/migrations` and run automatically at startup under an advisory lock.
 - Generated code is committed. Never edit it by hand.
 - Frontend: server data goes through TanStack Query. Routes are code-based: each feature exports its routes from `routes.tsx`, and `web/src/app/router.tsx` assembles them.
+- `web/src/app/app-shell.tsx` is the frame around every signed-in page: sidebar with the pool meter, top bar with search and the upload button, and tabs on a phone. `UploadsProvider` lives inside it so uploads keep running between pages. Sign-in and error pages use `centered-page.tsx`.
+- There's one dark theme, with its tokens in `web/src/index.css`. The ground is true black, elevation is a step in lightness, and colour goes only on files and storage levels, never on the chrome. Instrument Sans is bundled through fontsource because the CSP blocks font CDNs.
+- The grid uses thumbnails from `/api/v1/files/{id}/thumbnail`, which `provider.Thumbnail` fetches from Drive. Only files with a preview ask for one, and a tile falls back to an icon if it fails. Tiles take their shape from the picture once it loads.
+- On touch screens the select circles stay hidden until selecting starts, which happens from a tile's menu.
+- Radix's scroll lock adds a `<style>` element that the CSP blocks, so opening a dialog or menu logs a console error. It's harmless: the page scrolls inside `main`, not on the body.
 - `web/server` is the production web server, using only Node's standard library. Browsers talk only to it, and it proxies `/api` and `/health` to Go, so everything stays on one origin: no CORS, and session cookies stay first-party. Don't point the browser straight at the Go server. The proxy streams request and response bodies and has no request timeout, because uploads pass through it.
 - The proxy overwrites `X-Forwarded-For` with the real client address. Only trust that header on the Go side from the proxy.
 - The UI's Content-Security-Policy lives in `web/server/app.mjs`. Go sets a stricter one on API responses.
