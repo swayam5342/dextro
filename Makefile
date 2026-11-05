@@ -1,0 +1,85 @@
+# Recipes use POSIX shell. On Windows that comes from Git for Windows.
+ifeq ($(OS),Windows_NT)
+SHELL := C:/Program Files/Git/bin/bash.exe
+EXE := .exe
+endif
+
+# Pinned tool versions. Delete bin/ after changing one so it gets rebuilt.
+SQLC_VERSION := v1.31.1
+GOOSE_VERSION := v3.29.0
+OAPI_CODEGEN_VERSION := v2.8.2
+GOLANGCI_LINT_VERSION := v2.15.0
+
+BIN := $(CURDIR)/bin
+SQLC := $(BIN)/sqlc$(EXE)
+GOOSE := $(BIN)/goose$(EXE)
+OAPI_CODEGEN := $(BIN)/oapi-codegen$(EXE)
+GOLANGCI_LINT := $(BIN)/golangci-lint$(EXE)
+WEB_DEPS := web/node_modules/.modules.yaml
+
+.PHONY: help tools generate check-generated build web-build lint test run dev-web env up down migration clean
+
+help: ## List the available targets
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
+
+$(SQLC):
+	GOBIN=$(BIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+$(GOOSE):
+	GOBIN=$(BIN) go install github.com/pressly/goose/v3/cmd/goose@$(GOOSE_VERSION)
+$(OAPI_CODEGEN):
+	GOBIN=$(BIN) go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION)
+$(GOLANGCI_LINT):
+	GOBIN=$(BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+$(WEB_DEPS): web/package.json web/pnpm-lock.yaml
+	cd web && pnpm install --frozen-lockfile
+	touch $@
+
+tools: $(SQLC) $(GOOSE) $(OAPI_CODEGEN) $(GOLANGCI_LINT) ## Install the pinned Go tools into bin/
+
+generate: $(SQLC) $(OAPI_CODEGEN) ## Regenerate code from the SQL queries and openapi.yaml
+	$(SQLC) generate
+	$(OAPI_CODEGEN) -config internal/httpx/apigen/config.yaml api/openapi.yaml
+
+check-generated: generate ## Fail if generated code is out of date
+	git diff --exit-code -- internal/db/dbgen internal/httpx/apigen
+
+web-build: $(WEB_DEPS) ## Type-check and build the frontend into web/dist
+	cd web && pnpm build
+
+build: web-build ## Build the server binary, with the frontend embedded, into bin/
+	CGO_ENABLED=0 go build -trimpath -o $(BIN)/dextro$(EXE) ./cmd/server
+
+lint: $(GOLANGCI_LINT) $(WEB_DEPS) ## Lint Go and TypeScript, and type-check the frontend
+	$(GOLANGCI_LINT) run ./...
+	cd web && pnpm lint
+	cd web && pnpm typecheck
+
+test: ## Run the Go tests (needs Docker for the Postgres tests)
+	go test ./...
+
+run: ## Run the server locally; set DEXTRO_DATABASE_URL first
+	go run ./cmd/server
+
+dev-web: $(WEB_DEPS) ## Run the Vite dev server, proxying the API to localhost:8080
+	cd web && pnpm dev
+
+env: ## Create .env with random secrets if it doesn't exist
+	@if [ -f .env ]; then echo ".env already exists"; else \
+		printf 'POSTGRES_PASSWORD=%s\nS3_ACCESS_KEY=%s\nS3_SECRET_KEY=%s\n' \
+			"$$(openssl rand -hex 24)" "$$(openssl rand -hex 10)" "$$(openssl rand -hex 24)" > .env; \
+		echo "created .env"; \
+	fi
+
+up: env ## Build and start the whole stack
+	docker compose up --build
+
+down: ## Stop the stack and keep its data
+	docker compose down
+
+migration: $(GOOSE) ## Create a migration: make migration name=add_users
+	$(GOOSE) -dir internal/db/migrations create $(name) sql
+
+clean: ## Remove build output, keeping the tools in bin/
+	rm -f $(BIN)/dextro$(EXE)
+	find web/dist -mindepth 1 ! -name .gitkeep -delete

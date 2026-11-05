@@ -1,0 +1,10 @@
+# Tools and build output
+/bin/
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+
+# Secrets
+.env
+.env.*
+!.env.example
