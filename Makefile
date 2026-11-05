@@ -1,7 +1,11 @@
 # Recipes use POSIX shell. On Windows that comes from Git for Windows.
+COMPOSE := docker compose
 ifeq ($(OS),Windows_NT)
 SHELL := C:/Program Files/Git/bin/bash.exe
 EXE := .exe
+# Docker's build permission check compares paths case-sensitively, so builds
+# fail from a terminal opened at d: rather than D:. pwd -W gives the real case.
+COMPOSE := cd "$$(pwd -W)" && docker compose
 endif
 
 # Pinned tool versions. Delete bin/ after changing one so it gets rebuilt.
@@ -72,10 +76,10 @@ env: ## Create .env with random secrets if it doesn't exist
 	fi
 
 up: env ## Build and start the whole stack
-	docker compose up --build
+	$(COMPOSE) up --build
 
 down: ## Stop the stack and keep its data
-	docker compose down
+	$(COMPOSE) down
 
 migration: $(GOOSE) ## Create a migration: make migration name=add_users
 	$(GOOSE) -dir internal/db/migrations create $(name) sql

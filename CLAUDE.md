@@ -17,6 +17,8 @@ Self-hosted file storage gateway. Users connect their own Google Drive and S3-co
 | `make dev-web` | Vite dev server, proxying the API to `localhost:8080` |
 | `make migration name=add_users` | Create a goose migration |
 
+On Windows, use `make up` rather than plain `docker compose up`. If the terminal opened at `d:` instead of `D:`, plain Compose builds fail with `additional privileges requested: pass "--allow=fs.read=Dockerfile"`. Docker compares the paths case-sensitively; `make up` corrects the path first.
+
 The app is at <http://127.0.0.1:8080>. S3 (SeaweedFS) is at <http://127.0.0.1:8333>.
 
 Environment: `DEXTRO_DATABASE_URL` (required), `DEXTRO_LISTEN_ADDR` (default `:8080`), `DEXTRO_LOG_LEVEL` (default `info`).
