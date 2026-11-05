@@ -297,6 +297,37 @@ type NameInput struct {
 	Name string `json:"name"`
 }
 
+// Pool defines model for Pool.
+type Pool struct {
+	Accounts []PoolAccount `json:"accounts"`
+
+	// FreeBytes Null if any working account has no limit.
+	FreeBytes *int64 `json:"free_bytes"`
+
+	// LimitBytes Null if any working account has no limit.
+	LimitBytes *int64 `json:"limit_bytes"`
+	UsedBytes  int64  `json:"used_bytes"`
+}
+
+// PoolAccount defines model for PoolAccount.
+type PoolAccount struct {
+	// Available False if the account can't be reached, usually because its token expired.
+	Available bool `json:"available"`
+
+	// Connection A storage account. Credentials are never included.
+	Connection Connection `json:"connection"`
+
+	// LimitBytes Null if the account has no limit, or can't be reached.
+	LimitBytes *int64 `json:"limit_bytes"`
+	UsedBytes  int64  `json:"used_bytes"`
+}
+
+// SearchResults defines model for SearchResults.
+type SearchResults struct {
+	Files   []File   `json:"files"`
+	Folders []Folder `json:"folders"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -362,10 +393,10 @@ type ListFolderParams struct {
 
 // UploadFileParams defines parameters for UploadFile.
 type UploadFileParams struct {
-	// ConnectionId Required. Not marked so, because generated checks would run before access checks.
+	// ConnectionId The account to use. Left out, the account with the most free space is chosen.
 	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
 
-	// Name Required, as for connection_id.
+	// Name Required. Not marked so, because generated checks would run before access checks.
 	Name     *string             `form:"name,omitempty" json:"name,omitempty"`
 	FolderId *openapi_types.UUID `form:"folder_id,omitempty" json:"folder_id,omitempty"`
 }
@@ -377,6 +408,12 @@ type DownloadFileParams struct {
 
 // DownloadFileParamsDisposition defines parameters for DownloadFile.
 type DownloadFileParamsDisposition string
+
+// SearchParams defines parameters for Search.
+type SearchParams struct {
+	// Q Required. Not marked so, because generated checks would run before access checks.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
 
 // GoogleDriveCallbackParams defines parameters for GoogleDriveCallback.
 type GoogleDriveCallbackParams struct {
@@ -509,6 +546,9 @@ type ServerInterface interface {
 	// TrashFolder Move a folder and everything in it to the trash
 	// (POST /api/v1/folders/{id}/trash)
 	TrashFolder(w http.ResponseWriter, r *http.Request, id Id)
+	// Search Find files and folders by name
+	// (GET /api/v1/search)
+	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 	// ListConnections List the signed-in user's storage connections
 	// (GET /api/v1/storage/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
@@ -524,6 +564,9 @@ type ServerInterface interface {
 	// ConnectGoogleDrive Start connecting a Google Drive account
 	// (POST /api/v1/storage/google/connect)
 	ConnectGoogleDrive(w http.ResponseWriter, r *http.Request)
+	// GetPool Report how full each linked account is, and the total
+	// (GET /api/v1/storage/pool)
+	GetPool(w http.ResponseWriter, r *http.Request)
 	// EmptyTrash Permanently delete everything in the trash
 	// (DELETE /api/v1/trash)
 	EmptyTrash(w http.ResponseWriter, r *http.Request)
@@ -725,6 +768,12 @@ func (_ Unimplemented) TrashFolder(w http.ResponseWriter, r *http.Request, id Id
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Search Find files and folders by name
+// (GET /api/v1/search)
+func (_ Unimplemented) Search(w http.ResponseWriter, r *http.Request, params SearchParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListConnections List the signed-in user's storage connections
 // (GET /api/v1/storage/connections)
 func (_ Unimplemented) ListConnections(w http.ResponseWriter, r *http.Request) {
@@ -752,6 +801,12 @@ func (_ Unimplemented) GoogleDriveCallback(w http.ResponseWriter, r *http.Reques
 // ConnectGoogleDrive Start connecting a Google Drive account
 // (POST /api/v1/storage/google/connect)
 func (_ Unimplemented) ConnectGoogleDrive(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetPool Report how full each linked account is, and the total
+// (GET /api/v1/storage/pool)
+func (_ Unimplemented) GetPool(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1496,6 +1551,39 @@ func (siw *ServerInterfaceWrapper) TrashFolder(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// Search operation middleware
+func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Search(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListConnections operation middleware
 func (siw *ServerInterfaceWrapper) ListConnections(w http.ResponseWriter, r *http.Request) {
 
@@ -1613,6 +1701,20 @@ func (siw *ServerInterfaceWrapper) ConnectGoogleDrive(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ConnectGoogleDrive(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPool operation middleware
+func (siw *ServerInterfaceWrapper) GetPool(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPool(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1872,6 +1974,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/trash", wrapper.ListTrash)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/storage/pool", wrapper.GetPool)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/search", wrapper.Search)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/settings", wrapper.GetSettings)

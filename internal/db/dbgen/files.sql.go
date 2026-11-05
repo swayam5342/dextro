@@ -573,6 +573,109 @@ func (q *Queries) RenameFolderForOwner(ctx context.Context, arg RenameFolderForO
 	return i, err
 }
 
+const searchFilesForOwner = `-- name: SearchFilesForOwner :many
+WITH RECURSIVE hidden AS (
+    SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
+    UNION
+    SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+)
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at
+FROM files
+WHERE files.user_id = $1
+  AND files.trashed_at IS NULL
+  AND (files.folder_id IS NULL OR files.folder_id NOT IN (SELECT id FROM hidden))
+  AND files.name ILIKE $2::text ESCAPE '\'
+ORDER BY lower(files.name), files.id
+LIMIT 100
+`
+
+type SearchFilesForOwnerParams struct {
+	UserID  uuid.UUID
+	Pattern string
+}
+
+// Live files whose name matches. A file inside a trashed folder counts as trashed.
+func (q *Queries) SearchFilesForOwner(ctx context.Context, arg SearchFilesForOwnerParams) ([]File, error) {
+	rows, err := q.db.Query(ctx, searchFilesForOwner, arg.UserID, arg.Pattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []File{}
+	for rows.Next() {
+		var i File
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConnectionID,
+			&i.FolderID,
+			&i.ObjectID,
+			&i.Name,
+			&i.Size,
+			&i.ContentType,
+			&i.TrashedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchFoldersForOwner = `-- name: SearchFoldersForOwner :many
+WITH RECURSIVE hidden AS (
+    SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
+    UNION
+    SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+)
+SELECT folders.id, folders.user_id, folders.parent_id, folders.name, folders.trashed_at, folders.created_at, folders.updated_at
+FROM folders
+WHERE folders.user_id = $1
+  AND folders.id NOT IN (SELECT id FROM hidden)
+  AND folders.name ILIKE $2::text ESCAPE '\'
+ORDER BY lower(folders.name), folders.id
+LIMIT 100
+`
+
+type SearchFoldersForOwnerParams struct {
+	UserID  uuid.UUID
+	Pattern string
+}
+
+// Live folders whose name matches.
+func (q *Queries) SearchFoldersForOwner(ctx context.Context, arg SearchFoldersForOwnerParams) ([]Folder, error) {
+	rows, err := q.db.Query(ctx, searchFoldersForOwner, arg.UserID, arg.Pattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Folder{}
+	for rows.Next() {
+		var i Folder
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ParentID,
+			&i.Name,
+			&i.TrashedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setFileTrashedForOwner = `-- name: SetFileTrashedForOwner :execrows
 UPDATE files
 SET trashed_at = $3::timestamptz, updated_at = now()

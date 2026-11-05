@@ -136,6 +136,7 @@ func TestHandlers(t *testing.T) {
 		run  func(*testing.T, *server)
 	}{
 		{"listing connections", testHandlerList},
+		{"the pool view", testHandlerPool},
 		{"responses never carry credentials", testResponsesHideCredentials},
 		{"testing a connection", testHandlerTest},
 		{"failure details stay out of responses", testFailureDetailsAreHidden},
@@ -334,5 +335,44 @@ func testDriveCallbackNeedsSession(t *testing.T, s *server) {
 	wantError(t, b.callback(state), http.StatusUnauthorized, "unauthorized")
 	if got := s.count(t, `SELECT count(*) FROM storage_connections`); got != 0 {
 		t.Errorf("connections = %d, want 0", got)
+	}
+}
+
+func testHandlerPool(t *testing.T, s *server) {
+	b, other := s.signedIn(t), s.signedIn(t)
+	s.linked(t, b.userID, "one@example.org", 15*gib, 5*gib)
+	s.linked(t, b.userID, "broken@example.org", 15*gib, 1*gib)
+	s.linked(t, other.userID, "theirs@example.org", 15*gib, 1*gib)
+	s.account("broken@example.org").QuotaErr = errors.New("token for broken@example.org said secret-detail")
+
+	rec := b.do(http.MethodGet, "/api/v1/storage/pool")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), "secret-detail") {
+		t.Errorf("response leaks the failure: %s", rec.Body)
+	}
+	pool := decode[apigen.Pool](t, rec)
+	if len(pool.Accounts) != 2 || pool.UsedBytes != 5*gib {
+		t.Fatalf("pool = %+v", pool)
+	}
+	if pool.LimitBytes == nil || *pool.LimitBytes != 15*gib || pool.FreeBytes == nil || *pool.FreeBytes != 10*gib {
+		t.Errorf("limit = %v, free = %v", pool.LimitBytes, pool.FreeBytes)
+	}
+	for _, account := range pool.Accounts {
+		broken := account.Connection.Summary == "broken@example.org"
+		if account.Available == broken {
+			t.Errorf("account = %+v", account)
+		}
+		if broken && account.LimitBytes != nil {
+			t.Errorf("a broken account reports a limit: %+v", account)
+		}
+	}
+
+	s.account("unlimited@example.org").ExtraUsed = gib
+	s.connect(t, b.userID, "unlimited@example.org")
+	pool = decode[apigen.Pool](t, b.do(http.MethodGet, "/api/v1/storage/pool"))
+	if pool.LimitBytes != nil || pool.FreeBytes != nil {
+		t.Errorf("limit = %v, free = %v, want none with an unlimited account", pool.LimitBytes, pool.FreeBytes)
 	}
 }

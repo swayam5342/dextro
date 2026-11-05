@@ -155,7 +155,7 @@ func TestHandlers(t *testing.T) {
 	}{
 		{"uploading and listing", testHandlerUpload},
 		{"responses never carry the provider's object id", testObjectIDsStayHidden},
-		{"an upload needs a connection and a name", testUploadNeedsParams},
+		{"an upload needs a name", testUploadNeedsParams},
 		{"bad uploads have stable errors", testUploadErrors},
 		{"too-large uploads are refused", testUploadTooLarge},
 		{"downloads are safe by default", testDownloadHeaders},
@@ -232,7 +232,6 @@ func testUploadNeedsParams(t *testing.T, s *server) {
 	c := s.client(t)
 	for _, target := range []string{
 		"/api/v1/files",
-		"/api/v1/files?name=x.txt",
 		"/api/v1/files?connection_id=" + c.a.connection.String(),
 	} {
 		wantError(t, c.request(http.MethodPost, target, strings.NewReader("x"), nil), http.StatusBadRequest, "invalid_upload")

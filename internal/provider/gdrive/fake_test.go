@@ -33,6 +33,12 @@ type fakeDrive struct {
 	omitRefresh     bool
 	refreshRevoked  bool
 	permissionCalls int
+	// limit and used are what the account reports. A limit of 0 means none.
+	limit int64
+	used  int64
+	// discardBodies throws uploaded bytes away, so that the server does not count
+	// towards the memory a test is measuring.
+	discardBodies bool
 }
 
 type fakeFile struct {
@@ -44,6 +50,7 @@ type fakeFile struct {
 	ModifiedTime string   `json:"modifiedTime"`
 	Trashed      bool     `json:"trashed"`
 	body         []byte
+	discarded    int64
 }
 
 func newFakeDrive(t *testing.T) *fakeDrive {
@@ -113,7 +120,14 @@ func (f *fakeDrive) authed(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (f *fakeDrive) about(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"user": map[string]string{"emailAddress": "person@example.org"}})
+	quota := map[string]string{"usage": strconv.FormatInt(f.used, 10)}
+	if f.limit > 0 {
+		quota["limit"] = strconv.FormatInt(f.limit, 10)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":         map[string]string{"emailAddress": "person@example.org"},
+		"storageQuota": quota,
+	})
 }
 
 func notFound(w http.ResponseWriter) {
@@ -163,7 +177,7 @@ func (f *fakeDrive) store(file *fakeFile, body []byte) *fakeFile {
 	file.ModifiedTime = time.Now().UTC().Format(time.RFC3339)
 	file.body = body
 	if file.MimeType != folderMime {
-		file.Size = strconv.Itoa(len(body))
+		file.Size = strconv.FormatInt(int64(len(body))+file.discarded, 10)
 	}
 	f.files[file.ID] = file
 	f.order = append(f.order, file.ID)
@@ -278,11 +292,15 @@ func (f *fakeDrive) chunk(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	file.body = append(file.body, body...)
+	if f.discardBodies {
+		file.discarded += int64(len(body))
+	} else {
+		file.body = append(file.body, body...)
+	}
 	total := r.Header.Get("Content-Range")[strings.LastIndexByte(r.Header.Get("Content-Range"), '/')+1:]
 	if total == "*" {
 		// Google answers this way when the client sends X-GUploader-No-308.
-		w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", len(file.body)-1))
+		w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", int64(len(file.body))+file.discarded-1))
 		w.Header().Set("X-Http-Status-Code-Override", "308")
 		w.WriteHeader(http.StatusOK)
 		return

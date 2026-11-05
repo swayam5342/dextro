@@ -49,11 +49,13 @@ type FilesHandlers interface {
 	RestoreFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
 	ListTrash(w http.ResponseWriter, r *http.Request)
 	EmptyTrash(w http.ResponseWriter, r *http.Request)
+	Search(w http.ResponseWriter, r *http.Request, params apigen.SearchParams)
 }
 
 // StorageHandlers is the part of the API the storage feature implements.
 type StorageHandlers interface {
 	ListConnections(w http.ResponseWriter, r *http.Request)
+	GetPool(w http.ResponseWriter, r *http.Request)
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	TestConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	ConnectGoogleDrive(w http.ResponseWriter, r *http.Request)

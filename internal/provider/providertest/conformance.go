@@ -68,6 +68,16 @@ func Run(t *testing.T, p provider.Provider) {
 		return nil
 	}
 
+	t.Run("quota reports usage", func(t *testing.T) {
+		quota, err := p.Quota(ctx)
+		if err != nil {
+			t.Fatalf("Quota: %v", err)
+		}
+		if quota.Used < 0 || quota.Limit < 0 {
+			t.Errorf("quota = %+v", quota)
+		}
+	})
+
 	t.Run("check succeeds", func(t *testing.T) {
 		if err := p.Check(ctx); err != nil {
 			t.Fatalf("Check: %v", err)

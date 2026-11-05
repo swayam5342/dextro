@@ -77,9 +77,10 @@ func newClient(clientID, clientSecret, redirectURL, authURL, tokenURL, apiBase s
 func (c *Client) AuthCodeURL(state, verifier string) string {
 	return c.config.AuthCodeURL(state,
 		oauth2.AccessTypeOffline,
-		// Without this, Google sends a refresh token only the first time someone
-		// agrees, so reconnecting would come back with none.
-		oauth2.SetAuthURLParam("prompt", "consent"),
+		// select_account lets someone link a second account instead of Google reusing
+		// the one they're signed in to. consent is needed because otherwise Google
+		// sends a refresh token only the first time someone agrees.
+		oauth2.SetAuthURLParam("prompt", "select_account consent"),
 		oauth2.S256ChallengeOption(verifier),
 	)
 }
@@ -179,6 +180,18 @@ func (p *Provider) Check(ctx context.Context) error {
 		return ErrFolderMissing
 	}
 	return nil
+}
+
+// Quota implements provider.Provider.
+func (p *Provider) Quota(ctx context.Context) (provider.Quota, error) {
+	about, err := p.service.About.Get().Fields("storageQuota(limit,usage)").Context(ctx).Do()
+	if err != nil {
+		return provider.Quota{}, fmt.Errorf("read drive quota: %w", err)
+	}
+	if about.StorageQuota == nil {
+		return provider.Quota{}, errors.New("google sent no quota")
+	}
+	return provider.Quota{Limit: about.StorageQuota.Limit, Used: about.StorageQuota.Usage}, nil
 }
 
 // Put implements provider.Provider.

@@ -21,8 +21,13 @@ type Fake struct {
 	mu sync.Mutex
 	// CheckErr, if set, is what Check returns.
 	CheckErr error
-	nextID   int
-	objects  map[string]fakeObject
+	// QuotaErr, if set, is what Quota returns.
+	QuotaErr error
+	// Limit is the reported limit, and ExtraUsed is counted on top of stored files.
+	Limit     int64
+	ExtraUsed int64
+	nextID    int
+	objects   map[string]fakeObject
 }
 
 type fakeObject struct {
@@ -42,6 +47,20 @@ func (f *Fake) Check(context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.CheckErr
+}
+
+// Quota implements provider.Provider.
+func (f *Fake) Quota(context.Context) (provider.Quota, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.QuotaErr != nil {
+		return provider.Quota{}, f.QuotaErr
+	}
+	used := f.ExtraUsed
+	for _, object := range f.objects {
+		used += object.Size
+	}
+	return provider.Quota{Limit: f.Limit, Used: used}, nil
 }
 
 // Put implements provider.Provider.

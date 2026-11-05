@@ -14,6 +14,17 @@ export const connectionsQuery = queryOptions({
   },
 });
 
+export const poolQuery = queryOptions({
+  queryKey: ["storage-pool"],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/storage/pool");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
 export function useTestConnection(id: string) {
   return useMutation({
     mutationFn: async () => {
@@ -38,7 +49,11 @@ export function useRemoveConnection(id: string) {
         throw toApiError(error);
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: connectionsQuery.queryKey }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: connectionsQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: poolQuery.queryKey }),
+      ]),
   });
 }
 

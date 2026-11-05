@@ -74,8 +74,7 @@ dev-web: $(WEB_DEPS) ## Run the Vite dev server, proxying the API to localhost:8
 
 env: ## Create .env with random secrets, or add any missing from an existing one
 	@if [ -f .env ]; then echo ".env already exists"; else \
-		printf 'POSTGRES_PASSWORD=%s\nS3_ACCESS_KEY=%s\nS3_SECRET_KEY=%s\n' \
-			"$$(openssl rand -hex 24)" "$$(openssl rand -hex 10)" "$$(openssl rand -hex 24)" > .env; \
+		printf 'POSTGRES_PASSWORD=%s\n' "$$(openssl rand -hex 24)" > .env; \
 		echo "created .env"; \
 	fi
 	@grep -q '^ENCRYPTION_KEYS=' .env || { \

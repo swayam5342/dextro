@@ -56,6 +56,7 @@ var keyRoutes = map[string]string{
 	"POST /api/v1/folders/{id}/trash":   ScopeFilesWrite,
 	"POST /api/v1/folders/{id}/restore": ScopeFilesWrite,
 	"GET /api/v1/trash":                 ScopeFilesRead,
+	"GET /api/v1/search":                ScopeFilesRead,
 }
 
 // KeyAccess describes the API key behind a request.

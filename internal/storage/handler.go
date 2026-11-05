@@ -67,6 +67,17 @@ func (h *Handler) ListConnections(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
+// GetPool implements apigen.ServerInterface.
+func (h *Handler) GetPool(w http.ResponseWriter, r *http.Request) {
+	principal, _ := httpx.PrincipalFrom(r.Context())
+	pool, err := h.service.Pool(r.Context(), principal.UserID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toAPIPool(pool))
+}
+
 // DeleteConnection implements apigen.ServerInterface.
 func (h *Handler) DeleteConnection(w http.ResponseWriter, r *http.Request, id types.UUID) {
 	principal, _ := httpx.PrincipalFrom(r.Context())
@@ -177,6 +188,26 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 			"request_id", httpx.RequestID(r.Context()), "error", err)
 		httpx.WriteError(w, r, http.StatusInternalServerError, httpx.CodeInternal, "Something went wrong.")
 	}
+}
+
+func toAPIPool(p Pool) apigen.Pool {
+	body := apigen.Pool{Accounts: make([]apigen.PoolAccount, 0, len(p.Accounts)), UsedBytes: p.Used}
+	if !p.Unlimited {
+		body.LimitBytes, body.FreeBytes = &p.Limit, &p.Free
+	}
+	for _, account := range p.Accounts {
+		item := apigen.PoolAccount{
+			Connection: toAPI(account.Connection),
+			Available:  account.Available,
+			UsedBytes:  account.Used,
+		}
+		if account.Limit > 0 {
+			limit := account.Limit
+			item.LimitBytes = &limit
+		}
+		body.Accounts = append(body.Accounts, item)
+	}
+	return body
 }
 
 func toAPI(c Connection) apigen.Connection {

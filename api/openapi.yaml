@@ -288,13 +288,13 @@ paths:
       parameters:
         - name: connection_id
           in: query
-          description: Required. Not marked so, because generated checks would run before access checks.
+          description: The account to use. Left out, the account with the most free space is chosen.
           schema:
             type: string
             format: uuid
         - name: name
           in: query
-          description: Required, as for connection_id.
+          description: Required. Not marked so, because generated checks would run before access checks.
           schema:
             type: string
         - name: folder_id
@@ -569,6 +569,42 @@ paths:
       responses:
         "204":
           description: The trash is empty.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/pool:
+    get:
+      operationId: getPool
+      summary: Report how full each linked account is, and the total
+      description: Slower than listing connections, because it asks Google about every account.
+      tags: [storage]
+      responses:
+        "200":
+          description: The pool.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pool"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/search:
+    get:
+      operationId: search
+      summary: Find files and folders by name
+      description: Trashed items, and anything inside a trashed folder, aren't included.
+      tags: [files]
+      parameters:
+        - name: q
+          in: query
+          description: Required. Not marked so, because generated checks would run before access checks.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: What matched, up to 100 of each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
         default:
           $ref: "#/components/responses/Error"
   /api/v1/admin/settings:
@@ -983,6 +1019,56 @@ components:
         token:
           type: string
           description: The secret, sent as a bearer token. Shown only this once.
+    PoolAccount:
+      type: object
+      required: [connection, available, used_bytes, limit_bytes]
+      properties:
+        connection:
+          $ref: "#/components/schemas/Connection"
+        available:
+          type: boolean
+          description: False if the account can't be reached, usually because its token expired.
+        used_bytes:
+          type: integer
+          format: int64
+        limit_bytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null if the account has no limit, or can't be reached.
+    Pool:
+      type: object
+      required: [accounts, used_bytes, limit_bytes, free_bytes]
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PoolAccount"
+        used_bytes:
+          type: integer
+          format: int64
+        limit_bytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null if any working account has no limit.
+        free_bytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null if any working account has no limit.
+    SearchResults:
+      type: object
+      required: [folders, files]
+      properties:
+        folders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Folder"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/File"
     Settings:
       type: object
       required: [allow_registration, max_upload_bytes]

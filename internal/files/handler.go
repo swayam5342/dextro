@@ -28,6 +28,9 @@ const (
 	codeConnectionNotFound  = "connection_not_found"
 	codeProviderUnavailable = "provider_unavailable"
 	codeFileUnavailable     = "file_unavailable"
+	codeInvalidSearch       = "invalid_search"
+	codeNoStorage           = "no_storage"
+	codeStorageFull         = "storage_full"
 )
 
 // contentPolicy goes on every response that carries a user's file, so that even
@@ -89,12 +92,12 @@ func (h *Handler) ListFolder(w http.ResponseWriter, r *http.Request, params apig
 // UploadFile implements apigen.ServerInterface. The body goes straight to the
 // provider as a stream.
 func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request, params apigen.UploadFileParams) {
-	if params.ConnectionId == nil || params.Name == nil {
-		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidUpload, "An upload needs a storage connection and a file name.")
+	if params.Name == nil {
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidUpload, "An upload needs a file name.")
 		return
 	}
 	file, err := h.service.Upload(r.Context(), userID(r), UploadInput{
-		ConnectionID: *params.ConnectionId,
+		ConnectionID: params.ConnectionId,
 		FolderID:     params.FolderId,
 		Name:         *params.Name,
 		ContentType:  r.Header.Get("Content-Type"),
@@ -332,6 +335,20 @@ func (h *Handler) ListTrash(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, apigen.Trash{Folders: toAPIFolders(trash.Folders), Files: toAPIFiles(trash.Files)})
 }
 
+// Search implements apigen.ServerInterface.
+func (h *Handler) Search(w http.ResponseWriter, r *http.Request, params apigen.SearchParams) {
+	query := ""
+	if params.Q != nil {
+		query = *params.Q
+	}
+	results, err := h.service.Search(r.Context(), userID(r), query)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, apigen.SearchResults{Folders: toAPIFolders(results.Folders), Files: toAPIFiles(results.Files)})
+}
+
 // EmptyTrash implements apigen.ServerInterface.
 func (h *Handler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 	h.noContent(w, r, h.service.EmptyTrash(r.Context(), userID(r), httpx.ClientIP(r.Context())))
@@ -364,7 +381,13 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusRequestEntityTooLarge, codeFileTooLarge, "This file is larger than this server allows.")
 	case errors.Is(err, ErrObjectMissing):
 		httpx.WriteError(w, r, http.StatusNotFound, codeFileUnavailable, "This file is no longer in its storage account.")
-	case errors.Is(err, ErrProviderFailed):
+	case errors.Is(err, ErrInvalidSearch):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidSearch, "Enter something to search for.")
+	case errors.Is(err, storage.ErrNoStorage):
+		httpx.WriteError(w, r, http.StatusConflict, codeNoStorage, "Link a Google Drive account before uploading.")
+	case errors.Is(err, storage.ErrStorageFull):
+		httpx.WriteError(w, r, http.StatusInsufficientStorage, codeStorageFull, "No linked account has room for this file.")
+	case errors.Is(err, ErrProviderFailed), errors.Is(err, storage.ErrStorageUnavailable):
 		h.logger.WarnContext(r.Context(), "storage provider failed",
 			"request_id", httpx.RequestID(r.Context()), "error", err)
 		httpx.WriteError(w, r, http.StatusBadGateway, codeProviderUnavailable, "The storage account couldn't be reached.")

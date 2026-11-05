@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 
 import type { components } from "@/api/schema";
 import { FormError } from "@/components/field";
@@ -11,12 +11,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { connectionsQuery } from "@/features/storage/queries";
 import { formatBytes, formatDate } from "@/lib/format";
 
 import {
   contentUrl,
   folderQuery,
+  searchQuery,
   useCreateFolder,
   useMoveToTrash,
   useRename,
@@ -125,11 +127,44 @@ function UploadRow({ upload, onCancel }: { upload: Upload; onCancel: () => void 
   );
 }
 
-export function FilesPage({ folderId }: { folderId: string | undefined }) {
+function SearchBox({ query }: { query: string | undefined }) {
   const navigate = useNavigate();
-  const { data, isPending, isError } = useQuery(folderQuery(folderId));
+  const [text, setText] = useState(query ?? "");
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const q = text.trim();
+    void navigate({ to: "/", search: q ? { q } : {} });
+  }
+
+  return (
+    <form role="search" onSubmit={handleSubmit}>
+      <Input
+        type="search"
+        aria-label="Search your files"
+        placeholder="Search your files"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+    </form>
+  );
+}
+
+export function FilesPage({
+  folderId,
+  query,
+}: {
+  folderId: string | undefined;
+  query: string | undefined;
+}) {
+  const navigate = useNavigate();
+  const folder = useQuery({ ...folderQuery(folderId), enabled: !query });
+  const search = useQuery({ ...searchQuery(query ?? ""), enabled: Boolean(query) });
+  const { isPending, isError } = query ? search : folder;
+  const data = query ? search.data && { path: [], ...search.data } : folder.data;
   const { data: connections } = useQuery(connectionsQuery);
-  const [chosenConnection, setChosenConnection] = useState<string | undefined>(undefined);
+  // Empty means the server picks the account with the most free space.
+  const [chosenConnection, setChosenConnection] = useState("");
   const [action, setAction] = useState<Action | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const { uploads, add, cancel, clearFinished } = useUploads();
@@ -137,7 +172,6 @@ export function FilesPage({ folderId }: { folderId: string | undefined }) {
   const rename = useRename();
   const trash = useMoveToTrash();
 
-  const connectionId = chosenConnection ?? connections?.[0]?.id;
   const hasConnections = (connections?.length ?? 0) > 0;
   const finished = uploads.some((u) => u.status !== "waiting" && u.status !== "uploading");
   const close = () => {
@@ -149,12 +183,12 @@ export function FilesPage({ folderId }: { folderId: string | undefined }) {
   function handlePick(event: ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (connectionId && picked.length > 0) {
-      add(picked, { connectionId, folderId });
+    if (picked.length > 0) {
+      add(picked, { connectionId: chosenConnection || undefined, folderId });
     }
   }
 
-  if (isError) {
+  if (isError && !query) {
     return (
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">This folder isn't available</h1>
@@ -173,7 +207,11 @@ export function FilesPage({ folderId }: { folderId: string | undefined }) {
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <Breadcrumbs path={data?.path ?? []} />
+        {query ? (
+          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight">Results for {query}</h1>
+        ) : (
+          <Breadcrumbs path={data?.path ?? []} />
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Button asChild variant="ghost">
             <Link to="/trash">Trash</Link>
@@ -188,11 +226,13 @@ export function FilesPage({ folderId }: { folderId: string | undefined }) {
         </div>
       </div>
 
+      <SearchBox key={query ?? ""} query={query} />
+
       {connections && !hasConnections && (
         <p className="text-sm text-muted-foreground">
           To upload files, first{" "}
           <Link to="/storage" className="text-foreground underline underline-offset-4">
-            connect a storage account
+            link a Google Drive account
           </Link>
           .
         </p>
@@ -200,15 +240,16 @@ export function FilesPage({ folderId }: { folderId: string | undefined }) {
 
       {connections && connections.length > 1 && (
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Upload to</span>
+          <span className="shrink-0 text-muted-foreground">Upload to</span>
           <select
             className="h-9 min-w-0 rounded-md border border-input bg-background px-2"
-            value={connectionId}
+            value={chosenConnection}
             onChange={(event) => setChosenConnection(event.target.value)}
           >
+            <option value="">Account with the most free space</option>
             {connections.map((connection) => (
               <option key={connection.id} value={connection.id}>
-                {connection.name}
+                {connection.summary}
               </option>
             ))}
           </select>
@@ -232,7 +273,16 @@ export function FilesPage({ folderId }: { folderId: string | undefined }) {
 
       <FormError message={trash.error?.message} />
       {isPending && <p className="text-sm text-muted-foreground">Loading…</p>}
-      {empty && hasConnections && (
+      {isError && query && <FormError message="The search didn't work. Try again." />}
+      {empty && query && (
+        <p className="text-sm text-muted-foreground">
+          Nothing matches.{" "}
+          <Link to="/" search={{}} className="text-foreground underline underline-offset-4">
+            Go to your files
+          </Link>
+        </p>
+      )}
+      {empty && !query && hasConnections && (
         <p className="text-sm text-muted-foreground">This folder is empty. Upload a file or create a folder.</p>
       )}
 

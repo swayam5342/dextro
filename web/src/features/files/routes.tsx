@@ -8,13 +8,13 @@ import { TrashPage } from "./components/trash-page";
 export const filesRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
-  validateSearch: (search): { folder?: string } => ({
+  validateSearch: (search): { folder?: string; q?: string } => ({
     folder: typeof search.folder === "string" ? search.folder : undefined,
+    q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
   }),
   component: function FilesRoute() {
-    const { folder } = filesRoute.useSearch();
-    // The key resets the page's state when moving between folders.
-    return <FilesPage key={folder ?? "top"} folderId={folder} />;
+    const { folder, q } = filesRoute.useSearch();
+    return <FilesPage folderId={folder} query={q} />;
   },
 });
 

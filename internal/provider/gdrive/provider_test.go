@@ -3,10 +3,15 @@ package gdrive
 import (
 	"context"
 	"errors"
+	"io"
 	"net/url"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/swayam5342/dextro/internal/provider"
 	"github.com/swayam5342/dextro/internal/provider/providertest"
 )
 
@@ -54,7 +59,7 @@ func TestAuthCodeURL(t *testing.T) {
 		"client_id":             "client-id",
 		"redirect_uri":          "https://files.example.org/callback",
 		"access_type":           "offline",
-		"prompt":                "consent",
+		"prompt":                "select_account consent",
 		"code_challenge_method": "S256",
 		// Exactly this: dextro must not be able to read the rest of someone's Drive.
 		"scope": "https://www.googleapis.com/auth/drive.file",
@@ -148,4 +153,116 @@ func TestCheck(t *testing.T) {
 			t.Fatalf("error = %v, want ErrFolderMissing", err)
 		}
 	})
+}
+
+func TestQuota(t *testing.T) {
+	f := newFakeDrive(t)
+	c := newTestClient(f)
+	settings, credentials := connect(t, c)
+	p, err := c.Open(context.Background(), settings, credentials)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	f.limit, f.used = 15<<30, 4<<30
+	quota, err := p.Quota(context.Background())
+	if err != nil {
+		t.Fatalf("Quota: %v", err)
+	}
+	if quota.Limit != 15<<30 || quota.Used != 4<<30 {
+		t.Errorf("quota = %+v", quota)
+	}
+	free, limited := quota.Free()
+	if !limited || free != 11<<30 {
+		t.Errorf("Free = %d, %v", free, limited)
+	}
+
+	// Some accounts report no limit at all, and an over-full one has no room.
+	f.limit, f.used = 0, 4<<30
+	quota, err = p.Quota(context.Background())
+	if err != nil {
+		t.Fatalf("Quota: %v", err)
+	}
+	if _, limited := quota.Free(); limited {
+		t.Errorf("an account with no limit reports one: %+v", quota)
+	}
+	f.limit, f.used = 1<<30, 2<<30
+	quota, err = p.Quota(context.Background())
+	if err != nil {
+		t.Fatalf("Quota: %v", err)
+	}
+	if free, _ := quota.Free(); free != 0 {
+		t.Errorf("Free = %d, want 0 for an over-full account", free)
+	}
+}
+
+func TestQuotaFailsWithARevokedToken(t *testing.T) {
+	f := newFakeDrive(t)
+	c := newTestClient(f)
+	settings, credentials := connect(t, c)
+	p, err := c.Open(context.Background(), settings, credentials)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	f.refreshRevoked = true
+	if _, err := p.Quota(context.Background()); err == nil {
+		t.Fatal("Quota succeeded, want error")
+	}
+}
+
+type zeros struct{}
+
+func (zeros) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
+}
+
+// Rule 7: an upload's memory use must not grow with the file.
+func TestUploadMemoryStaysFlat(t *testing.T) {
+	f := newFakeDrive(t)
+	f.discardBodies = true
+	c := newTestClient(f)
+	settings, credentials := connect(t, c)
+	p, err := c.Open(context.Background(), settings, credentials)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	const size = 256 << 20
+	// Measured against the chunk buffer, with room for the client and the runtime.
+	const limit = 8 * chunkSize
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	var peak atomic.Uint64
+	done := make(chan struct{})
+	sampled := make(chan struct{})
+	go func() {
+		defer close(sampled)
+		for {
+			select {
+			case <-done:
+				return
+			case <-time.After(10 * time.Millisecond):
+				var now runtime.MemStats
+				runtime.ReadMemStats(&now)
+				if now.HeapAlloc > peak.Load() {
+					peak.Store(now.HeapAlloc)
+				}
+			}
+		}
+	}()
+	object, err := p.Put(context.Background(), provider.Upload{Name: "big.bin", Body: io.LimitReader(zeros{}, size)})
+	close(done)
+	<-sampled
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if object.Size != size {
+		t.Errorf("Size = %d, want %d", object.Size, size)
+	}
+	if grew := peak.Load() - min(peak.Load(), before.HeapAlloc); grew > limit {
+		t.Errorf("heap grew by %d MiB for a %d MiB file", grew>>20, size>>20)
+	}
 }

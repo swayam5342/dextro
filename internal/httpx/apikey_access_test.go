@@ -99,6 +99,7 @@ var wantKeyRoutes = map[string]string{
 	"POST /api/v1/folders/{id}/trash":   ScopeFilesWrite,
 	"POST /api/v1/folders/{id}/restore": ScopeFilesWrite,
 	"GET /api/v1/trash":                 ScopeFilesRead,
+	"GET /api/v1/search":                ScopeFilesRead,
 }
 
 func TestAPIKeysReachOnlyTheirListedRoutes(t *testing.T) {

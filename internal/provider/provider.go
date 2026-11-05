@@ -32,6 +32,21 @@ type ByteRange struct {
 	End   int64
 }
 
+// Quota is how much of an account is in use. A Limit of 0 means no limit.
+type Quota struct {
+	Limit int64
+	Used  int64
+}
+
+// Free returns the bytes left, and false if the account has no limit. An account
+// can be over its limit, which counts as no room rather than negative room.
+func (q Quota) Free() (int64, bool) {
+	if q.Limit == 0 {
+		return 0, false
+	}
+	return max(q.Limit-q.Used, 0), true
+}
+
 // Upload is a file to store. Body is read as a stream and its length need not
 // be known, so memory use must not depend on the file's size.
 type Upload struct {
@@ -46,6 +61,8 @@ type Upload struct {
 type Provider interface {
 	// Check confirms the account is reachable with its credentials.
 	Check(ctx context.Context) error
+	// Quota reports how much of the account is in use.
+	Quota(ctx context.Context) (Quota, error)
 	// Put stores a new object. It never replaces an existing one, even with the
 	// same name.
 	Put(ctx context.Context, upload Upload) (Object, error)

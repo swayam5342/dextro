@@ -27,6 +27,19 @@ export function folderQuery(folderId: string | undefined) {
   });
 }
 
+export function searchQuery(query: string) {
+  return queryOptions({
+    queryKey: [FILES_KEY, "search", query],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/v1/search", { params: { query: { q: query } } });
+      if (!data) {
+        throw toApiError(error);
+      }
+      return data;
+    },
+  });
+}
+
 export const trashQuery = queryOptions({
   queryKey: [TRASH_KEY],
   queryFn: async () => {

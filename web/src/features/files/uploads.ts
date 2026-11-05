@@ -14,7 +14,8 @@ export interface Upload {
 }
 
 interface Target {
-  connectionId: string;
+  /** The account to use. Left undefined, the server picks the one with the most free space. */
+  connectionId: string | undefined;
   folderId: string | undefined;
 }
 
@@ -24,7 +25,10 @@ interface Target {
  */
 function send(file: File, target: Target, onProgress: (loaded: number) => void, request: XMLHttpRequest) {
   return new Promise<void>((resolve, reject) => {
-    const query = new URLSearchParams({ connection_id: target.connectionId, name: file.name });
+    const query = new URLSearchParams({ name: file.name });
+    if (target.connectionId) {
+      query.set("connection_id", target.connectionId);
+    }
     if (target.folderId) {
       query.set("folder_id", target.folderId);
     }

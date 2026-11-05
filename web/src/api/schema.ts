@@ -50,6 +50,26 @@ export interface components {
       summary: string;
       created_at: string;
     };
+    PoolAccount: {
+      connection: components["schemas"]["Connection"];
+      /** False if the account can't be reached, usually because its token expired. */
+      available: boolean;
+      used_bytes: number;
+      /** Null if the account has no limit, or can't be reached. */
+      limit_bytes: number | null;
+    };
+    Pool: {
+      accounts: components["schemas"]["PoolAccount"][];
+      used_bytes: number;
+      /** Null if any working account has no limit. */
+      limit_bytes: number | null;
+      /** Null if any working account has no limit. */
+      free_bytes: number | null;
+    };
+    SearchResults: {
+      folders: components["schemas"]["Folder"][];
+      files: components["schemas"]["File"][];
+    };
     Settings: {
       /**
        * When false, nobody can create an account, by password or through a
@@ -260,6 +280,9 @@ export interface paths {
   "/api/v1/storage/connections/{id}/test": {
     post: PathOperation;
   };
+  "/api/v1/storage/pool": {
+    get: Operation<{ 200: JsonBody<Schemas["Pool"]> }>;
+  };
   "/api/v1/storage/google/connect": {
     post: Operation<{ 200: JsonBody<Schemas["GoogleRedirect"]> }>;
   };
@@ -306,6 +329,21 @@ export interface paths {
   };
   "/api/v1/folders/{id}/restore": {
     post: PathOperation;
+  };
+  "/api/v1/search": {
+    get: {
+      parameters: {
+        query: { q: string };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        200: JsonBody<Schemas["SearchResults"]>;
+        default: JsonBody<Schemas["Error"]>;
+      };
+    };
   };
   "/api/v1/trash": {
     get: Operation<{ 200: JsonBody<Schemas["Trash"]> }>;

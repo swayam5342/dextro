@@ -31,6 +31,8 @@ type flaky struct {
 	putErr    error
 	deleteErr error
 	getErr    error
+	// discard throws uploads away, to keep the fake out of a memory measurement.
+	discard bool
 }
 
 func (f *flaky) Put(ctx context.Context, u provider.Upload) (provider.Object, error) {
@@ -39,6 +41,10 @@ func (f *flaky) Put(ctx context.Context, u provider.Upload) (provider.Object, er
 	f.mu.Unlock()
 	if err != nil {
 		return provider.Object{}, err
+	}
+	if f.discard {
+		size, err := io.Copy(io.Discard, u.Body)
+		return provider.Object{ID: "discarded", Name: u.Name, Size: size}, err
 	}
 	return f.Fake.Put(ctx, u)
 }
@@ -75,6 +81,9 @@ type providers struct {
 	pool *pgxpool.Pool
 	mu   sync.Mutex
 	all  map[uuid.UUID]*flaky
+	// chooseErr, if set, is what Choose returns.
+	chooseErr error
+	lastSize  int64
 }
 
 func (p *providers) Provider(ctx context.Context, userID, connectionID uuid.UUID) (provider.Provider, error) {
@@ -88,6 +97,25 @@ func (p *providers) Provider(ctx context.Context, userID, connectionID uuid.UUID
 		return nil, storage.ErrConnectionNotFound
 	}
 	return p.forConnection(connectionID), nil
+}
+
+// Choose stands in for the pool, whose rules are tested in the storage package.
+func (p *providers) Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64) (storage.Chosen, error) {
+	p.lastSize = size
+	if p.chooseErr != nil {
+		return storage.Chosen{}, p.chooseErr
+	}
+	var id uuid.UUID
+	if preferred != nil {
+		id = *preferred
+	} else if err := p.pool.QueryRow(ctx, `SELECT id FROM storage_connections WHERE user_id = $1 ORDER BY created_at LIMIT 1`, userID).Scan(&id); err != nil {
+		return storage.Chosen{}, storage.ErrNoStorage
+	}
+	stored, err := p.Provider(ctx, userID, id)
+	if err != nil {
+		return storage.Chosen{}, err
+	}
+	return storage.Chosen{ConnectionID: id, Provider: stored}, nil
 }
 
 func (p *providers) forConnection(id uuid.UUID) *flaky {
@@ -120,7 +148,7 @@ func (f *fixture) connection(t *testing.T, userID uuid.UUID) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
 	_, err := f.pool.Exec(f.ctx, `INSERT INTO storage_connections (id, user_id, provider, name, settings, secret_key_id, secret_ciphertext)
-		VALUES ($1, $2, 's3', $3, '{}', 'k1', '\x00')`, id, userID, id.String())
+		VALUES ($1, $2, 'google_drive', $3, '{}', 'k1', '\x00')`, id, userID, id.String())
 	if err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
@@ -139,7 +167,7 @@ func (f *fixture) account(t *testing.T) account {
 
 func upload(a account, folder *uuid.UUID, name, body string) UploadInput {
 	return UploadInput{
-		ConnectionID: a.connection,
+		ConnectionID: &a.connection,
 		FolderID:     folder,
 		Name:         name,
 		ContentType:  "text/plain",
@@ -346,7 +374,7 @@ func testUploadTrashedFolder(t *testing.T, f *fixture) {
 func testUploadForeignConnection(t *testing.T, f *fixture) {
 	mine, theirs := f.account(t), f.account(t)
 	in := upload(mine, nil, "x.txt", "x")
-	in.ConnectionID = theirs.connection
+	in.ConnectionID = &theirs.connection
 	if _, err := f.service.Upload(f.ctx, mine.id, in); !errors.Is(err, storage.ErrConnectionNotFound) {
 		t.Fatalf("error = %v, want ErrConnectionNotFound", err)
 	}
@@ -794,7 +822,7 @@ func testDeleteFolder(t *testing.T, f *fixture) {
 	f.put(t, a, &child.ID, "b.txt")
 	f.put(t, a, &keep.ID, "keep.txt")
 	in := upload(a, &child.ID, "other-account.txt", "x")
-	in.ConnectionID = second
+	in.ConnectionID = &second
 	if _, err := f.service.Upload(f.ctx, a.id, in); err != nil {
 		t.Fatalf("Upload: %v", err)
 	}

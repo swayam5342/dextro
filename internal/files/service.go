@@ -17,6 +17,7 @@ import (
 
 	"github.com/swayam5342/dextro/internal/audit"
 	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/dextro/internal/storage"
 )
 
 const (
@@ -35,6 +36,7 @@ var (
 	ErrNotInTrash     = errors.New("not in the trash")
 	ErrProviderFailed = errors.New("storage account failed")
 	ErrObjectMissing  = errors.New("stored object is missing")
+	ErrInvalidSearch  = errors.New("invalid search")
 )
 
 // File is a stored file as its owner sees it.
@@ -67,16 +69,17 @@ type Contents struct {
 	Files   []File
 }
 
-// Trash is what a user has trashed directly. A trashed folder's contents aren't
-// listed, because they travel with it.
-type Trash struct {
+// Listing is a set of folders and files, as the trash and search return. In the
+// trash, a trashed folder's contents aren't listed, because they travel with it.
+type Listing struct {
 	Folders []Folder
 	Files   []File
 }
 
 // UploadInput is a file to store. Size is -1 if the length isn't known up front.
+// ConnectionID picks an account; left nil, the pool chooses one.
 type UploadInput struct {
-	ConnectionID uuid.UUID
+	ConnectionID *uuid.UUID
 	FolderID     *uuid.UUID
 	Name         string
 	ContentType  string
@@ -84,9 +87,10 @@ type UploadInput struct {
 	Body         io.Reader
 }
 
-// Providers opens a user's storage connections.
+// Providers opens a user's linked accounts.
 type Providers interface {
 	Provider(ctx context.Context, userID, connectionID uuid.UUID) (provider.Provider, error)
+	Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64) (storage.Chosen, error)
 }
 
 // Service holds the rules for files and folders.
@@ -187,10 +191,11 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 	if in.Size > limit {
 		return File{}, ErrFileTooLarge
 	}
-	stored, err := s.providers.Provider(ctx, userID, in.ConnectionID)
+	chosen, err := s.providers.Choose(ctx, userID, in.ConnectionID, in.Size)
 	if err != nil {
 		return File{}, err
 	}
+	stored := chosen.Provider
 
 	contentType := cleanContentType(in.ContentType)
 	body := &limitedReader{r: in.Body, limit: limit}
@@ -204,7 +209,7 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 
 	file, err := s.store.CreateFile(ctx, userID, fileRecord{
 		File: File{
-			ConnectionID: in.ConnectionID,
+			ConnectionID: chosen.ConnectionID,
 			FolderID:     in.FolderID,
 			Name:         name,
 			Size:         object.Size,
@@ -462,20 +467,20 @@ func (s *Service) DeleteFolder(ctx context.Context, userID, id uuid.UUID, ip str
 }
 
 // ListTrash returns what's in a user's trash.
-func (s *Service) ListTrash(ctx context.Context, userID uuid.UUID) (Trash, error) {
+func (s *Service) ListTrash(ctx context.Context, userID uuid.UUID) (Listing, error) {
 	folders, err := s.store.TrashedFoldersForOwner(ctx, userID)
 	if err != nil {
-		return Trash{}, err
+		return Listing{}, err
 	}
 	records, err := s.store.TrashedFilesForOwner(ctx, userID)
 	if err != nil {
-		return Trash{}, err
+		return Listing{}, err
 	}
 	files := make([]File, 0, len(records))
 	for _, record := range records {
 		files = append(files, record.File)
 	}
-	return Trash{Folders: folders, Files: files}, nil
+	return Listing{Folders: folders, Files: files}, nil
 }
 
 // EmptyTrash permanently deletes everything in a user's trash.
