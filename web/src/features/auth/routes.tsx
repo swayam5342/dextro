@@ -1,5 +1,6 @@
 import { createRoute, redirect } from "@tanstack/react-router";
 
+import { AppShell } from "@/app/app-shell";
 import { rootRoute } from "@/app/root-route";
 
 import { AccountPage } from "./components/account-page";
@@ -15,6 +16,7 @@ function textParam(value: unknown): string | undefined {
 export const authedRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "authed",
+  component: AppShell,
   beforeLoad: async ({ context }) => {
     const user = await context.queryClient.fetchQuery(meQuery);
     if (!user) {

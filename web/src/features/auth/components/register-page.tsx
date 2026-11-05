@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { CenteredPage } from "@/app/centered-page";
 import { Button } from "@/components/ui/button";
 
 import { authConfigQuery, useRegister } from "../queries";
@@ -13,22 +14,24 @@ export function RegisterPage() {
 
   if (config && !config.registration_open) {
     return (
-      <div className="max-w-sm space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Registration is closed</h1>
-        <p className="text-muted-foreground">
-          This server isn't accepting new accounts. Ask its admin to open registration, or{" "}
-          <Link to="/sign-in" className="text-foreground underline underline-offset-4">
-            sign in
-          </Link>{" "}
-          if you already have an account.
-        </p>
-      </div>
+      <CenteredPage>
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold tracking-tight">Registration is closed</h1>
+          <p className="text-muted-foreground">
+            This server isn't accepting new accounts. Ask its admin to open registration, or{" "}
+            <Link to="/sign-in" className="text-foreground underline underline-offset-4">
+              sign in
+            </Link>{" "}
+            if you already have an account.
+          </p>
+        </div>
+      </CenteredPage>
     );
   }
 
   return (
-    <div className="max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
+    <CenteredPage>
+      <h1 className="text-xl font-semibold tracking-tight">Create your account</h1>
       <CredentialsForm
         submitLabel="Create account"
         pendingLabel="Creating account…"
@@ -37,7 +40,7 @@ export function RegisterPage() {
         pending={register.isPending}
         error={register.error?.message}
         onSubmit={(credentials) =>
-          register.mutate(credentials, { onSuccess: () => navigate({ to: "/" }) })
+          register.mutate(credentials, { onSuccess: () => navigate({ to: "/", search: {} }) })
         }
       />
       {config?.google_enabled && (
@@ -51,6 +54,6 @@ export function RegisterPage() {
           Sign in
         </Link>
       </p>
-    </div>
+    </CenteredPage>
   );
 }

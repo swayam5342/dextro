@@ -1,10 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import type { components } from "@/api/schema";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
 import { authConfigQuery } from "@/features/auth/queries";
+import { useUploads } from "@/features/files/uploads";
 import { formatBytes } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 import {
   connectionsQuery,
@@ -23,63 +27,116 @@ const REDIRECT_MESSAGES: Record<string, string> = {
   google_failed: "The account wasn't linked. Try again.",
 };
 
-function usageText(account: PoolAccount | undefined): string {
-  if (!account) {
-    return "Checking free space…";
-  }
-  if (!account.available) {
-    return "This account can't be reached, so uploads skip it. Link it again to repair it.";
-  }
+const SOFT_BUTTON = "bg-raised hover:bg-[#3a3a3a]";
+
+/** How much room an account has. No limit is the most room there is. */
+function room(account: PoolAccount): number {
   if (account.limit_bytes === null) {
-    return `${formatBytes(account.used_bytes)} used, no limit`;
+    return Number.POSITIVE_INFINITY;
   }
-  const free = Math.max(account.limit_bytes - account.used_bytes, 0);
-  return `${formatBytes(free)} free of ${formatBytes(account.limit_bytes)}`;
+  return Math.max(account.limit_bytes - account.used_bytes, 0);
 }
 
-function AccountRow({ connection, account }: { connection: Connection; account: PoolAccount | undefined }) {
+/** The account an upload goes to next: the one picked, or the one with most room. */
+function nextAccount(pool: Pool, target: string): string | undefined {
+  if (target) {
+    return target;
+  }
+  const working = pool.accounts.filter((account) => account.available);
+  if (working.length < 2) {
+    return undefined;
+  }
+  return working.reduce((best, account) => (room(account) > room(best) ? account : best)).connection.id;
+}
+
+function Figure({ account }: { account: PoolAccount | undefined }) {
+  if (!account) {
+    return <p className="text-sm text-muted-foreground">Checking free space…</p>;
+  }
+  if (!account.available) {
+    return (
+      <div>
+        <b className="block text-2xl leading-tight font-semibold tracking-tight">Not reachable</b>
+        <span className="text-xs text-muted-foreground">Uploads skip this account</span>
+      </div>
+    );
+  }
+  if (account.limit_bytes === null) {
+    return (
+      <div>
+        <b className="block text-2xl leading-tight font-semibold tracking-tight">{formatBytes(account.used_bytes)}</b>
+        <span className="text-xs text-muted-foreground">used, no limit</span>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <b className="block text-2xl leading-tight font-semibold tracking-tight">{formatBytes(room(account))}</b>
+      <span className="text-xs text-muted-foreground">free of {formatBytes(account.limit_bytes)}</span>
+    </div>
+  );
+}
+
+function Tank({
+  connection,
+  account,
+  isNext,
+}: {
+  connection: Connection;
+  account: PoolAccount | undefined;
+  isNext: boolean;
+}) {
   const test = useTestConnection(connection.id);
   const remove = useRemoveConnection(connection.id);
+  const [confirming, setConfirming] = useState(false);
   const broken = account?.available === false;
-
-  function handleRemove() {
-    const confirmed = window.confirm(
-      `Remove ${connection.summary}? dextro will forget its token and stop showing the files stored in it. The files stay in that Drive.`,
-    );
-    if (confirmed) {
-      remove.mutate();
-    }
-  }
+  const limit = account?.limit_bytes;
+  const fill = account?.available && limit ? Math.min((account.used_bytes / limit) * 100, 100) : 0;
 
   return (
-    <li className="space-y-2 py-4 first:pt-0">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{connection.summary}</p>
-          <p className={broken ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-            {usageText(account)}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={test.isPending} onClick={() => test.mutate()}>
-            {test.isPending ? "Testing…" : "Test"}
-          </Button>
-          <Button variant="outline" size="sm" disabled={remove.isPending} onClick={handleRemove}>
-            Remove
-          </Button>
-        </div>
+    <li className="flex min-w-0 flex-col gap-3 rounded-[14px] bg-card p-3.5">
+      <Figure account={account} />
+      <div
+        role="img"
+        aria-label={broken ? `${connection.summary} can't be reached` : `${Math.round(fill)}% of ${connection.summary} is used`}
+        className={cn("relative h-[130px] overflow-hidden rounded-[10px] bg-[#0a0a0a]", broken && "hatched")}
+      >
+        {fill > 0 && (
+          <span
+            className="absolute inset-x-0 bottom-0 border-t-2 border-water bg-water-deep"
+            style={{ height: `${fill}%` }}
+          />
+        )}
       </div>
-      {account?.available && account.limit_bytes !== null && (
-        <progress
-          value={account.used_bytes}
-          max={account.limit_bytes}
-          aria-label={`Space used in ${connection.summary}`}
-          className="h-1 w-full overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary"
+      <h2 className="truncate text-sm font-medium" title={connection.summary}>
+        {connection.summary}
+      </h2>
+      {isNext && <p className="text-[13px] text-water">Next upload goes here</p>}
+      {broken && <p className="text-[13px] text-destructive">Link it again to repair it.</p>}
+      {test.isSuccess && <p className="text-[13px]">This account works.</p>}
+      <FormError message={test.error ? "This account couldn't be reached. Link it again to repair it." : undefined} />
+      <div className="mt-auto flex gap-2">
+        <Button variant="outline" size="sm" className={SOFT_BUTTON} disabled={test.isPending} onClick={() => test.mutate()}>
+          {test.isPending ? "Testing…" : "Test"}
+        </Button>
+        <Button variant="outline" size="sm" className={SOFT_BUTTON} onClick={() => setConfirming(true)}>
+          Remove
+        </Button>
+      </div>
+      {confirming && (
+        <ConfirmDialog
+          title={`Remove ${connection.summary}?`}
+          text="dextro will forget its token and stop showing the files stored in it. The files stay in that Drive."
+          action="Remove account"
+          pending={remove.isPending}
+          error={remove.error?.message}
+          onConfirm={() => remove.mutate(undefined, { onSuccess: () => setConfirming(false) })}
+          onClose={() => {
+            setConfirming(false);
+            remove.reset();
+          }}
         />
       )}
-      {test.isSuccess && <p className="text-sm">This account works.</p>}
-      <FormError message={test.error ? "This account couldn't be reached. Link it again to repair it." : undefined} />
-      <FormError message={remove.error?.message} />
     </li>
   );
 }
@@ -87,65 +144,38 @@ function AccountRow({ connection, account }: { connection: Connection; account: 
 function PoolSummary({ pool }: { pool: Pool }) {
   const working = pool.accounts.filter((account) => account.available).length;
   const accounts = working === 1 ? "1 account" : `${working} accounts`;
-  if (pool.free_bytes === null || pool.limit_bytes === null) {
-    return (
-      <p className="text-muted-foreground">
-        {formatBytes(pool.used_bytes)} used across {accounts}
-      </p>
-    );
-  }
-  return (
-    <p className="text-muted-foreground">
-      {formatBytes(pool.free_bytes)} free of {formatBytes(pool.limit_bytes)} across {accounts}
-    </p>
-  );
+  const text =
+    pool.free_bytes === null || pool.limit_bytes === null
+      ? `${formatBytes(pool.used_bytes)} used across ${accounts}`
+      : `${formatBytes(pool.free_bytes)} free of ${formatBytes(pool.limit_bytes)} across ${accounts}`;
+  return <p className="text-muted-foreground">{text}</p>;
 }
 
-function AccountList() {
+function Accounts({ pool }: { pool: Pool | undefined }) {
   const { data: connections, isPending, isError } = useQuery(connectionsQuery);
-  const { data: pool } = useQuery(poolQuery);
+  const { target } = useUploads();
 
   if (isPending) {
-    return <p className="text-sm text-muted-foreground">Loading your accounts…</p>;
+    return <p className="text-muted-foreground">Loading your accounts…</p>;
   }
   if (isError) {
     return <FormError message="Your accounts couldn't be loaded. Reload the page to try again." />;
   }
   if (connections.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No accounts are linked yet. Link a Google Drive account to start storing files.
-      </p>
-    );
+    return <p className="py-6 text-muted-foreground">No accounts are linked yet. Link a Google Drive account to start storing files.</p>;
   }
+  const next = pool && nextAccount(pool, target);
   return (
-    <ul className="divide-y">
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] gap-3.5">
       {connections.map((connection) => (
-        <AccountRow
+        <Tank
           key={connection.id}
           connection={connection}
           account={pool?.accounts.find((a) => a.connection.id === connection.id)}
+          isNext={connection.id === next}
         />
       ))}
     </ul>
-  );
-}
-
-function LinkAccount() {
-  const connect = useConnectGoogleDrive();
-  return (
-    <section className="space-y-3 border-t pt-6">
-      <h2 className="font-medium">Link an account</h2>
-      <p className="text-sm text-muted-foreground">
-        Every linked account joins your pool. dextro keeps its files in a folder named dextro in each one,
-        and can't see anything else in them. A file is stored whole in one account, so the largest file
-        you can upload is limited by the account with the most free space.
-      </p>
-      <FormError message={connect.error?.message} />
-      <Button variant="outline" disabled={connect.isPending} onClick={() => connect.mutate()}>
-        Link a Google Drive account
-      </Button>
-    </section>
   );
 }
 
@@ -158,21 +188,33 @@ export function StoragePage({
 }) {
   const { data: config } = useQuery(authConfigQuery);
   const { data: pool } = useQuery(poolQuery);
+  const connect = useConnectGoogleDrive();
   const message = redirectError
     ? (REDIRECT_MESSAGES[redirectError] ?? REDIRECT_MESSAGES.google_failed)
     : undefined;
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Storage</h1>
-        {pool && pool.accounts.length > 0 && <PoolSummary pool={pool} />}
+    <div className="max-w-5xl space-y-[18px]">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight">Storage</h1>
+          {pool && pool.accounts.length > 0 && <PoolSummary pool={pool} />}
+        </div>
+        {config?.google_enabled && (
+          <Button disabled={connect.isPending} onClick={() => connect.mutate()}>
+            Link a Google Drive account
+          </Button>
+        )}
       </div>
-      <FormError message={message} />
-      {connected === "google" && <p className="text-sm">Account linked.</p>}
-      <AccountList />
+      <FormError message={message ?? connect.error?.message} />
+      {connected === "google" && <p>Account linked.</p>}
+      <Accounts pool={pool} />
       {config?.google_enabled ? (
-        <LinkAccount />
+        <p className="max-w-[60ch] text-xs text-faint">
+          dextro keeps its files in a folder named dextro in each account, and can't see anything else in
+          them. A file is stored whole in one account, so the largest file you can upload is limited by the
+          account with the most free space.
+        </p>
       ) : (
         <p className="text-sm text-muted-foreground">
           Google isn't set up on this server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to link accounts.

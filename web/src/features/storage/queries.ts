@@ -16,6 +16,8 @@ export const connectionsQuery = queryOptions({
 
 export const poolQuery = queryOptions({
   queryKey: ["storage-pool"],
+  // Each read asks Google, and uploads and removals refresh it themselves.
+  staleTime: 30_000,
   queryFn: async () => {
     const { data, error } = await api.GET("/api/v1/storage/pool");
     if (!data) {

@@ -177,6 +177,10 @@ export function useEmptyTrash() {
   });
 }
 
+export function thumbnailUrl(fileId: string): string {
+  return `/api/v1/files/${fileId}/thumbnail`;
+}
+
 export function contentUrl(fileId: string, inline: boolean): string {
   const query = inline ? "?disposition=inline" : "";
   return `/api/v1/files/${fileId}/content${query}`;

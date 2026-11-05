@@ -1,44 +1,107 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import {
+  Check,
+  CheckSquare,
+  Download,
+  Folder as FolderIcon,
+  FolderInput,
+  FolderPlus,
+  FolderOpen,
+  LayoutGrid,
+  List,
+  MoreVertical,
+  Pencil,
+  Play,
+  Trash2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { useEffect, useState, type MouseEvent } from "react";
 
 import type { components } from "@/api/schema";
 import { FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { connectionsQuery } from "@/features/storage/queries";
 import { formatBytes, formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 import {
   contentUrl,
   folderQuery,
   searchQuery,
+  thumbnailUrl,
   useCreateFolder,
   useMoveToTrash,
   useRename,
   type Item,
 } from "../queries";
-import { useUploads, type Upload } from "../uploads";
-import { MoveDialog, NameDialog, PreviewDialog } from "./dialogs";
+import { MoveDialog, NameDialog } from "./dialogs";
+import { fileIcon } from "./file-icon";
+import { Viewer } from "./viewer";
 
 type File = components["schemas"]["File"];
 type Folder = components["schemas"]["Folder"];
+type View = "grid" | "list";
 
 type Action =
   | { type: "rename"; item: Item; name: string }
-  | { type: "move"; item: Item; name: string }
-  | { type: "preview"; file: File }
+  | { type: "move"; items: Item[]; name: string }
   | { type: "new-folder" };
 
+interface MenuEntry {
+  label: string;
+  icon: LucideIcon;
+  run: () => void;
+}
+
+const VIEW_KEY = "dextro.view";
+const SHOW_ON_TOUCH = "[@media(hover:none)]:opacity-100";
+
+/** A remembered convenience, so it does without storage when the browser refuses it. */
+function loadView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
+
+function saveView(view: View) {
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // It just won't be remembered.
+  }
+}
+
+function itemKey(item: Item): string {
+  return `${item.kind}:${item.id}`;
+}
+
+function download(file: File) {
+  const link = document.createElement("a");
+  link.href = contentUrl(file.id, false);
+  link.download = "";
+  link.click();
+}
+
 function Breadcrumbs({ path }: { path: Folder[] }) {
+  const title = "text-xl font-semibold tracking-tight";
   return (
-    <nav aria-label="Folders" className="flex min-w-0 flex-wrap items-center gap-x-2 text-2xl font-semibold tracking-tight">
+    <nav aria-label="Folders" className={cn("flex min-w-0 flex-1 items-center gap-x-2", title)}>
       {path.length === 0 ? (
         <h1>Files</h1>
       ) : (
@@ -48,15 +111,11 @@ function Breadcrumbs({ path }: { path: Folder[] }) {
       )}
       {path.map((folder, index) => (
         <span key={folder.id} className="flex min-w-0 items-center gap-2">
-          <span className="text-muted-foreground">/</span>
+          <span className="text-faint">/</span>
           {index === path.length - 1 ? (
-            <h1 className="truncate">{folder.name}</h1>
+            <h1 className={cn("truncate", title)}>{folder.name}</h1>
           ) : (
-            <Link
-              to="/"
-              search={{ folder: folder.id }}
-              className="truncate text-muted-foreground hover:text-foreground"
-            >
+            <Link to="/" search={{ folder: folder.id }} className="truncate text-muted-foreground hover:text-foreground">
               {folder.name}
             </Link>
           )}
@@ -66,288 +125,606 @@ function Breadcrumbs({ path }: { path: Folder[] }) {
   );
 }
 
-function RowMenu({ label, children }: { label: string; children: ReactNode }) {
+function RightClickMenu({ entries }: { entries: MenuEntry[] }) {
+  return (
+    <ContextMenuContent>
+      {entries.map(({ label, icon: Icon, run }) => (
+        <ContextMenuItem key={label} onSelect={run}>
+          <Icon />
+          {label}
+        </ContextMenuItem>
+      ))}
+    </ContextMenuContent>
+  );
+}
+
+function DotsMenu({ label, entries, className }: { label: string; entries: MenuEntry[]; className?: string }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" aria-label={`Actions for ${label}`}>
-          Actions
-        </Button>
+      <DropdownMenuTrigger
+        aria-label={`Actions for ${label}`}
+        className={cn("grid size-[30px] shrink-0 place-items-center rounded-full text-white", className)}
+      >
+        <MoreVertical className="size-[18px]" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent>{children}</DropdownMenuContent>
+      <DropdownMenuContent>
+        {entries.map(({ label: entry, icon: Icon, run }) => (
+          <DropdownMenuItem key={entry} onSelect={run}>
+            <Icon />
+            {entry}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function Row({ name, detail, menu }: { name: ReactNode; detail: string; menu: ReactNode }) {
+function PickButton({
+  name,
+  selected,
+  visible,
+  onToggle,
+  className,
+}: {
+  name: string;
+  selected: boolean;
+  visible: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
   return (
-    <li className="flex items-center justify-between gap-4 py-2">
-      <div className="min-w-0">
-        {name}
-        <p className="truncate text-sm text-muted-foreground">{detail}</p>
-      </div>
-      {menu}
-    </li>
-  );
-}
-
-function UploadRow({ upload, onCancel }: { upload: Upload; onCancel: () => void }) {
-  const percent = upload.total > 0 ? Math.round((upload.loaded / upload.total) * 100) : 100;
-  const inProgress = upload.status === "waiting" || upload.status === "uploading";
-  const labels = {
-    waiting: "Waiting",
-    uploading: `${percent}%`,
-    done: "Uploaded",
-    failed: "Failed",
-    cancelled: "Cancelled",
-  };
-  return (
-    <li className="space-y-1 py-2">
-      <div className="flex items-center justify-between gap-4 text-sm">
-        <span className="truncate">{upload.name}</span>
-        <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
-          {labels[upload.status]}
-          {inProgress && (
-            <Button variant="ghost" size="sm" onClick={onCancel}>
-              Cancel
-            </Button>
-          )}
-        </span>
-      </div>
-      {upload.status === "uploading" && (
-        <progress
-          value={percent}
-          max={100}
-          aria-label={`Uploading ${upload.name}`}
-          className="h-1 w-full overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary"
-        />
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={selected}
+      aria-label={`Select ${name}`}
+      onClick={onToggle}
+      className={cn(
+        "grid size-6 shrink-0 place-items-center rounded-full border-[1.5px] border-white bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+        (visible || selected) && "opacity-100",
+        selected && "bg-white text-black",
+        className,
       )}
-      {upload.status === "failed" && <FormError message={upload.error} />}
-    </li>
+    >
+      {selected && <Check className="size-3.5" strokeWidth={2.4} />}
+    </button>
   );
 }
 
-function SearchBox({ query }: { query: string | undefined }) {
-  const navigate = useNavigate();
-  const [text, setText] = useState(query ?? "");
+interface TileProps<T> {
+  value: T;
+  selected: boolean;
+  selecting: boolean;
+  entries: MenuEntry[];
+  onToggle: () => void;
+}
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    const q = text.trim();
-    void navigate({ to: "/", search: q ? { q } : {} });
+function FolderTile({ value: folder, selected, selecting, entries, onToggle }: TileProps<Folder>) {
+  function handleClick(event: MouseEvent) {
+    if (selecting || event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      onToggle();
+    }
   }
 
   return (
-    <form role="search" onSubmit={handleSubmit}>
-      <Input
-        type="search"
-        aria-label="Search your files"
-        placeholder="Search your files"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-      />
-    </form>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <li
+          className={cn(
+            "group relative flex min-w-0 items-center gap-1 rounded-[14px] bg-card pr-2 transition-colors hover:bg-accent",
+            selected && "outline-2 outline-white",
+          )}
+        >
+          <Link
+            to="/"
+            search={{ folder: folder.id }}
+            onClick={handleClick}
+            className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5"
+          >
+            <FolderIcon className="size-[22px] shrink-0 text-muted-foreground" />
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate font-medium">{folder.name}</span>
+              <span className="hidden truncate text-xs text-faint md:block">{formatDate(folder.created_at)}</span>
+            </span>
+          </Link>
+          <PickButton name={folder.name} selected={selected} visible={selecting} onToggle={onToggle} />
+          <DotsMenu
+            label={folder.name}
+            entries={entries}
+            className={cn(
+              "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 hover:bg-raised",
+              SHOW_ON_TOUCH,
+            )}
+          />
+        </li>
+      </ContextMenuTrigger>
+      <RightClickMenu entries={entries} />
+    </ContextMenu>
   );
 }
 
-export function FilesPage({
-  folderId,
-  query,
-}: {
-  folderId: string | undefined;
-  query: string | undefined;
-}) {
+function FileTile({
+  value: file,
+  selected,
+  selecting,
+  entries,
+  onToggle,
+  onOpen,
+}: TileProps<File> & { onOpen: () => void }) {
+  const [failed, setFailed] = useState(false);
+  const [ratio, setRatio] = useState(1.3);
+  const hasPicture = file.preview !== "none" && !failed;
+  const Icon = fileIcon(file.content_type);
+
+  function handleClick(event: MouseEvent) {
+    if (selecting || event.ctrlKey || event.metaKey) {
+      onToggle();
+      return;
+    }
+    onOpen();
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <li
+          className={cn(
+            "group relative h-(--row) min-w-0 overflow-hidden rounded-[10px] bg-card",
+            selected && "outline-2 outline-white",
+          )}
+          style={{ flex: `${ratio} 1 calc(var(--row) * ${ratio})` }}
+        >
+          <button type="button" aria-label={`Open ${file.name}`} onClick={handleClick} className="block size-full text-left">
+            {hasPicture ? (
+              <img
+                src={thumbnailUrl(file.id)}
+                alt=""
+                loading="lazy"
+                draggable={false}
+                className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.025]"
+                onError={() => setFailed(true)}
+                onLoad={(event) => {
+                  const { naturalWidth, naturalHeight } = event.currentTarget;
+                  // Limits keep a panorama from filling a row, or a tall scan from vanishing.
+                  setRatio(Math.min(Math.max(naturalWidth / naturalHeight, 0.6), 2.2));
+                }}
+              />
+            ) : (
+              <span className="flex h-full flex-col justify-end gap-1.5 p-3.5 md:gap-2.5">
+                <Icon className="size-[22px] text-muted-foreground md:size-[30px]" />
+                <span className="min-w-0">
+                  <span className="line-clamp-1 leading-tight font-medium break-words md:line-clamp-2">{file.name}</span>
+                  <span className="mt-0.5 block text-xs text-faint">{formatBytes(file.size)}</span>
+                </span>
+              </span>
+            )}
+          </button>
+          {hasPicture && file.preview === "video" && (
+            <span className="pointer-events-none absolute top-1/2 left-1/2 grid size-[46px] -translate-1/2 place-items-center rounded-full bg-black/55">
+              <Play className="ml-0.5 size-5 fill-white stroke-none" />
+            </span>
+          )}
+          {hasPicture && (
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-linear-to-t from-black/75 to-transparent px-2.5 pt-6.5 pb-2 text-[12.5px] opacity-0 transition-opacity group-hover:opacity-100">
+              {file.name}
+            </span>
+          )}
+          <PickButton
+            name={file.name}
+            selected={selected}
+            visible={selecting}
+            onToggle={onToggle}
+            className="absolute top-2 left-2"
+          />
+          <DotsMenu
+            label={file.name}
+            entries={entries}
+            className={cn(
+              "absolute top-1.5 right-1.5 bg-black/55 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100",
+              SHOW_ON_TOUCH,
+            )}
+          />
+        </li>
+      </ContextMenuTrigger>
+      <RightClickMenu entries={entries} />
+    </ContextMenu>
+  );
+}
+
+function ListThumb({ file }: { file: File }) {
+  const [failed, setFailed] = useState(false);
+  const Icon = fileIcon(file.content_type);
+  return (
+    <span className="grid size-[38px] shrink-0 place-items-center overflow-hidden rounded-[7px] bg-card">
+      {file.preview !== "none" && !failed ? (
+        <img
+          src={thumbnailUrl(file.id)}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          className="size-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Icon className="size-[18px] text-muted-foreground" />
+      )}
+    </span>
+  );
+}
+
+interface ListRowProps {
+  name: string;
+  thumb: React.ReactNode;
+  open: React.ReactNode;
+  size: string;
+  account: string;
+  date: string;
+  selected: boolean;
+  selecting: boolean;
+  entries: MenuEntry[];
+  onToggle: () => void;
+}
+
+function ListRow({ name, thumb, open, size, account, date, selected, selecting, entries, onToggle }: ListRowProps) {
+  const cell = "border-t px-3 py-2 whitespace-nowrap text-muted-foreground group-hover:bg-[#0c0c0c]";
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <tr className={cn("group", selected && "[&>td]:bg-accent")}>
+          <td className={cn(cell, "w-full max-w-0 text-foreground")}>
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="relative shrink-0">
+                {thumb}
+                <PickButton
+                  name={name}
+                  selected={selected}
+                  visible={selecting}
+                  onToggle={onToggle}
+                  className="absolute top-[7px] left-[7px]"
+                />
+              </span>
+              {open}
+            </span>
+          </td>
+          <td className={cn(cell, "text-right")}>{size}</td>
+          <td className={cn(cell, "hidden max-w-56 truncate lg:table-cell")}>{account}</td>
+          <td className={cn(cell, "hidden sm:table-cell")}>{date}</td>
+          <td className={cn(cell, "px-1")}>
+            <DotsMenu label={name} entries={entries} className="text-muted-foreground hover:bg-raised hover:text-foreground" />
+          </td>
+        </tr>
+      </ContextMenuTrigger>
+      <RightClickMenu entries={entries} />
+    </ContextMenu>
+  );
+}
+
+function Blank({ title, text, children }: { title: string; text: string; children?: React.ReactNode }) {
+  return (
+    <div className="grid justify-items-start gap-1 py-10">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <p className="text-muted-foreground">{text}</p>
+      {children && <div className="mt-3">{children}</div>}
+    </div>
+  );
+}
+
+function Browser({ folderId, query }: { folderId: string | undefined; query: string | undefined }) {
   const navigate = useNavigate();
   const folder = useQuery({ ...folderQuery(folderId), enabled: !query });
   const search = useQuery({ ...searchQuery(query ?? ""), enabled: Boolean(query) });
   const { isPending, isError } = query ? search : folder;
   const data = query ? search.data && { path: [], ...search.data } : folder.data;
   const { data: connections } = useQuery(connectionsQuery);
-  // Empty means the server picks the account with the most free space.
-  const [chosenConnection, setChosenConnection] = useState("");
+
+  const [view, setView] = useState<View>(loadView);
+  const [selected, setSelected] = useState<Item[]>([]);
   const [action, setAction] = useState<Action | null>(null);
-  const picker = useRef<HTMLInputElement>(null);
-  const { uploads, add, cancel, clearFinished } = useUploads();
+  const [viewing, setViewing] = useState<string | null>(null);
   const createFolder = useCreateFolder();
   const rename = useRename();
   const trash = useMoveToTrash();
 
-  const hasConnections = (connections?.length ?? 0) > 0;
-  const finished = uploads.some((u) => u.status !== "waiting" && u.status !== "uploading");
-  const close = () => {
+  const folders = data?.folders ?? [];
+  const files = data?.files ?? [];
+  const selecting = selected.length > 0;
+  const chosen = new Set(selected.map(itemKey));
+  const viewIndex = files.findIndex((file) => file.id === viewing);
+  const viewed = files[viewIndex];
+  const accounts = new Map(connections?.map((c) => [c.id, c.summary]));
+  const accountName = (id: string) => accounts.get(id) ?? "Unknown account";
+
+  useEffect(() => {
+    if (!selecting) {
+      return undefined;
+    }
+    function clearOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSelected([]);
+      }
+    }
+    window.addEventListener("keydown", clearOnEscape);
+    return () => window.removeEventListener("keydown", clearOnEscape);
+  }, [selecting]);
+
+  function toggle(item: Item) {
+    setSelected((current) =>
+      current.some((other) => itemKey(other) === itemKey(item))
+        ? current.filter((other) => itemKey(other) !== itemKey(item))
+        : [...current, item],
+    );
+  }
+
+  function close() {
     setAction(null);
     rename.reset();
     createFolder.reset();
-  };
+  }
 
-  function handlePick(event: ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    if (picked.length > 0) {
-      add(picked, { connectionId: chosenConnection || undefined, folderId });
+  function changeView(next: View) {
+    setView(next);
+    saveView(next);
+  }
+
+  /** One at a time, so a failure stops here and its message stays on screen. */
+  async function moveToTrash(items: Item[]) {
+    trash.reset();
+    try {
+      for (const item of items) {
+        await trash.mutateAsync(item);
+      }
+      setSelected([]);
+    } catch {
+      // The mutation's error is shown on the page.
     }
+  }
+
+  function handleViewerTrash(file: File) {
+    const next = files[viewIndex + 1] ?? files[viewIndex - 1];
+    trash.mutate({ kind: "file", id: file.id }, { onSuccess: () => setViewing(next?.id ?? null) });
+  }
+
+  function folderEntries(target: Folder): MenuEntry[] {
+    const item: Item = { kind: "folder", id: target.id };
+    return [
+      { label: "Open", icon: FolderOpen, run: () => void navigate({ to: "/", search: { folder: target.id } }) },
+      { label: "Select", icon: CheckSquare, run: () => toggle(item) },
+      { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: target.name }) },
+      { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: target.name }) },
+      { label: "Move to trash", icon: Trash2, run: () => void moveToTrash([item]) },
+    ];
+  }
+
+  function fileEntries(file: File): MenuEntry[] {
+    const item: Item = { kind: "file", id: file.id };
+    return [
+      { label: "Download", icon: Download, run: () => download(file) },
+      { label: "Select", icon: CheckSquare, run: () => toggle(item) },
+      { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: file.name }) },
+      { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: file.name }) },
+      { label: "Move to trash", icon: Trash2, run: () => void moveToTrash([item]) },
+    ];
   }
 
   if (isError && !query) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">This folder isn't available</h1>
-        <p className="text-muted-foreground">
-          It may have been moved to the trash.{" "}
-          <Link to="/" search={{}} className="underline underline-offset-4">
+      <Blank title="This folder isn't available" text="It may have been moved to the trash.">
+        <Button asChild variant="outline">
+          <Link to="/" search={{}}>
             Go to your files
           </Link>
-        </p>
-      </div>
+        </Button>
+      </Blank>
     );
   }
 
-  const empty = data && data.folders.length === 0 && data.files.length === 0;
+  const empty = data && folders.length === 0 && files.length === 0;
+  const noAccounts = connections?.length === 0;
+  const selectedFiles = files.filter((file) => chosen.has(itemKey({ kind: "file", id: file.id })));
+  const countText = selected.length === 1 ? "1 selected" : `${selected.length} selected`;
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        {query ? (
-          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight">Results for {query}</h1>
-        ) : (
-          <Breadcrumbs path={data?.path ?? []} />
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild variant="ghost">
-            <Link to="/trash">Trash</Link>
+    <div>
+      {selecting ? (
+        <div className="sticky -top-4 z-10 -mx-4 -mt-4 mb-[18px] flex min-h-[52px] items-center gap-1 border-b bg-background px-4 md:-top-[22px] md:-mx-7 md:-mt-[22px] md:min-h-[58px] md:px-7">
+          <Button variant="ghost" size="icon" aria-label="Clear selection" onClick={() => setSelected([])}>
+            <X />
           </Button>
-          <Button variant="outline" onClick={() => setAction({ type: "new-folder" })}>
-            New folder
+          <span className="mr-auto font-semibold">{countText}</span>
+          <Button
+            variant="ghost"
+            disabled={selectedFiles.length === 0}
+            aria-label="Download selected files"
+            onClick={() => selectedFiles.forEach(download)}
+          >
+            <Download />
+            <span className="hidden sm:inline">Download</span>
           </Button>
-          <input ref={picker} type="file" multiple hidden aria-label="Choose files" onChange={handlePick} />
-          <Button disabled={!hasConnections} onClick={() => picker.current?.click()}>
-            Upload
+          <Button
+            variant="ghost"
+            aria-label="Move selected items"
+            onClick={() => setAction({ type: "move", items: selected, name: countText.replace("selected", selected.length === 1 ? "item" : "items") })}
+          >
+            <FolderInput />
+            <span className="hidden sm:inline">Move</span>
+          </Button>
+          <Button variant="ghost" aria-label="Move selected items to the trash" onClick={() => void moveToTrash(selected)}>
+            <Trash2 />
+            <span className="hidden sm:inline">Trash</span>
           </Button>
         </div>
-      </div>
-
-      <SearchBox key={query ?? ""} query={query} />
-
-      {connections && !hasConnections && (
-        <p className="text-sm text-muted-foreground">
-          To upload files, first{" "}
-          <Link to="/storage" className="text-foreground underline underline-offset-4">
-            link a Google Drive account
-          </Link>
-          .
-        </p>
-      )}
-
-      {connections && connections.length > 1 && (
-        <label className="flex items-center gap-2 text-sm">
-          <span className="shrink-0 text-muted-foreground">Upload to</span>
-          <select
-            className="h-9 min-w-0 rounded-md border border-input bg-background px-2"
-            value={chosenConnection}
-            onChange={(event) => setChosenConnection(event.target.value)}
-          >
-            <option value="">Account with the most free space</option>
-            {connections.map((connection) => (
-              <option key={connection.id} value={connection.id}>
-                {connection.summary}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {uploads.length > 0 && (
-        <section aria-label="Uploads" className="space-y-1">
-          <ul className="divide-y">
-            {uploads.map((upload) => (
-              <UploadRow key={upload.id} upload={upload} onCancel={() => cancel(upload.id)} />
-            ))}
-          </ul>
-          {finished && (
-            <Button variant="ghost" size="sm" onClick={clearFinished}>
-              Clear finished
+      ) : (
+        <div className="mb-[18px] flex min-h-9 items-center gap-2">
+          {query ? (
+            <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">Results for {query}</h1>
+          ) : (
+            <Breadcrumbs path={data?.path ?? []} />
+          )}
+          {!query && (
+            <Button variant="outline" aria-label="New folder" onClick={() => setAction({ type: "new-folder" })}>
+              <FolderPlus />
+              <span className="hidden sm:inline">New folder</span>
             </Button>
           )}
-        </section>
+          <div role="group" aria-label="View" className="flex rounded-full bg-card p-0.5">
+            {(
+              [
+                ["grid", LayoutGrid, "Grid view"],
+                ["list", List, "List view"],
+              ] as const
+            ).map(([value, Icon, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-label={label}
+                aria-pressed={view === value}
+                onClick={() => changeView(value)}
+                className={cn(
+                  "grid size-8 place-items-center rounded-full text-muted-foreground",
+                  view === value && "bg-raised text-foreground",
+                )}
+              >
+                <Icon className="size-4" />
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
-      <FormError message={trash.error?.message} />
-      {isPending && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <FormError message={viewing ? undefined : trash.error?.message} />
+      {isPending && <p className="text-muted-foreground">Loading…</p>}
       {isError && query && <FormError message="The search didn't work. Try again." />}
-      {empty && query && (
-        <p className="text-sm text-muted-foreground">
-          Nothing matches.{" "}
-          <Link to="/" search={{}} className="text-foreground underline underline-offset-4">
-            Go to your files
-          </Link>
-        </p>
+
+      {empty && query && <Blank title="Nothing matches" text="Try part of the name, or a different word." />}
+      {empty && !query && noAccounts && (
+        <Blank title="Link an account to start" text="Your files live in your own Google Drive accounts.">
+          <Button asChild>
+            <Link to="/storage">Link a Google Drive account</Link>
+          </Button>
+        </Blank>
       )}
-      {empty && !query && hasConnections && (
-        <p className="text-sm text-muted-foreground">This folder is empty. Upload a file or create a folder.</p>
+      {empty && !query && !noAccounts && (
+        <Blank title="This folder is empty" text="Drop files anywhere on this page, or use Upload." />
       )}
 
-      <ul className="divide-y">
-        {data?.folders.map((folder) => {
-          const item: Item = { kind: "folder", id: folder.id };
-          return (
-            <Row
-              key={folder.id}
-              name={
-                <Link
-                  to="/"
-                  search={{ folder: folder.id }}
-                  className="block truncate text-sm font-medium hover:underline"
-                >
-                  {folder.name}
-                </Link>
-              }
-              detail="Folder"
-              menu={
-                <RowMenu label={folder.name}>
-                  <DropdownMenuItem onSelect={() => navigate({ to: "/", search: { folder: folder.id } })}>
-                    Open
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setAction({ type: "rename", item, name: folder.name })}>
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setAction({ type: "move", item, name: folder.name })}>
-                    Move
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => trash.mutate(item)}>Move to trash</DropdownMenuItem>
-                </RowMenu>
-              }
-            />
-          );
-        })}
-        {data?.files.map((file) => {
-          const item: Item = { kind: "file", id: file.id };
-          const detail = `${formatBytes(file.size)}, ${formatDate(file.created_at)}`;
-          return (
-            <Row
-              key={file.id}
-              name={<FileName file={file} onPreview={() => setAction({ type: "preview", file })} />}
-              detail={detail}
-              menu={
-                <RowMenu label={file.name}>
-                  <DropdownMenuItem asChild>
-                    <a href={contentUrl(file.id, false)} download>
-                      Download
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setAction({ type: "rename", item, name: file.name })}>
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setAction({ type: "move", item, name: file.name })}>
-                    Move
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => trash.mutate(item)}>Move to trash</DropdownMenuItem>
-                </RowMenu>
-              }
-            />
-          );
-        })}
-      </ul>
+      {view === "grid" && !empty && (
+        <>
+          {folders.length > 0 && (
+            <ul className="mb-[22px] grid grid-cols-2 gap-3.5 md:grid-cols-[repeat(auto-fill,minmax(190px,1fr))]">
+              {folders.map((target) => {
+                const item: Item = { kind: "folder", id: target.id };
+                return (
+                  <FolderTile
+                    key={target.id}
+                    value={target}
+                    selected={chosen.has(itemKey(item))}
+                    selecting={selecting}
+                    entries={folderEntries(target)}
+                    onToggle={() => toggle(item)}
+                  />
+                );
+              })}
+            </ul>
+          )}
+          <ul className="mosaic">
+            {files.map((file) => {
+              const item: Item = { kind: "file", id: file.id };
+              return (
+                <FileTile
+                  key={file.id}
+                  value={file}
+                  selected={chosen.has(itemKey(item))}
+                  selecting={selecting}
+                  entries={fileEntries(file)}
+                  onToggle={() => toggle(item)}
+                  onOpen={() => setViewing(file.id)}
+                />
+              );
+            })}
+          </ul>
+        </>
+      )}
 
+      {view === "list" && !empty && data && (
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="text-left text-xs text-faint">
+              <th className="px-3 pb-2 font-normal">Name</th>
+              <th className="px-3 pb-2 text-right font-normal">Size</th>
+              <th className="hidden px-3 pb-2 font-normal lg:table-cell">Stored in</th>
+              <th className="hidden px-3 pb-2 font-normal sm:table-cell">Added</th>
+              <th aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {folders.map((target) => {
+              const item: Item = { kind: "folder", id: target.id };
+              return (
+                <ListRow
+                  key={target.id}
+                  name={target.name}
+                  thumb={
+                    <span className="grid size-[38px] shrink-0 place-items-center rounded-[7px] bg-card">
+                      <FolderIcon className="size-[18px] text-muted-foreground" />
+                    </span>
+                  }
+                  open={
+                    <Link to="/" search={{ folder: target.id }} className="truncate hover:underline">
+                      {target.name}
+                    </Link>
+                  }
+                  size=""
+                  account=""
+                  date={formatDate(target.created_at)}
+                  selected={chosen.has(itemKey(item))}
+                  selecting={selecting}
+                  entries={folderEntries(target)}
+                  onToggle={() => toggle(item)}
+                />
+              );
+            })}
+            {files.map((file) => {
+              const item: Item = { kind: "file", id: file.id };
+              return (
+                <ListRow
+                  key={file.id}
+                  name={file.name}
+                  thumb={<ListThumb file={file} />}
+                  open={
+                    <button type="button" className="truncate text-left hover:underline" onClick={() => setViewing(file.id)}>
+                      {file.name}
+                    </button>
+                  }
+                  size={formatBytes(file.size)}
+                  account={accountName(file.connection_id)}
+                  date={formatDate(file.created_at)}
+                  selected={chosen.has(itemKey(item))}
+                  selecting={selecting}
+                  entries={fileEntries(file)}
+                  onToggle={() => toggle(item)}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {viewed && (
+        <Viewer
+          file={viewed}
+          previous={files[viewIndex - 1]}
+          next={files[viewIndex + 1]}
+          accountName={accountName}
+          trashError={trash.error?.message}
+          onShow={(file) => setViewing(file.id)}
+          onTrash={handleViewerTrash}
+          onClose={() => {
+            setViewing(null);
+            trash.reset();
+          }}
+        />
+      )}
       {action?.type === "new-folder" && (
         <NameDialog
           title="New folder"
@@ -357,9 +734,7 @@ export function FilesPage({
           pending={createFolder.isPending}
           error={createFolder.error?.message}
           onClose={close}
-          onSubmit={(name) =>
-            createFolder.mutate({ name, parent_id: folderId ?? null }, { onSuccess: close })
-          }
+          onSubmit={(name) => createFolder.mutate({ name, parent_id: folderId ?? null }, { onSuccess: close })}
         />
       )}
       {action?.type === "rename" && (
@@ -374,35 +749,22 @@ export function FilesPage({
           onSubmit={(name) => rename.mutate({ item: action.item, name }, { onSuccess: close })}
         />
       )}
-      {action?.type === "move" && <MoveDialog item={action.item} name={action.name} onClose={close} />}
-      {action?.type === "preview" && <PreviewDialog file={action.file} onClose={close} />}
+      {action?.type === "move" && (
+        <MoveDialog
+          items={action.items}
+          name={action.name}
+          onClose={close}
+          onDone={() => {
+            close();
+            setSelected([]);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-/**
- * Images and video open in a dialog, a PDF opens in its own tab, and anything
- * else downloads, because only those types are safe to show.
- */
-function FileName({ file, onPreview }: { file: File; onPreview: () => void }) {
-  const className = "block max-w-full truncate text-left text-sm font-medium hover:underline";
-  if (file.preview === "image" || file.preview === "video") {
-    return (
-      <button type="button" className={className} onClick={onPreview}>
-        {file.name}
-      </button>
-    );
-  }
-  if (file.preview === "pdf") {
-    return (
-      <a href={contentUrl(file.id, true)} target="_blank" rel="noopener noreferrer" className={className}>
-        {file.name}
-      </a>
-    );
-  }
-  return (
-    <a href={contentUrl(file.id, false)} download className={className}>
-      {file.name}
-    </a>
-  );
+/** Keyed by what's on screen, so a selection doesn't carry into another folder. */
+export function FilesPage({ folderId, query }: { folderId: string | undefined; query: string | undefined }) {
+  return <Browser key={`${folderId ?? "top"}:${query ?? ""}`} folderId={folderId} query={query} />;
 }

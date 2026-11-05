@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { CenteredPage } from "@/app/centered-page";
 import { FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
 
@@ -14,8 +15,8 @@ export function SignInPage({ redirectError }: { redirectError: string | undefine
   const { data: config } = useQuery(authConfigQuery);
 
   return (
-    <div className="max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Sign in to dextro</h1>
+    <CenteredPage>
+      <h1 className="text-xl font-semibold tracking-tight">Sign in to your files</h1>
       <FormError message={redirectMessage(redirectError)} />
       <CredentialsForm
         submitLabel="Sign in"
@@ -24,7 +25,7 @@ export function SignInPage({ redirectError }: { redirectError: string | undefine
         pending={login.isPending}
         error={login.error?.message}
         onSubmit={(credentials) =>
-          login.mutate(credentials, { onSuccess: () => navigate({ to: "/" }) })
+          login.mutate(credentials, { onSuccess: () => navigate({ to: "/", search: {} }) })
         }
       />
       {config?.google_enabled && (
@@ -41,6 +42,6 @@ export function SignInPage({ redirectError }: { redirectError: string | undefine
           </Link>
         </p>
       )}
-    </div>
+    </CenteredPage>
   );
 }

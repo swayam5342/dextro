@@ -15,9 +15,9 @@ function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         align="end"
-        sideOffset={4}
+        sideOffset={6}
         className={cn(
-          "z-50 min-w-40 rounded-md border bg-background p-1 shadow-md",
+          "z-50 min-w-52 rounded-xl bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.6)]",
           className
         )}
         {...props}
@@ -34,7 +34,7 @@ function DropdownMenuItem({
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       className={cn(
-        "cursor-default rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground",
+        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none select-none focus:bg-[#3a3a3a] [&_svg]:size-[18px] [&_svg]:shrink-0",
         className
       )}
       {...props}
@@ -42,4 +42,27 @@ function DropdownMenuItem({
   )
 }
 
-export { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger }
+function DropdownMenuLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Label>) {
+  return (
+    <DropdownMenuPrimitive.Label
+      className={cn("px-2.5 pt-1.5 pb-1 text-xs text-faint", className)}
+      {...props}
+    />
+  )
+}
+
+function DropdownMenuSeparator() {
+  return <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-[#3a3a3a]" />
+}
+
+export {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+}

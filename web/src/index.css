@@ -1,63 +1,68 @@
 @import "tailwindcss";
+@import "@fontsource/instrument-sans/400.css";
+@import "@fontsource/instrument-sans/500.css";
+@import "@fontsource/instrument-sans/600.css";
 
+/* One true-black ground. Elevation is a step in lightness, and colour goes on
+   people's files and on storage levels, never on the chrome. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  color-scheme: dark;
+  --background: #000;
+  --foreground: #fff;
+  --card: #111;
+  --card-foreground: #fff;
+  --popover: #2a2a2a;
+  --primary: #fff;
+  --primary-foreground: #000;
+  --secondary: #111;
+  --secondary-foreground: #fff;
+  --muted: #111;
+  --muted-foreground: #b4b4b4;
+  --faint: #8f8f8f;
+  --accent: #1b1b1b;
+  --accent-foreground: #fff;
+  --raised: #2a2a2a;
+  --destructive: #e5566f;
+  --destructive-soft: #2c1a20;
+  --border: #1c1c1c;
+  --input: #2a2a2a;
+  --ring: #4cb3f0;
+  --water: #4cb3f0;
+  --water-deep: #1c4a66;
   --radius: 0.625rem;
+  --row: 190px;
 }
 
-@media (prefers-color-scheme: dark) {
+@media (max-width: 860px) {
   :root {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --row: 112px;
   }
 }
 
 @theme inline {
+  --font-sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-raised: var(--raised);
   --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-water: var(--water);
+  --color-water-deep: var(--water-deep);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -66,9 +71,63 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring/60;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
+    font-variant-numeric: tabular-nums;
   }
+  button:not(:disabled),
+  [role="button"],
+  [role="menuitem"] {
+    cursor: pointer;
+  }
+}
+
+/* A broken account has no level to show, so it gets a hatch instead of water. */
+.hatched {
+  background: repeating-linear-gradient(135deg, #2a2a2a 0 4px, #161616 4px 8px);
+}
+
+/* The level of an account, or the progress of an upload. */
+.level {
+  appearance: none;
+  height: 4px;
+  width: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  background: var(--raised);
+}
+.level::-webkit-progress-bar {
+  background: var(--raised);
+}
+.level::-webkit-progress-value {
+  background: var(--water);
+}
+.level::-moz-progress-bar {
+  background: var(--water);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+/* Tiles keep their picture's shape and stretch to fill each row. The spacer stops
+   the last row from stretching. */
+.mosaic {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mosaic::after {
+  content: "";
+  flex-grow: 9999;
 }

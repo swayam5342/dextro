@@ -20,10 +20,11 @@ function UploadLimit({ current }: { current: number }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-sm space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-card p-4">
       <Field
         id="max-upload"
         label="Largest upload, in GiB"
+        className="max-w-48 bg-raised"
         type="number"
         min="0.001"
         step="any"
@@ -33,7 +34,7 @@ function UploadLimit({ current }: { current: number }) {
       />
       <FormError message={update.error?.message} />
       {update.isSuccess && <p className="text-sm">Upload limit saved.</p>}
-      <Button type="submit" variant="outline" disabled={update.isPending}>
+      <Button type="submit" variant="outline" className="bg-raised hover:bg-[#3a3a3a]" disabled={update.isPending}>
         Save upload limit
       </Button>
     </form>
@@ -45,17 +46,17 @@ export function SettingsPage() {
   const update = useUpdateSettings();
 
   return (
-    <div className="max-w-xl space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Server settings</h1>
+    <div className="max-w-xl space-y-4">
+      <h1 className="text-xl font-semibold tracking-tight">Server settings</h1>
       {isPending && <p className="text-sm text-muted-foreground">Loading settings…</p>}
       {isError && <FormError message="Settings couldn't be loaded. Reload the page to try again." />}
       {settings && (
         <>
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 rounded-2xl bg-card p-4">
             <input
               id="allow-registration"
               type="checkbox"
-              className="mt-0.5 size-4 accent-primary"
+              className="mt-0.5 size-4 accent-white"
               aria-describedby="allow-registration-hint"
               checked={settings.allow_registration}
               disabled={update.isPending}
@@ -74,7 +75,7 @@ export function SettingsPage() {
         </>
       )}
       <p className="text-sm">
-        <Link to="/status" className="underline underline-offset-4">
+        <Link to="/status" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
           Server status
         </Link>
       </p>

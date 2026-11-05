@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
 import type { components } from "@/api/schema";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Field, FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
@@ -18,13 +19,8 @@ const SCOPE_LABELS: Record<Scope, string> = {
 
 function KeyRow({ apiKey }: { apiKey: APIKey }) {
   const revoke = useRevokeAPIKey();
+  const [confirming, setConfirming] = useState(false);
   const used = apiKey.last_used_at ? `last used ${formatDate(apiKey.last_used_at)}` : "never used";
-
-  function handleRevoke() {
-    if (window.confirm(`Revoke ${apiKey.name}? Anything using it stops working right away.`)) {
-      revoke.mutate(apiKey.id);
-    }
-  }
 
   return (
     <li className="space-y-2 py-3 first:pt-0">
@@ -35,11 +31,24 @@ function KeyRow({ apiKey }: { apiKey: APIKey }) {
             {apiKey.prefix}…, {apiKey.scopes.map((s) => SCOPE_LABELS[s]).join(" and ")}, {used}
           </p>
         </div>
-        <Button variant="outline" size="sm" disabled={revoke.isPending} onClick={handleRevoke}>
+        <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
           Revoke
         </Button>
       </div>
-      <FormError message={revoke.error?.message} />
+      {confirming && (
+        <ConfirmDialog
+          title={`Revoke ${apiKey.name}?`}
+          text="Anything using this key stops working right away."
+          action="Revoke key"
+          pending={revoke.isPending}
+          error={revoke.error?.message}
+          onConfirm={() => revoke.mutate(apiKey.id, { onSuccess: () => setConfirming(false) })}
+          onClose={() => {
+            setConfirming(false);
+            revoke.reset();
+          }}
+        />
+      )}
     </li>
   );
 }
@@ -53,9 +62,9 @@ function NewKey({ token, onDone }: { token: string; onDone: () => void }) {
   }
 
   return (
-    <div className="space-y-3 rounded-md border p-4">
+    <div className="space-y-3 rounded-2xl bg-card p-4">
       <p className="text-sm font-medium">Copy this key now. It won't be shown again.</p>
-      <code className="block overflow-x-auto rounded bg-muted p-2 text-sm">{token}</code>
+      <code className="block overflow-x-auto rounded-lg bg-raised p-2 text-sm">{token}</code>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" onClick={() => void handleCopy()}>
           {copied ? "Copied" : "Copy key"}

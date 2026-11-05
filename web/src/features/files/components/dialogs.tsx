@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, Folder } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
-import type { components } from "@/api/schema";
 import { Field, FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
-import { contentUrl, folderQuery, useMove, type Item } from "../queries";
+import { folderQuery, useMove, type Item } from "../queries";
 
-type File = components["schemas"]["File"];
+const CANCEL_STYLE = "bg-raised hover:bg-[#3a3a3a]";
 
 interface NameDialogProps {
   title: string;
@@ -41,11 +41,12 @@ export function NameDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent aria-describedby={undefined}>
-        <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
+        <DialogTitle className="truncate text-base font-semibold">{title}</DialogTitle>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field
             id="item-name"
             label={label}
+            className="bg-raised"
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -53,7 +54,7 @@ export function NameDialog({
           <FormError message={error} />
           <div className="flex justify-end gap-2">
             <DialogClose asChild>
-              <Button type="button" variant="outline">
+              <Button type="button" variant="outline" className={CANCEL_STYLE}>
                 Cancel
               </Button>
             </DialogClose>
@@ -68,99 +69,77 @@ export function NameDialog({
 }
 
 interface MoveDialogProps {
-  item: Item;
+  items: Item[];
   name: string;
+  onDone: () => void;
   onClose: () => void;
 }
 
-/** A small folder browser: open folders until you're where the item should go. */
-export function MoveDialog({ item, name, onClose }: MoveDialogProps) {
+/** A small folder browser: open folders until you're where the items should go. */
+export function MoveDialog({ items, name, onDone, onClose }: MoveDialogProps) {
   const [folderId, setFolderId] = useState<string | undefined>(undefined);
   const { data, isPending, isError } = useQuery(folderQuery(folderId));
   const move = useMove();
+  const [moving, setMoving] = useState(false);
   const parent = data?.path.at(-2)?.id;
   const here = data?.path.at(-1);
   // A folder can't go inside itself, so it isn't offered as a place to open.
-  const folders = data?.folders.filter((f) => !(item.kind === "folder" && f.id === item.id)) ?? [];
+  const moved = new Set(items.filter((item) => item.kind === "folder").map((item) => item.id));
+  const folders = data?.folders.filter((folder) => !moved.has(folder.id)) ?? [];
+  const rowStyle = "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-raised [&_svg]:size-[18px] [&_svg]:shrink-0";
+
+  /** One at a time, so a failure stops the move and its message stays on screen. */
+  async function handleMove() {
+    setMoving(true);
+    try {
+      for (const item of items) {
+        await move.mutateAsync({ item, target: folderId ?? null });
+      }
+      onDone();
+    } catch {
+      setMoving(false);
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent aria-describedby={undefined}>
-        <DialogTitle className="truncate text-lg font-semibold">Move {name}</DialogTitle>
+        <DialogTitle className="truncate text-base font-semibold">Move {name}</DialogTitle>
         <p className="text-sm text-muted-foreground">
           Moving to <span className="font-medium text-foreground">{here?.name ?? "Files"}</span>
         </p>
         {isError && <FormError message="This folder couldn't be loaded." />}
-        <ul className="max-h-60 divide-y overflow-y-auto rounded-md border">
+        <ul className="-mx-2.5 max-h-60 overflow-y-auto">
           {here && (
             <li>
-              <button
-                type="button"
-                className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
-                onClick={() => setFolderId(parent)}
-              >
+              <button type="button" className={rowStyle} onClick={() => setFolderId(parent)}>
+                <ChevronLeft />
                 Back
               </button>
             </li>
           )}
           {folders.map((folder) => (
             <li key={folder.id}>
-              <button
-                type="button"
-                className="w-full truncate px-3 py-2 text-left text-sm hover:bg-accent"
-                onClick={() => setFolderId(folder.id)}
-              >
-                {folder.name}
+              <button type="button" className={rowStyle} onClick={() => setFolderId(folder.id)}>
+                <Folder className="text-muted-foreground" />
+                <span className="truncate">{folder.name}</span>
               </button>
             </li>
           ))}
-          {!isPending && !here && folders.length === 0 && (
-            <li className="px-3 py-2 text-sm text-muted-foreground">There are no folders here.</li>
+          {!isPending && folders.length === 0 && (
+            <li className="px-2.5 py-2 text-sm text-muted-foreground">There are no folders here.</li>
           )}
         </ul>
         <FormError message={move.error?.message} />
         <div className="flex justify-end gap-2">
           <DialogClose asChild>
-            <Button type="button" variant="outline">
+            <Button type="button" variant="outline" className={CANCEL_STYLE}>
               Cancel
             </Button>
           </DialogClose>
-          <Button
-            disabled={move.isPending || isPending}
-            onClick={() =>
-              move.mutate({ item, target: folderId ?? null }, { onSuccess: onClose })
-            }
-          >
+          <Button disabled={moving || isPending} onClick={() => void handleMove()}>
             Move here
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export function PreviewDialog({ file, onClose }: { file: File; onClose: () => void }) {
-  const url = contentUrl(file.id, true);
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent aria-describedby={undefined} className="max-w-4xl">
-        <DialogTitle className="truncate pr-4 text-lg font-semibold">{file.name}</DialogTitle>
-        {file.preview === "image" && (
-          <img src={url} alt={file.name} className="mx-auto max-h-[70svh] object-contain" />
-        )}
-        {file.preview === "video" && (
-          // oxlint-disable-next-line jsx-a11y/media-has-caption -- users' own files have no captions.
-          <video src={url} controls className="mx-auto max-h-[70svh] w-full" />
-        )}
-        <div className="flex justify-end gap-2">
-          <Button asChild variant="outline">
-            <a href={contentUrl(file.id, false)} download>
-              Download
-            </a>
-          </Button>
-          <DialogClose asChild>
-            <Button>Close</Button>
-          </DialogClose>
         </div>
       </DialogContent>
     </Dialog>

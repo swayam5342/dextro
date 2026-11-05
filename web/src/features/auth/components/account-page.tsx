@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { Field, FormError } from "@/components/field";
@@ -13,6 +14,7 @@ import {
   sessionsQuery,
   useChangePassword,
   useLinkGoogle,
+  useLogout,
   useRevokeSession,
 } from "../queries";
 import { APIKeysSection } from "./api-keys-section";
@@ -145,6 +147,8 @@ export function AccountPage({
 }) {
   const { data: user } = useQuery(meQuery);
   const { data: config } = useQuery(authConfigQuery);
+  const navigate = useNavigate();
+  const logout = useLogout();
   if (!user) {
     return null;
   }
@@ -152,8 +156,19 @@ export function AccountPage({
   return (
     <div className="max-w-3xl space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Your account</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Your account</h1>
         <p className="text-muted-foreground">{user.email}</p>
+      </div>
+      {/* On a phone there's no sidebar, so these live here. */}
+      <div className="flex flex-wrap gap-2 md:hidden">
+        <Button variant="outline" onClick={() => logout.mutate(undefined, { onSuccess: () => navigate({ to: "/sign-in" }) })}>
+          Sign out
+        </Button>
+        {user.role === "admin" && (
+          <Button asChild variant="outline">
+            <Link to="/admin/settings">Server settings</Link>
+          </Button>
+        )}
       </div>
       <FormError message={redirectMessage(redirectError)} />
       <div className="border-b">

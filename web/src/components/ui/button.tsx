@@ -5,17 +5,19 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-[18px] [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        outline: "border bg-background hover:bg-accent hover:text-accent-foreground",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        default: "bg-primary text-primary-foreground hover:bg-[#dcdcdc]",
+        outline: "bg-card text-foreground hover:bg-raised",
+        ghost: "text-muted-foreground hover:bg-accent hover:text-foreground",
+        destructive: "bg-destructive-soft text-destructive hover:bg-[#3a2029]",
       },
       size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 px-3",
+        default: "h-9 px-4",
+        sm: "h-[30px] px-3 text-[13px] [&_svg]:size-4",
+        icon: "size-9",
       },
     },
     defaultVariants: {
