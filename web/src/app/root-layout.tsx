@@ -6,7 +6,7 @@ export function RootLayout() {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="border-b">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex min-h-14 max-w-5xl flex-wrap items-center justify-between gap-x-4 px-4 py-2">
           <Link to="/" className="font-semibold tracking-tight">
             dextro
           </Link>

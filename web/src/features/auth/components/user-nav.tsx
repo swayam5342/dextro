@@ -14,7 +14,7 @@ export function UserNav() {
     return null;
   }
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="flex flex-wrap items-center gap-1">
       <Button asChild variant="ghost" size="sm">
         <Link to="/storage">Storage</Link>
       </Button>
