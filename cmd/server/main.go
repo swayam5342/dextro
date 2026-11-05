@@ -18,6 +18,7 @@ import (
 	"github.com/swayam5342/dextro/internal/auth"
 	"github.com/swayam5342/dextro/internal/config"
 	"github.com/swayam5342/dextro/internal/db"
+	"github.com/swayam5342/dextro/internal/files"
 	"github.com/swayam5342/dextro/internal/httpx"
 	"github.com/swayam5342/dextro/internal/netguard"
 	"github.com/swayam5342/dextro/internal/platform"
@@ -66,19 +67,22 @@ func run() error {
 		google = auth.NewGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/api/v1/auth/google/callback")
 	}
 
-	storageHandler, err := newStorageHandler(cfg, pool, logger)
+	storageService, err := newStorageService(cfg, pool)
 	if err != nil {
 		return err
 	}
+	filesService := files.NewService(files.NewStore(pool), storageService)
 	router := httpx.NewRouter(httpx.Deps{
 		Logger:         logger,
 		DB:             pool,
 		PublicOrigin:   cfg.PublicURL,
 		TrustedProxies: cfg.TrustedProxies,
 		Sessions:       authService,
+		APIKeys:        authService,
 		Auth:           auth.NewHandler(authService, google, logger),
 		Admin:          admin.NewHandler(admin.NewService(admin.NewStore(pool)), logger),
-		Storage:        storageHandler,
+		Storage:        storage.NewHandler(storageService, logger),
+		Files:          files.NewHandler(filesService, logger),
 	})
 
 	// There is no WriteTimeout or ReadTimeout because uploads and downloads can
@@ -93,7 +97,7 @@ func run() error {
 	return serve(ctx, server, logger)
 }
 
-func newStorageHandler(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) (*storage.Handler, error) {
+func newStorageService(cfg config.Config, pool *pgxpool.Pool) (*storage.Service, error) {
 	keyring, err := secrets.NewKeyring(cfg.EncryptionKeys, cfg.ActiveKeyID)
 	if err != nil {
 		return nil, err
@@ -106,14 +110,13 @@ func newStorageHandler(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logge
 		drive = gdrive.NewClient(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/api/v1/storage/google/callback")
 		driveAuth = drive
 	}
-	service := storage.NewService(storage.Deps{
+	return storage.NewService(storage.Deps{
 		Store:     storage.NewStore(pool),
 		Keyring:   keyring,
 		Guard:     guard,
 		Openers:   storage.NewOpeners(guard, drive),
 		DriveAuth: driveAuth,
-	})
-	return storage.NewHandler(service, logger), nil
+	}), nil
 }
 
 // serve runs the server until ctx ends, then drains in-flight requests.

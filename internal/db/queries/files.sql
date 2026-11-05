@@ -107,3 +107,7 @@ SELECT *
 FROM folders
 WHERE user_id = $1 AND trashed_at IS NOT NULL
 ORDER BY trashed_at DESC, id;
+
+-- Serializes folder moves per user, so two moves can never make a loop.
+-- name: LockFolderTreeForOwner :exec
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(user_id)::uuid::text, 1));

@@ -1,0 +1,503 @@
+// Package files manages users' files and folders.
+package files
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"mime"
+	"slices"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"github.com/swayam5342/dextro/internal/audit"
+	"github.com/swayam5342/dextro/internal/provider"
+)
+
+const (
+	maxNameRunes   = 255
+	defaultType    = "application/octet-stream"
+	cleanupTimeout = 30 * time.Second
+)
+
+// Errors the handlers turn into stable API error codes.
+var (
+	ErrInvalidName    = errors.New("invalid name")
+	ErrFileNotFound   = errors.New("file not found")
+	ErrFolderNotFound = errors.New("folder not found")
+	ErrFileTooLarge   = errors.New("file too large")
+	ErrInvalidMove    = errors.New("a folder can't move into itself")
+	ErrNotInTrash     = errors.New("not in the trash")
+	ErrProviderFailed = errors.New("storage account failed")
+	ErrObjectMissing  = errors.New("stored object is missing")
+)
+
+// File is a stored file as its owner sees it.
+type File struct {
+	ID           uuid.UUID
+	ConnectionID uuid.UUID
+	FolderID     *uuid.UUID
+	Name         string
+	Size         int64
+	ContentType  string
+	TrashedAt    *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// Folder is a folder as its owner sees it. Folders exist only in dextro.
+type Folder struct {
+	ID        uuid.UUID
+	ParentID  *uuid.UUID
+	Name      string
+	TrashedAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Contents is what's in a folder. Path runs from the top level down to it.
+type Contents struct {
+	Path    []Folder
+	Folders []Folder
+	Files   []File
+}
+
+// Trash is what a user has trashed directly. A trashed folder's contents aren't
+// listed, because they travel with it.
+type Trash struct {
+	Folders []Folder
+	Files   []File
+}
+
+// UploadInput is a file to store. Size is -1 if the length isn't known up front.
+type UploadInput struct {
+	ConnectionID uuid.UUID
+	FolderID     *uuid.UUID
+	Name         string
+	ContentType  string
+	Size         int64
+	Body         io.Reader
+}
+
+// Providers opens a user's storage connections.
+type Providers interface {
+	Provider(ctx context.Context, userID, connectionID uuid.UUID) (provider.Provider, error)
+}
+
+// Service holds the rules for files and folders.
+type Service struct {
+	store     *Store
+	providers Providers
+}
+
+// NewService returns a Service.
+func NewService(store *Store, providers Providers) *Service {
+	return &Service{store: store, providers: providers}
+}
+
+func cleanName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" || name == "." || name == ".." || utf8.RuneCountInString(name) > maxNameRunes ||
+		strings.ContainsAny(name, `/\`) || strings.ContainsFunc(name, unicode.IsControl) {
+		return "", ErrInvalidName
+	}
+	return name, nil
+}
+
+func cleanContentType(raw string) string {
+	mediaType, _, err := mime.ParseMediaType(raw)
+	if err != nil || !strings.Contains(mediaType, "/") {
+		return defaultType
+	}
+	return mediaType
+}
+
+// requireLiveFolder confirms a folder belongs to the user and that neither it
+// nor anything above it is in the trash. A nil folder is the top level.
+func requireLiveFolder(ctx context.Context, store *Store, userID uuid.UUID, id *uuid.UUID) ([]Folder, error) {
+	if id == nil {
+		return []Folder{}, nil
+	}
+	path, err := store.FolderPathForOwner(ctx, userID, *id)
+	if err != nil {
+		return nil, err
+	}
+	if len(path) == 0 || slices.ContainsFunc(path, func(f Folder) bool { return f.TrashedAt != nil }) {
+		return nil, ErrFolderNotFound
+	}
+	return path, nil
+}
+
+// List returns what's in a folder, or at the top level if id is nil.
+func (s *Service) List(ctx context.Context, userID uuid.UUID, id *uuid.UUID) (Contents, error) {
+	path, err := requireLiveFolder(ctx, s.store, userID, id)
+	if err != nil {
+		return Contents{}, err
+	}
+	folders, err := s.store.FoldersInFolderForOwner(ctx, userID, id)
+	if err != nil {
+		return Contents{}, err
+	}
+	files, err := s.store.FilesInFolderForOwner(ctx, userID, id)
+	if err != nil {
+		return Contents{}, err
+	}
+	return Contents{Path: path, Folders: folders, Files: files}, nil
+}
+
+// limitedReader fails as soon as a body passes the limit. The size limit has to
+// be enforced here, while streaming, because a chunked upload doesn't declare
+// its length and a declared length can be a lie.
+type limitedReader struct {
+	r        io.Reader
+	limit    int64
+	read     int64
+	exceeded bool
+}
+
+func (l *limitedReader) Read(p []byte) (int, error) {
+	n, err := l.r.Read(p)
+	l.read += int64(n)
+	if l.read > l.limit {
+		l.exceeded = true
+		return 0, ErrFileTooLarge
+	}
+	return n, err
+}
+
+// Upload streams a file into a storage account and records it. Everything that
+// can refuse the upload runs first, so a refused file is never read.
+func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) (File, error) {
+	name, err := cleanName(in.Name)
+	if err != nil {
+		return File{}, err
+	}
+	if _, err := requireLiveFolder(ctx, s.store, userID, in.FolderID); err != nil {
+		return File{}, err
+	}
+	limit, err := s.store.Settings().MaxUploadBytes(ctx)
+	if err != nil {
+		return File{}, err
+	}
+	if in.Size > limit {
+		return File{}, ErrFileTooLarge
+	}
+	stored, err := s.providers.Provider(ctx, userID, in.ConnectionID)
+	if err != nil {
+		return File{}, err
+	}
+
+	contentType := cleanContentType(in.ContentType)
+	body := &limitedReader{r: in.Body, limit: limit}
+	object, err := stored.Put(ctx, provider.Upload{Name: name, ContentType: contentType, Body: body})
+	if body.exceeded {
+		return File{}, ErrFileTooLarge
+	}
+	if err != nil {
+		return File{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+
+	file, err := s.store.CreateFile(ctx, userID, fileRecord{
+		File: File{
+			ConnectionID: in.ConnectionID,
+			FolderID:     in.FolderID,
+			Name:         name,
+			Size:         object.Size,
+			ContentType:  contentType,
+		},
+		objectID: object.ID,
+	})
+	if err != nil {
+		// Without a record nothing could ever find this object again. The request
+		// may be why the save failed, so the cleanup doesn't depend on it.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		defer cancel()
+		return File{}, errors.Join(err, stored.Delete(cleanup, object.ID))
+	}
+	return file, nil
+}
+
+// Get returns one of a user's files.
+func (s *Service) Get(ctx context.Context, userID, id uuid.UUID) (File, error) {
+	record, err := s.store.FileForOwner(ctx, userID, id)
+	if err != nil {
+		return File{}, err
+	}
+	return record.File, nil
+}
+
+// Open streams a file's content, or part of it if rng isn't nil.
+func (s *Service) Open(ctx context.Context, userID, id uuid.UUID, rng *provider.ByteRange) (io.ReadCloser, error) {
+	record, err := s.store.FileForOwner(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	reader, err := stored.Get(ctx, record.objectID, rng)
+	if errors.Is(err, provider.ErrObjectNotFound) {
+		return nil, ErrObjectMissing
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	return reader, nil
+}
+
+// liveFile returns a file that isn't in the trash.
+func liveFile(ctx context.Context, store *Store, userID, id uuid.UUID) (fileRecord, error) {
+	record, err := store.FileForOwner(ctx, userID, id)
+	if err != nil {
+		return fileRecord{}, err
+	}
+	if record.TrashedAt != nil {
+		return fileRecord{}, ErrFileNotFound
+	}
+	return record, nil
+}
+
+// RenameFile changes a file's name. Only dextro's record changes.
+func (s *Service) RenameFile(ctx context.Context, userID, id uuid.UUID, rawName string) (File, error) {
+	name, err := cleanName(rawName)
+	if err != nil {
+		return File{}, err
+	}
+	if _, err := liveFile(ctx, s.store, userID, id); err != nil {
+		return File{}, err
+	}
+	return s.store.RenameFileForOwner(ctx, userID, id, name)
+}
+
+// MoveFile puts a file in another folder, or at the top level if target is nil.
+func (s *Service) MoveFile(ctx context.Context, userID, id uuid.UUID, target *uuid.UUID) (File, error) {
+	if _, err := liveFile(ctx, s.store, userID, id); err != nil {
+		return File{}, err
+	}
+	if _, err := requireLiveFolder(ctx, s.store, userID, target); err != nil {
+		return File{}, err
+	}
+	return s.store.MoveFileForOwner(ctx, userID, id, target)
+}
+
+// TrashFile moves a file to the trash. Its stored object isn't touched.
+func (s *Service) TrashFile(ctx context.Context, userID, id uuid.UUID) error {
+	now := time.Now()
+	return s.store.SetFileTrashedForOwner(ctx, userID, id, &now)
+}
+
+// RestoreFile takes a file out of the trash. If its folder is gone or trashed,
+// the file goes to the top level rather than back out of sight.
+func (s *Service) RestoreFile(ctx context.Context, userID, id uuid.UUID) error {
+	return s.store.InTx(ctx, func(tx *Store) error {
+		record, err := tx.FileForOwner(ctx, userID, id)
+		if err != nil {
+			return err
+		}
+		if _, err := requireLiveFolder(ctx, tx, userID, record.FolderID); errors.Is(err, ErrFolderNotFound) {
+			if _, err := tx.MoveFileForOwner(ctx, userID, id, nil); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		return tx.SetFileTrashedForOwner(ctx, userID, id, nil)
+	})
+}
+
+// DeleteFile permanently deletes a file that's in the trash.
+func (s *Service) DeleteFile(ctx context.Context, userID, id uuid.UUID, ip string) error {
+	record, err := s.store.FileForOwner(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if record.TrashedAt == nil {
+		return ErrNotInTrash
+	}
+	return s.destroy(ctx, userID, record, ip)
+}
+
+// destroy removes the stored object first and the record second. If the provider
+// fails, the record stays so the delete can be tried again; an object that's
+// already gone counts as success, which is what makes a retry safe.
+func (s *Service) destroy(ctx context.Context, userID uuid.UUID, record fileRecord, ip string) error {
+	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	if err := stored.Delete(ctx, record.objectID); err != nil && !errors.Is(err, provider.ErrObjectNotFound) {
+		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	return s.store.InTx(ctx, func(tx *Store) error {
+		if err := tx.DeleteFileForOwner(ctx, userID, record.ID); err != nil {
+			return err
+		}
+		return tx.Audit().Record(ctx, audit.Event{
+			ActorID:  userID,
+			Action:   audit.ActionFileDeleted,
+			IP:       ip,
+			Metadata: map[string]any{"file_id": record.ID, "name": record.Name, "size": record.Size},
+		})
+	})
+}
+
+// CreateFolder adds a folder, at the top level if parent is nil.
+func (s *Service) CreateFolder(ctx context.Context, userID uuid.UUID, parent *uuid.UUID, rawName string) (Folder, error) {
+	name, err := cleanName(rawName)
+	if err != nil {
+		return Folder{}, err
+	}
+	if _, err := requireLiveFolder(ctx, s.store, userID, parent); err != nil {
+		return Folder{}, err
+	}
+	return s.store.CreateFolder(ctx, userID, parent, name)
+}
+
+// RenameFolder changes a folder's name.
+func (s *Service) RenameFolder(ctx context.Context, userID, id uuid.UUID, rawName string) (Folder, error) {
+	name, err := cleanName(rawName)
+	if err != nil {
+		return Folder{}, err
+	}
+	if _, err := requireLiveFolder(ctx, s.store, userID, &id); err != nil {
+		return Folder{}, err
+	}
+	return s.store.RenameFolderForOwner(ctx, userID, id, name)
+}
+
+// MoveFolder puts a folder inside another, or at the top level if target is nil.
+// The lock matters: two moves that are each fine alone could together make a
+// loop, and nothing inside a loop can be reached.
+func (s *Service) MoveFolder(ctx context.Context, userID, id uuid.UUID, target *uuid.UUID) (Folder, error) {
+	var moved Folder
+	err := s.store.InTx(ctx, func(tx *Store) error {
+		if err := tx.LockFolderTreeForOwner(ctx, userID); err != nil {
+			return err
+		}
+		if _, err := requireLiveFolder(ctx, tx, userID, &id); err != nil {
+			return err
+		}
+		path, err := requireLiveFolder(ctx, tx, userID, target)
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(path, func(f Folder) bool { return f.ID == id }) {
+			return ErrInvalidMove
+		}
+		moved, err = tx.MoveFolderForOwner(ctx, userID, id, target)
+		return err
+	})
+	if err != nil {
+		return Folder{}, err
+	}
+	return moved, nil
+}
+
+// TrashFolder moves a folder to the trash. Only the folder is marked: what's
+// inside goes with it, and comes back with it.
+func (s *Service) TrashFolder(ctx context.Context, userID, id uuid.UUID) error {
+	now := time.Now()
+	return s.store.SetFolderTrashedForOwner(ctx, userID, id, &now)
+}
+
+// RestoreFolder takes a folder out of the trash. If its parent is gone or trashed,
+// the folder goes to the top level rather than back out of sight.
+func (s *Service) RestoreFolder(ctx context.Context, userID, id uuid.UUID) error {
+	return s.store.InTx(ctx, func(tx *Store) error {
+		if err := tx.LockFolderTreeForOwner(ctx, userID); err != nil {
+			return err
+		}
+		folder, err := tx.FolderForOwner(ctx, userID, id)
+		if err != nil {
+			return err
+		}
+		if _, err := requireLiveFolder(ctx, tx, userID, folder.ParentID); errors.Is(err, ErrFolderNotFound) {
+			if _, err := tx.MoveFolderForOwner(ctx, userID, id, nil); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		return tx.SetFolderTrashedForOwner(ctx, userID, id, nil)
+	})
+}
+
+// DeleteFolder permanently deletes a trashed folder and everything under it.
+// Files go one at a time, so if a provider fails partway the folder stays in the
+// trash holding what's left, and deleting it again finishes the job.
+func (s *Service) DeleteFolder(ctx context.Context, userID, id uuid.UUID, ip string) error {
+	folder, err := s.store.FolderForOwner(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if folder.TrashedAt == nil {
+		return ErrNotInTrash
+	}
+	records, err := s.store.FilesUnderFolderForOwner(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err := s.destroy(ctx, userID, record, ip); err != nil {
+			return err
+		}
+	}
+	return s.store.InTx(ctx, func(tx *Store) error {
+		if err := tx.DeleteFolderForOwner(ctx, userID, id); err != nil {
+			return err
+		}
+		return tx.Audit().Record(ctx, audit.Event{
+			ActorID:  userID,
+			Action:   audit.ActionFolderDeleted,
+			IP:       ip,
+			Metadata: map[string]any{"folder_id": id, "name": folder.Name},
+		})
+	})
+}
+
+// ListTrash returns what's in a user's trash.
+func (s *Service) ListTrash(ctx context.Context, userID uuid.UUID) (Trash, error) {
+	folders, err := s.store.TrashedFoldersForOwner(ctx, userID)
+	if err != nil {
+		return Trash{}, err
+	}
+	records, err := s.store.TrashedFilesForOwner(ctx, userID)
+	if err != nil {
+		return Trash{}, err
+	}
+	files := make([]File, 0, len(records))
+	for _, record := range records {
+		files = append(files, record.File)
+	}
+	return Trash{Folders: folders, Files: files}, nil
+}
+
+// EmptyTrash permanently deletes everything in a user's trash.
+func (s *Service) EmptyTrash(ctx context.Context, userID uuid.UUID, ip string) error {
+	records, err := s.store.TrashedFilesForOwner(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err := s.destroy(ctx, userID, record, ip); err != nil {
+			return err
+		}
+	}
+	folders, err := s.store.TrashedFoldersForOwner(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, folder := range folders {
+		// A trashed folder inside another may already have gone with its parent.
+		if err := s.DeleteFolder(ctx, userID, folder.ID, ip); err != nil && !errors.Is(err, ErrFolderNotFound) {
+			return err
+		}
+	}
+	return nil
+}

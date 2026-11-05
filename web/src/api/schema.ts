@@ -67,6 +67,77 @@ export interface components {
        * always be created.
        */
       allow_registration: boolean;
+      /** The largest file anyone can upload. */
+      max_upload_bytes: number;
+    };
+    /** Only the fields present are changed. */
+    SettingsUpdate: {
+      allow_registration?: boolean;
+      max_upload_bytes?: number;
+    };
+    File: {
+      id: string;
+      name: string;
+      size: number;
+      content_type: string;
+      /** How the file can be shown inline, if at all. */
+      preview: "image" | "video" | "pdf" | "none";
+      connection_id: string;
+      folder_id: string | null;
+      trashed_at: string | null;
+      created_at: string;
+      updated_at: string;
+    };
+    Folder: {
+      id: string;
+      name: string;
+      parent_id: string | null;
+      trashed_at: string | null;
+      created_at: string;
+      updated_at: string;
+    };
+    FolderContents: {
+      /** The folders from the top level down to this one. */
+      path: components["schemas"]["Folder"][];
+      folders: components["schemas"]["Folder"][];
+      files: components["schemas"]["File"][];
+    };
+    Trash: {
+      folders: components["schemas"]["Folder"][];
+      files: components["schemas"]["File"][];
+    };
+    NameInput: {
+      name: string;
+    };
+    FolderInput: {
+      name: string;
+      parent_id: string | null;
+    };
+    MoveFileInput: {
+      /** Null moves it to the top level. */
+      folder_id: string | null;
+    };
+    MoveFolderInput: {
+      /** Null moves it to the top level. */
+      parent_id: string | null;
+    };
+    APIKey: {
+      id: string;
+      name: string;
+      /** The start of the key, for telling keys apart. */
+      prefix: string;
+      scopes: ("files:read" | "files:write")[];
+      created_at: string;
+      last_used_at: string | null;
+    };
+    APIKeyInput: {
+      name: string;
+      scopes: ("files:read" | "files:write")[];
+    };
+    APIKeyCreated: {
+      key: components["schemas"]["APIKey"];
+      /** The secret, sent as a bearer token. Shown only this once. */
+      token: string;
     };
     Error: {
       error: {
@@ -133,6 +204,18 @@ type PathOperation = {
   };
 };
 
+/** An operation on one item that also takes a JSON body. */
+type IdJsonOperation<Body, Responses> = {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: { id: string };
+    cookie?: never;
+  };
+  requestBody: JsonRequest<Body>;
+  responses: Responses & { default: JsonBody<Schemas["Error"]> };
+};
+
 export interface paths {
   "/health": {
     get: {
@@ -168,6 +251,13 @@ export interface paths {
   "/api/v1/auth/sessions/{id}": {
     delete: PathOperation;
   };
+  "/api/v1/auth/api-keys": {
+    get: Operation<{ 200: JsonBody<Schemas["APIKey"][]> }>;
+    post: JsonOperation<Schemas["APIKeyInput"], { 201: JsonBody<Schemas["APIKeyCreated"]> }>;
+  };
+  "/api/v1/auth/api-keys/{id}": {
+    delete: PathOperation;
+  };
   "/api/v1/auth/google/link": {
     post: Operation<{ 200: JsonBody<Schemas["GoogleRedirect"]> }>;
   };
@@ -186,8 +276,56 @@ export interface paths {
   "/api/v1/storage/google/connect": {
     post: Operation<{ 200: JsonBody<Schemas["GoogleRedirect"]> }>;
   };
+  "/api/v1/files": {
+    get: {
+      parameters: {
+        query?: { folder_id?: string };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        200: JsonBody<Schemas["FolderContents"]>;
+        default: JsonBody<Schemas["Error"]>;
+      };
+    };
+  };
+  "/api/v1/files/{id}": {
+    patch: IdJsonOperation<Schemas["NameInput"], { 200: JsonBody<Schemas["File"]> }>;
+    delete: PathOperation;
+  };
+  "/api/v1/files/{id}/move": {
+    post: IdJsonOperation<Schemas["MoveFileInput"], { 200: JsonBody<Schemas["File"]> }>;
+  };
+  "/api/v1/files/{id}/trash": {
+    post: PathOperation;
+  };
+  "/api/v1/files/{id}/restore": {
+    post: PathOperation;
+  };
+  "/api/v1/folders": {
+    post: JsonOperation<Schemas["FolderInput"], { 201: JsonBody<Schemas["Folder"]> }>;
+  };
+  "/api/v1/folders/{id}": {
+    patch: IdJsonOperation<Schemas["NameInput"], { 200: JsonBody<Schemas["Folder"]> }>;
+    delete: PathOperation;
+  };
+  "/api/v1/folders/{id}/move": {
+    post: IdJsonOperation<Schemas["MoveFolderInput"], { 200: JsonBody<Schemas["Folder"]> }>;
+  };
+  "/api/v1/folders/{id}/trash": {
+    post: PathOperation;
+  };
+  "/api/v1/folders/{id}/restore": {
+    post: PathOperation;
+  };
+  "/api/v1/trash": {
+    get: Operation<{ 200: JsonBody<Schemas["Trash"]> }>;
+    delete: Operation<{ 204: NoContent }>;
+  };
   "/api/v1/admin/settings": {
     get: Operation<{ 200: JsonBody<Schemas["Settings"]> }>;
-    patch: JsonOperation<Schemas["Settings"], { 200: JsonBody<Schemas["Settings"]> }>;
+    patch: JsonOperation<Schemas["SettingsUpdate"], { 200: JsonBody<Schemas["Settings"]> }>;
   };
 }

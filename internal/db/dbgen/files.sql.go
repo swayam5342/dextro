@@ -440,6 +440,16 @@ func (q *Queries) ListTrashedFoldersForOwner(ctx context.Context, userID uuid.UU
 	return items, nil
 }
 
+const lockFolderTreeForOwner = `-- name: LockFolderTreeForOwner :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text, 1))
+`
+
+// Serializes folder moves per user, so two moves can never make a loop.
+func (q *Queries) LockFolderTreeForOwner(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockFolderTreeForOwner, userID)
+	return err
+}
+
 const moveFileForOwner = `-- name: MoveFileForOwner :one
 UPDATE files
 SET folder_id = $3::uuid, updated_at = now()
