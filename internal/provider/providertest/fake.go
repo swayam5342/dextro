@@ -64,14 +64,18 @@ func (f *Fake) Put(_ context.Context, upload provider.Upload) (provider.Object, 
 }
 
 // Get implements provider.Provider.
-func (f *Fake) Get(_ context.Context, id string) (io.ReadCloser, error) {
+func (f *Fake) Get(_ context.Context, id string, rng *provider.ByteRange) (io.ReadCloser, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	object, ok := f.objects[id]
 	if !ok {
 		return nil, provider.ErrObjectNotFound
 	}
-	return io.NopCloser(bytes.NewReader(object.body)), nil
+	body := object.body
+	if rng != nil {
+		body = body[rng.Start : rng.End+1]
+	}
+	return io.NopCloser(bytes.NewReader(body)), nil
 }
 
 // Delete implements provider.Provider.

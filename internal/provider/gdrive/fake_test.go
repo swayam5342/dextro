@@ -186,7 +186,13 @@ func (f *fakeDrive) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("alt") == "media" {
-		_, _ = w.Write(file.body)
+		body := file.body
+		var start, end int
+		if _, err := fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-%d", &start, &end); err == nil {
+			body = body[start : end+1]
+			w.WriteHeader(http.StatusPartialContent)
+		}
+		_, _ = w.Write(body)
 		return
 	}
 	writeJSON(w, http.StatusOK, file)

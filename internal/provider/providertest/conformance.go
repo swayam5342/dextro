@@ -39,7 +39,7 @@ func Run(t *testing.T, p provider.Provider) {
 	}
 	read := func(t *testing.T, id string) string {
 		t.Helper()
-		reader, err := p.Get(ctx, id)
+		reader, err := p.Get(ctx, id, nil)
 		if err != nil {
 			t.Fatalf("Get: %v", err)
 		}
@@ -81,6 +81,36 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 		if got := read(t, object.ID); got != "hello" {
 			t.Errorf("body = %q", got)
+		}
+	})
+
+	t.Run("a byte range reads just those bytes", func(t *testing.T) {
+		object := put(t, "range.txt", "0123456789")
+		tests := []struct {
+			name string
+			rng  provider.ByteRange
+			want string
+		}{
+			{"the start", provider.ByteRange{Start: 0, End: 3}, "0123"},
+			{"the middle", provider.ByteRange{Start: 3, End: 5}, "345"},
+			{"the end", provider.ByteRange{Start: 7, End: 9}, "789"},
+			{"one byte", provider.ByteRange{Start: 4, End: 4}, "4"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				reader, err := p.Get(ctx, object.ID, &tt.rng)
+				if err != nil {
+					t.Fatalf("Get: %v", err)
+				}
+				defer func() { _ = reader.Close() }()
+				body, err := io.ReadAll(reader)
+				if err != nil {
+					t.Fatalf("read body: %v", err)
+				}
+				if string(body) != tt.want {
+					t.Errorf("body = %q, want %q", body, tt.want)
+				}
+			})
 		}
 	})
 
@@ -142,7 +172,7 @@ func Run(t *testing.T, p provider.Provider) {
 		if err := p.Delete(ctx, object.ID); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}
-		if _, err := p.Get(ctx, object.ID); !errors.Is(err, provider.ErrObjectNotFound) {
+		if _, err := p.Get(ctx, object.ID, nil); !errors.Is(err, provider.ErrObjectNotFound) {
 			t.Errorf("Get after delete: error = %v, want ErrObjectNotFound", err)
 		}
 		for _, listed := range listAll(t) {
@@ -176,7 +206,7 @@ func Run(t *testing.T, p provider.Provider) {
 		if object.Size != largeBody {
 			t.Errorf("Size = %d, want %d", object.Size, largeBody)
 		}
-		reader, err := p.Get(ctx, object.ID)
+		reader, err := p.Get(ctx, object.ID, nil)
 		if err != nil {
 			t.Fatalf("Get: %v", err)
 		}

@@ -117,7 +117,7 @@ func TestProvider(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PutObject: %v", err)
 		}
-		if _, err := p.Get(ctx, foreign); !errors.Is(err, provider.ErrObjectNotFound) {
+		if _, err := p.Get(ctx, foreign, nil); !errors.Is(err, provider.ErrObjectNotFound) {
 			t.Errorf("Get: error = %v, want ErrObjectNotFound", err)
 		}
 		if err := p.Delete(ctx, foreign); !errors.Is(err, provider.ErrObjectNotFound) {

@@ -180,11 +180,15 @@ func (p *Provider) abort(ctx context.Context, key string, uploadID *string) {
 }
 
 // Get implements provider.Provider.
-func (p *Provider) Get(ctx context.Context, id string) (io.ReadCloser, error) {
+func (p *Provider) Get(ctx context.Context, id string, rng *provider.ByteRange) (io.ReadCloser, error) {
 	if !ownsKey(id) {
 		return nil, provider.ErrObjectNotFound
 	}
-	out, err := p.client.GetObject(ctx, &awss3.GetObjectInput{Bucket: &p.bucket, Key: &id})
+	input := &awss3.GetObjectInput{Bucket: &p.bucket, Key: &id}
+	if rng != nil {
+		input.Range = aws.String(fmt.Sprintf("bytes=%d-%d", rng.Start, rng.End))
+	}
+	out, err := p.client.GetObject(ctx, input)
 	if isNotFound(err) {
 		return nil, provider.ErrObjectNotFound
 	}

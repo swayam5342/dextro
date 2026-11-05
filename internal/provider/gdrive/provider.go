@@ -196,8 +196,12 @@ func (p *Provider) Put(ctx context.Context, upload provider.Upload) (provider.Ob
 }
 
 // Get implements provider.Provider.
-func (p *Provider) Get(ctx context.Context, id string) (io.ReadCloser, error) {
-	response, err := p.service.Files.Get(id).Context(ctx).Download() //nolint:bodyclose // The caller closes it.
+func (p *Provider) Get(ctx context.Context, id string, rng *provider.ByteRange) (io.ReadCloser, error) {
+	call := p.service.Files.Get(id).Context(ctx)
+	if rng != nil {
+		call.Header().Set("Range", fmt.Sprintf("bytes=%d-%d", rng.Start, rng.End))
+	}
+	response, err := call.Download() //nolint:bodyclose // The caller closes it.
 	if isNotFound(err) {
 		return nil, provider.ErrObjectNotFound
 	}

@@ -26,6 +26,12 @@ type ObjectPage struct {
 	NextPageToken string
 }
 
+// ByteRange is a span of an object. Both ends are inclusive and must lie inside it.
+type ByteRange struct {
+	Start int64
+	End   int64
+}
+
 // Upload is a file to store. Body is read as a stream and its length need not
 // be known, so memory use must not depend on the file's size.
 type Upload struct {
@@ -43,8 +49,9 @@ type Provider interface {
 	// Put stores a new object. It never replaces an existing one, even with the
 	// same name.
 	Put(ctx context.Context, upload Upload) (Object, error)
-	// Get opens an object for reading. The caller closes the result.
-	Get(ctx context.Context, id string) (io.ReadCloser, error)
+	// Get opens an object, or the part of it in rng if that isn't nil. The caller
+	// closes the result.
+	Get(ctx context.Context, id string, rng *ByteRange) (io.ReadCloser, error)
 	// Delete removes an object permanently. Moving files to the trash is dextro's
 	// job, above this interface.
 	Delete(ctx context.Context, id string) error

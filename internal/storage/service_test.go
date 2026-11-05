@@ -381,7 +381,7 @@ func testDelete(t *testing.T, f *fixture) {
 	if got := f.count(t, `SELECT count(*) FROM audit_events WHERE action = 'storage.removed'`); got != 1 {
 		t.Errorf("audit events = %d, want 1", got)
 	}
-	if _, err := f.fake.Get(f.ctx, object.ID); err != nil {
+	if _, err := f.fake.Get(f.ctx, object.ID, nil); err != nil {
 		t.Errorf("the account's files must stay: %v", err)
 	}
 }
