@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
+package: apigen
+output: internal/httpx/apigen/api.gen.go
+generate:
+  chi-server: true
+  models: true
+output-options:
+  # Keep schemas no path references yet, such as the shared Error body.
+  skip-prune: true

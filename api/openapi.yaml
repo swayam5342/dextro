@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: dextro
+  version: 0.1.0
+  description: >
+    Self-hosted file storage gateway. Paths in this file are written in full.
+    Application endpoints live under /api/v1; /health sits at the root so
+    container checks do not depend on the API version.
+servers:
+  - url: /
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Report whether the server can reach its database
+      tags: [system]
+      responses:
+        "200":
+          description: The server is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: The server is running but a dependency is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+    Error:
+      type: object
+      description: Body of every error response.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              description: Stable, machine-readable error code.
+            message:
+              type: string
+              description: Safe, human-readable message.
+            request_id:
+              type: string
+              description: Matches the X-Request-ID response header and the server logs.
