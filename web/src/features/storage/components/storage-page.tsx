@@ -74,7 +74,7 @@ function AccountRow({ connection, account }: { connection: Connection; account: 
           value={account.used_bytes}
           max={account.limit_bytes}
           aria-label={`Space used in ${connection.summary}`}
-          className="h-1 w-full accent-primary"
+          className="h-1 w-full overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary"
         />
       )}
       {test.isSuccess && <p className="text-sm">This account works.</p>}

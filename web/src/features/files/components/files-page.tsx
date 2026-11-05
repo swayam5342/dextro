@@ -119,7 +119,7 @@ function UploadRow({ upload, onCancel }: { upload: Upload; onCancel: () => void 
           value={percent}
           max={100}
           aria-label={`Uploading ${upload.name}`}
-          className="h-1 w-full accent-primary"
+          className="h-1 w-full overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary"
         />
       )}
       {upload.status === "failed" && <FormError message={upload.error} />}
