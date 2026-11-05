@@ -266,3 +266,38 @@ func TestUploadMemoryStaysFlat(t *testing.T) {
 		t.Errorf("heap grew by %d MiB for a %d MiB file", grew>>20, size>>20)
 	}
 }
+
+func TestThumbnail(t *testing.T) {
+	f := newFakeDrive(t)
+	c := newTestClient(f)
+	settings, credentials := connect(t, c)
+	p, err := c.Open(context.Background(), settings, credentials)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	object, err := p.Put(context.Background(), provider.Upload{Name: "photo.jpg", Body: strings.NewReader("x")})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	if _, err := p.Thumbnail(context.Background(), object.ID); !errors.Is(err, provider.ErrNoThumbnail) {
+		t.Fatalf("before Google makes one: error = %v, want ErrNoThumbnail", err)
+	}
+
+	f.thumbnails[object.ID] = []byte("small image")
+	thumbnail, err := p.Thumbnail(context.Background(), object.ID)
+	if err != nil {
+		t.Fatalf("Thumbnail: %v", err)
+	}
+	defer func() { _ = thumbnail.Body.Close() }()
+	body, err := io.ReadAll(thumbnail.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(body) != "small image" || thumbnail.ContentType != "image/jpeg" {
+		t.Errorf("thumbnail = %q, %q", body, thumbnail.ContentType)
+	}
+	if !strings.HasSuffix(f.gotThumbPath, "=s480") {
+		t.Errorf("asked for %q, want a 480px image", f.gotThumbPath)
+	}
+}

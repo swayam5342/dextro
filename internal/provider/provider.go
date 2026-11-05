@@ -8,8 +8,12 @@ import (
 	"time"
 )
 
-// ErrObjectNotFound means an object doesn't exist in the provider.
-var ErrObjectNotFound = errors.New("object not found")
+// Errors a provider reports.
+var (
+	ErrObjectNotFound = errors.New("object not found")
+	// ErrNoThumbnail means the object exists but has no preview image, at least yet.
+	ErrNoThumbnail = errors.New("no thumbnail")
+)
 
 // Object describes one stored file.
 type Object struct {
@@ -47,6 +51,12 @@ func (q Quota) Free() (int64, bool) {
 	return max(q.Limit-q.Used, 0), true
 }
 
+// Thumbnail is a small preview image. The caller closes Body.
+type Thumbnail struct {
+	ContentType string
+	Body        io.ReadCloser
+}
+
 // Upload is a file to store. Body is read as a stream and its length need not
 // be known, so memory use must not depend on the file's size.
 type Upload struct {
@@ -69,6 +79,8 @@ type Provider interface {
 	// Get opens an object, or the part of it in rng if that isn't nil. The caller
 	// closes the result.
 	Get(ctx context.Context, id string, rng *ByteRange) (io.ReadCloser, error)
+	// Thumbnail opens a small preview image of an object.
+	Thumbnail(ctx context.Context, id string) (Thumbnail, error)
 	// Delete removes an object permanently. Moving files to the trash is dextro's
 	// job, above this interface.
 	Delete(ctx context.Context, id string) error

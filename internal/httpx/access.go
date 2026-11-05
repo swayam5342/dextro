@@ -47,6 +47,7 @@ var keyRoutes = map[string]string{
 	"GET /api/v1/files/{id}":            ScopeFilesRead,
 	"PATCH /api/v1/files/{id}":          ScopeFilesWrite,
 	"GET /api/v1/files/{id}/content":    ScopeFilesRead,
+	"GET /api/v1/files/{id}/thumbnail":  ScopeFilesRead,
 	"POST /api/v1/files/{id}/move":      ScopeFilesWrite,
 	"POST /api/v1/files/{id}/trash":     ScopeFilesWrite,
 	"POST /api/v1/files/{id}/restore":   ScopeFilesWrite,

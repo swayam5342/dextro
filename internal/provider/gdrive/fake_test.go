@@ -39,6 +39,9 @@ type fakeDrive struct {
 	// discardBodies throws uploaded bytes away, so that the server does not count
 	// towards the memory a test is measuring.
 	discardBodies bool
+	// thumbnails holds the image Google has made for a file, by file ID.
+	thumbnails   map[string][]byte
+	gotThumbPath string
 }
 
 type fakeFile struct {
@@ -55,7 +58,13 @@ type fakeFile struct {
 
 func newFakeDrive(t *testing.T) *fakeDrive {
 	t.Helper()
-	f := &fakeDrive{t: t, files: map[string]*fakeFile{}, uploads: map[string]*fakeFile{}, wantCode: "the-code"}
+	f := &fakeDrive{
+		t:          t,
+		files:      map[string]*fakeFile{},
+		uploads:    map[string]*fakeFile{},
+		wantCode:   "the-code",
+		thumbnails: map[string][]byte{},
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /token", f.token)
 	mux.HandleFunc("GET /drive/v3/about", f.authed(f.about))
@@ -65,6 +74,7 @@ func newFakeDrive(t *testing.T) *fakeDrive {
 	mux.HandleFunc("DELETE /drive/v3/files/{id}", f.authed(f.delete))
 	mux.HandleFunc("/drive/v3/files/{id}/permissions", f.permissions)
 	mux.HandleFunc("POST /upload/drive/v3/files", f.authed(f.upload))
+	mux.HandleFunc("GET /thumb/{id}", f.authed(f.thumbnail))
 	mux.HandleFunc("/upload/session/{id}", f.authed(f.chunk))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL)
@@ -199,6 +209,14 @@ func (f *fakeDrive) get(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
+	if r.URL.Query().Get("fields") == "thumbnailLink" {
+		body := map[string]string{}
+		if f.thumbnails[file.ID] != nil {
+			body["thumbnailLink"] = f.server.URL + "/thumb/" + file.ID + "=s220"
+		}
+		writeJSON(w, http.StatusOK, body)
+		return
+	}
 	if r.URL.Query().Get("alt") == "media" {
 		body := file.body
 		var start, end int
@@ -210,6 +228,18 @@ func (f *fakeDrive) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, file)
+}
+
+func (f *fakeDrive) thumbnail(w http.ResponseWriter, r *http.Request) {
+	f.gotThumbPath = r.URL.Path
+	id, _, _ := strings.Cut(r.PathValue("id"), "=")
+	body, ok := f.thumbnails[id]
+	if !ok {
+		notFound(w)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	_, _ = w.Write(body)
 }
 
 func (f *fakeDrive) delete(w http.ResponseWriter, r *http.Request) {

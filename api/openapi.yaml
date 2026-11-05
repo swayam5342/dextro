@@ -399,6 +399,24 @@ paths:
                 format: binary
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/files/{id}/thumbnail:
+    get:
+      operationId: getThumbnail
+      summary: Return a small preview image of a file
+      description: Not every file has one, and Google can take a moment to make one after an upload.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The image.
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/files/{id}/move:
     post:
       operationId: moveFile

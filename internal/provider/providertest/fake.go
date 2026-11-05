@@ -24,10 +24,12 @@ type Fake struct {
 	// QuotaErr, if set, is what Quota returns.
 	QuotaErr error
 	// Limit is the reported limit, and ExtraUsed is counted on top of stored files.
-	Limit     int64
-	ExtraUsed int64
-	nextID    int
-	objects   map[string]fakeObject
+	Limit         int64
+	ExtraUsed     int64
+	nextID        int
+	objects       map[string]fakeObject
+	thumbnailType string
+	thumbnail     []byte
 }
 
 type fakeObject struct {
@@ -95,6 +97,26 @@ func (f *Fake) Get(_ context.Context, id string, rng *provider.ByteRange) (io.Re
 		body = body[rng.Start : rng.End+1]
 	}
 	return io.NopCloser(bytes.NewReader(body)), nil
+}
+
+// SetThumbnail makes every object report this preview image.
+func (f *Fake) SetThumbnail(contentType string, body []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.thumbnailType, f.thumbnail = contentType, body
+}
+
+// Thumbnail implements provider.Provider.
+func (f *Fake) Thumbnail(_ context.Context, id string) (provider.Thumbnail, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.objects[id]; !ok {
+		return provider.Thumbnail{}, provider.ErrObjectNotFound
+	}
+	if f.thumbnail == nil {
+		return provider.Thumbnail{}, provider.ErrNoThumbnail
+	}
+	return provider.Thumbnail{ContentType: f.thumbnailType, Body: io.NopCloser(bytes.NewReader(f.thumbnail))}, nil
 }
 
 // Delete implements provider.Provider.

@@ -305,6 +305,21 @@ export interface paths {
     patch: IdJsonOperation<Schemas["NameInput"], { 200: JsonBody<Schemas["File"]> }>;
     delete: PathOperation;
   };
+  "/api/v1/files/{id}/thumbnail": {
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: { id: string };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        200: { headers: { [name: string]: unknown }; content: { "image/*": string } };
+        default: JsonBody<Schemas["Error"]>;
+      };
+    };
+  };
   "/api/v1/files/{id}/move": {
     post: IdJsonOperation<Schemas["MoveFileInput"], { 200: JsonBody<Schemas["File"]> }>;
   };

@@ -525,6 +525,9 @@ type ServerInterface interface {
 	// RestoreFile Take a file out of the trash
 	// (POST /api/v1/files/{id}/restore)
 	RestoreFile(w http.ResponseWriter, r *http.Request, id Id)
+	// GetThumbnail Return a small preview image of a file
+	// (GET /api/v1/files/{id}/thumbnail)
+	GetThumbnail(w http.ResponseWriter, r *http.Request, id Id)
 	// TrashFile Move a file to the trash
 	// (POST /api/v1/files/{id}/trash)
 	TrashFile(w http.ResponseWriter, r *http.Request, id Id)
@@ -723,6 +726,12 @@ func (_ Unimplemented) MoveFile(w http.ResponseWriter, r *http.Request, id Id) {
 // RestoreFile Take a file out of the trash
 // (POST /api/v1/files/{id}/restore)
 func (_ Unimplemented) RestoreFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetThumbnail Return a small preview image of a file
+// (GET /api/v1/files/{id}/thumbnail)
+func (_ Unimplemented) GetThumbnail(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1381,6 +1390,32 @@ func (siw *ServerInterfaceWrapper) RestoreFile(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetThumbnail operation middleware
+func (siw *ServerInterfaceWrapper) GetThumbnail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetThumbnail(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // TrashFile operation middleware
 func (siw *ServerInterfaceWrapper) TrashFile(w http.ResponseWriter, r *http.Request) {
 
@@ -1941,6 +1976,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/files/{id}/content", wrapper.DownloadFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/files/{id}/thumbnail", wrapper.GetThumbnail)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/files/{id}/move", wrapper.MoveFile)

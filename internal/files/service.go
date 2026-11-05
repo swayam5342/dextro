@@ -256,6 +256,26 @@ func (s *Service) Open(ctx context.Context, userID, id uuid.UUID, rng *provider.
 	return reader, nil
 }
 
+// Thumbnail opens a small preview image of a file.
+func (s *Service) Thumbnail(ctx context.Context, userID, id uuid.UUID) (provider.Thumbnail, error) {
+	record, err := s.store.FileForOwner(ctx, userID, id)
+	if err != nil {
+		return provider.Thumbnail{}, err
+	}
+	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	if err != nil {
+		return provider.Thumbnail{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	thumbnail, err := stored.Thumbnail(ctx, record.objectID)
+	if errors.Is(err, provider.ErrNoThumbnail) || errors.Is(err, provider.ErrObjectNotFound) {
+		return provider.Thumbnail{}, provider.ErrNoThumbnail
+	}
+	if err != nil {
+		return provider.Thumbnail{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	return thumbnail, nil
+}
+
 // liveFile returns a file that isn't in the trash.
 func liveFile(ctx context.Context, store *Store, userID, id uuid.UUID) (fileRecord, error) {
 	record, err := store.FileForOwner(ctx, userID, id)

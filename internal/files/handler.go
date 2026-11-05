@@ -31,6 +31,7 @@ const (
 	codeInvalidSearch       = "invalid_search"
 	codeNoStorage           = "no_storage"
 	codeStorageFull         = "storage_full"
+	codeNoThumbnail         = "no_thumbnail"
 )
 
 // contentPolicy goes on every response that carries a user's file, so that even
@@ -172,6 +173,36 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request, body io.Reader)
 			"request_id", httpx.RequestID(r.Context()), "error", err)
 		panic(http.ErrAbortHandler)
 	}
+}
+
+// thumbnailTypes are the only image types passed on as thumbnails. Google sends
+// these, but the rule for what displays inline doesn't depend on trusting it.
+var thumbnailTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
+	"image/gif":  true,
+}
+
+// GetThumbnail implements apigen.ServerInterface.
+func (h *Handler) GetThumbnail(w http.ResponseWriter, r *http.Request, id types.UUID) {
+	thumbnail, err := h.service.Thumbnail(r.Context(), userID(r), id)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	defer func() { _ = thumbnail.Body.Close() }()
+
+	contentType, _, err := mime.ParseMediaType(thumbnail.ContentType)
+	if err != nil || !thumbnailTypes[contentType] {
+		h.fail(w, r, provider.ErrNoThumbnail)
+		return
+	}
+	header := w.Header()
+	header.Set("Content-Type", contentType)
+	header.Set("Content-Security-Policy", contentPolicy)
+	header.Set("Cache-Control", "private, max-age=3600")
+	h.stream(w, r, thumbnail.Body)
 }
 
 // contentDisposition builds the header. The mime package quotes and encodes the
@@ -381,6 +412,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusRequestEntityTooLarge, codeFileTooLarge, "This file is larger than this server allows.")
 	case errors.Is(err, ErrObjectMissing):
 		httpx.WriteError(w, r, http.StatusNotFound, codeFileUnavailable, "This file is no longer in its storage account.")
+	case errors.Is(err, provider.ErrNoThumbnail):
+		httpx.WriteError(w, r, http.StatusNotFound, codeNoThumbnail, "This file has no thumbnail.")
 	case errors.Is(err, ErrInvalidSearch):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidSearch, "Enter something to search for.")
 	case errors.Is(err, storage.ErrNoStorage):

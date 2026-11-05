@@ -192,6 +192,16 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 	})
 
+	t.Run("a missing object has no thumbnail", func(t *testing.T) {
+		object := put(t, "gone.txt", "x")
+		if err := p.Delete(ctx, object.ID); err != nil {
+			t.Fatalf("Delete: %v", err)
+		}
+		if _, err := p.Thumbnail(ctx, object.ID); !errors.Is(err, provider.ErrObjectNotFound) {
+			t.Errorf("error = %v, want ErrObjectNotFound", err)
+		}
+	})
+
 	t.Run("missing objects are reported as such", func(t *testing.T) {
 		object := put(t, "once.txt", "x")
 		if err := p.Delete(ctx, object.ID); err != nil {

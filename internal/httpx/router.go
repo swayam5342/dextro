@@ -38,6 +38,7 @@ type FilesHandlers interface {
 	RenameFile(w http.ResponseWriter, r *http.Request, id types.UUID)
 	DeleteFile(w http.ResponseWriter, r *http.Request, id types.UUID)
 	DownloadFile(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.DownloadFileParams)
+	GetThumbnail(w http.ResponseWriter, r *http.Request, id types.UUID)
 	MoveFile(w http.ResponseWriter, r *http.Request, id types.UUID)
 	TrashFile(w http.ResponseWriter, r *http.Request, id types.UUID)
 	RestoreFile(w http.ResponseWriter, r *http.Request, id types.UUID)

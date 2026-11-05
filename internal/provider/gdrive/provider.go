@@ -27,6 +27,8 @@ const (
 	defaultPageSize = 1000
 	tokenTimeout    = 30 * time.Second
 	fileFields      = "id,name,size,modifiedTime"
+	// thumbnailSize is the long edge to ask Google for, sharp at the size of a grid tile.
+	thumbnailSize = "=s480"
 )
 
 // ErrFolderMissing means the user trashed or deleted dextro's folder.
@@ -95,7 +97,7 @@ func (c *Client) Connect(ctx context.Context, code, verifier string) (Settings, 
 	if token.RefreshToken == "" {
 		return Settings{}, Credentials{}, errors.New("google sent no refresh token")
 	}
-	service, err := c.service(ctx, token)
+	service, _, err := c.service(ctx, token)
 	if err != nil {
 		return Settings{}, Credentials{}, err
 	}
@@ -131,38 +133,38 @@ func ensureFolder(ctx context.Context, service *drive.Service) (string, error) {
 
 // service builds an API client. The token source outlives the request that
 // happens to create it, because a download can continue after the call returns.
-func (c *Client) service(ctx context.Context, token *oauth2.Token) (*drive.Service, error) {
+func (c *Client) service(ctx context.Context, token *oauth2.Token) (*drive.Service, *http.Client, error) {
 	longLived := context.WithValue(context.WithoutCancel(ctx), oauth2.HTTPClient, c.httpClient)
-	options := []option.ClientOption{
-		// oauth2 takes only the transport from httpClient, so the timeout applies
-		// to fetching tokens and not to transfers, which can take hours.
-		option.WithHTTPClient(oauth2.NewClient(longLived, c.config.TokenSource(longLived, token))),
-	}
+	// oauth2 takes only the transport from httpClient, so the timeout applies
+	// to fetching tokens and not to transfers, which can take hours.
+	httpClient := oauth2.NewClient(longLived, c.config.TokenSource(longLived, token))
+	options := []option.ClientOption{option.WithHTTPClient(httpClient)}
 	if c.apiBase != "" {
 		options = append(options, option.WithEndpoint(c.apiBase))
 	}
 	service, err := drive.NewService(longLived, options...)
 	if err != nil {
-		return nil, fmt.Errorf("create drive client: %w", err)
+		return nil, nil, fmt.Errorf("create drive client: %w", err)
 	}
-	return service, nil
+	return service, httpClient, nil
 }
 
 // Open returns a Provider for one connected account.
 func (c *Client) Open(ctx context.Context, s Settings, cr Credentials) (*Provider, error) {
-	service, err := c.service(ctx, &oauth2.Token{RefreshToken: cr.RefreshToken})
+	service, httpClient, err := c.service(ctx, &oauth2.Token{RefreshToken: cr.RefreshToken})
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{service: service, folderID: s.FolderID, pageSize: defaultPageSize}, nil
+	return &Provider{service: service, httpClient: httpClient, folderID: s.FolderID, pageSize: defaultPageSize}, nil
 }
 
 // Provider is dextro's folder in one Drive account. It never touches a file's
 // permissions, so everything stays private to the account's owner.
 type Provider struct {
-	service  *drive.Service
-	folderID string
-	pageSize int64
+	service    *drive.Service
+	httpClient *http.Client
+	folderID   string
+	pageSize   int64
 }
 
 var _ provider.Provider = (*Provider)(nil)
@@ -222,6 +224,38 @@ func (p *Provider) Get(ctx context.Context, id string, rng *provider.ByteRange) 
 		return nil, fmt.Errorf("download file: %w", err)
 	}
 	return response.Body, nil
+}
+
+// Thumbnail implements provider.Provider. Google makes these itself, sometimes a
+// while after an upload, and each link is short-lived, so it is fetched every time.
+func (p *Provider) Thumbnail(ctx context.Context, id string) (provider.Thumbnail, error) {
+	file, err := p.service.Files.Get(id).Fields("thumbnailLink").Context(ctx).Do()
+	if isNotFound(err) {
+		return provider.Thumbnail{}, provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return provider.Thumbnail{}, fmt.Errorf("find thumbnail: %w", err)
+	}
+	if file.ThumbnailLink == "" {
+		return provider.Thumbnail{}, provider.ErrNoThumbnail
+	}
+	link := file.ThumbnailLink
+	if i := strings.LastIndex(link, "=s"); i >= 0 {
+		link = link[:i] + thumbnailSize
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
+	if err != nil {
+		return provider.Thumbnail{}, fmt.Errorf("build thumbnail request: %w", err)
+	}
+	response, err := p.httpClient.Do(request) //nolint:gosec // The link comes from Google, not from a user.
+	if err != nil {
+		return provider.Thumbnail{}, fmt.Errorf("fetch thumbnail: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		_ = response.Body.Close()
+		return provider.Thumbnail{}, provider.ErrNoThumbnail
+	}
+	return provider.Thumbnail{ContentType: response.Header.Get("Content-Type"), Body: response.Body}, nil
 }
 
 // Delete implements provider.Provider.

@@ -45,6 +45,9 @@ func TestSearchAndPool(t *testing.T) {
 		{"an upload can pick its account", testChosenUpload},
 		{"nowhere to upload has stable errors", testPoolErrors},
 		{"the pool sees the file's declared size", testPoolSeesSize},
+		{"thumbnails", testThumbnails},
+		{"a thumbnail of an unsafe type is refused", testThumbnailTypes},
+		{"users can.t reach each other.s thumbnails", testThumbnailIsolation},
 		{"upload memory stays flat through the whole server", testUploadEndpointMemory},
 	}
 	for _, tt := range tests {
@@ -288,4 +291,47 @@ func testUploadEndpointMemory(t *testing.T, s *server) {
 	if grew := peak.Load() - min(peak.Load(), before.HeapAlloc); grew > limit {
 		t.Errorf("heap grew by %d MiB for a %d MiB file", grew>>20, size>>20)
 	}
+}
+
+func testThumbnails(t *testing.T, s *server) {
+	c := s.client(t)
+	file := c.upload("photo.png", "image/png", "data")
+	target := "/api/v1/files/" + file.Id.String() + "/thumbnail"
+	wantError(t, c.json(http.MethodGet, target, nil), http.StatusNotFound, "no_thumbnail")
+
+	s.providers.forConnection(c.a.connection).SetThumbnail("image/jpeg", []byte("small image"))
+	rec := c.json(http.MethodGet, target, nil)
+	wantStatus(t, rec, http.StatusOK)
+	if rec.Body.String() != "small image" {
+		t.Errorf("body = %q", rec.Body)
+	}
+	h := rec.Header()
+	want := map[string]string{
+		"Content-Type":            "image/jpeg",
+		"Content-Security-Policy": "sandbox",
+		"X-Content-Type-Options":  "nosniff",
+		"Cache-Control":           "private, max-age=3600",
+	}
+	for name, value := range want {
+		if got := h.Get(name); got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
+	}
+}
+
+func testThumbnailTypes(t *testing.T, s *server) {
+	c := s.client(t)
+	file := c.upload("x.png", "image/png", "data")
+	target := "/api/v1/files/" + file.Id.String() + "/thumbnail"
+	for _, contentType := range []string{"image/svg+xml", "text/html", ""} {
+		s.providers.forConnection(c.a.connection).SetThumbnail(contentType, []byte("<script>x</script>"))
+		wantError(t, c.json(http.MethodGet, target, nil), http.StatusNotFound, "no_thumbnail")
+	}
+}
+
+func testThumbnailIsolation(t *testing.T, s *server) {
+	owner, other := s.client(t), s.client(t)
+	file := owner.upload("photo.png", "image/png", "data")
+	s.providers.forConnection(owner.a.connection).SetThumbnail("image/jpeg", []byte("small image"))
+	wantStatus(t, other.json(http.MethodGet, "/api/v1/files/"+file.Id.String()+"/thumbnail", nil), http.StatusNotFound)
 }
