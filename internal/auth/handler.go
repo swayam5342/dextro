@@ -363,9 +363,11 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusConflict, codeEmailTaken, "An account with this email already exists.")
 	case errors.Is(err, ErrRegistrationClosed):
 		httpx.WriteError(w, r, http.StatusForbidden, codeRegistrationClosed, "Registration is closed on this server.")
+	case errors.Is(err, ErrInvalidAPIKey):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidAPIKey, "Give the key a name and at least one permission.")
 	case errors.Is(err, ErrNoPassword):
 		httpx.WriteError(w, r, http.StatusBadRequest, codePasswordNotSet, "This account signs in with Google and has no password.")
-	case errors.Is(err, ErrSessionNotFound):
+	case errors.Is(err, ErrSessionNotFound), errors.Is(err, ErrAPIKeyNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
 	default:
 		h.logger.ErrorContext(r.Context(), "auth request failed",

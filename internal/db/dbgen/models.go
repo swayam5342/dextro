@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ApiKey struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Name       string
+	TokenHash  []byte
+	Prefix     string
+	Scopes     []string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+}
+
 type AuditEvent struct {
 	ID        int64
 	ActorID   uuid.NullUUID
@@ -18,6 +29,30 @@ type AuditEvent struct {
 	Ip        string
 	Metadata  []byte
 	CreatedAt time.Time
+}
+
+type File struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	ConnectionID uuid.UUID
+	FolderID     uuid.NullUUID
+	ObjectID     string
+	Name         string
+	Size         int64
+	ContentType  string
+	TrashedAt    *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type Folder struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	ParentID  uuid.NullUUID
+	Name      string
+	TrashedAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Session struct {

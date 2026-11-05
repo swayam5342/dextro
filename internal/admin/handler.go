@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -27,30 +28,35 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, apigen.Settings{AllowRegistration: settings.AllowRegistration})
+	httpx.WriteJSON(w, http.StatusOK, toAPI(settings))
 }
 
 // UpdateSettings implements apigen.ServerInterface.
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
-	// A pointer tells a missing field from false, which would close registration.
-	var body struct {
-		AllowRegistration *bool `json:"allow_registration"`
-	}
+	var body apigen.SettingsUpdate
 	if !httpx.DecodeJSON(w, r, &body) {
 		return
 	}
-	if body.AllowRegistration == nil {
+	if body.AllowRegistration == nil && body.MaxUploadBytes == nil {
 		httpx.WriteError(w, r, http.StatusBadRequest, httpx.CodeBadRequest, "The request is not valid.")
 		return
 	}
 	principal, _ := httpx.PrincipalFrom(r.Context())
 	settings, err := h.service.UpdateSettings(r.Context(), principal.UserID, httpx.ClientIP(r.Context()),
-		Settings{AllowRegistration: *body.AllowRegistration})
+		Update{AllowRegistration: body.AllowRegistration, MaxUploadBytes: body.MaxUploadBytes})
+	if errors.Is(err, ErrInvalidSettings) {
+		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_settings", "Choose an upload limit between 1 MiB and 5 TiB.")
+		return
+	}
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, apigen.Settings{AllowRegistration: settings.AllowRegistration})
+	httpx.WriteJSON(w, http.StatusOK, toAPI(settings))
+}
+
+func toAPI(s Settings) apigen.Settings {
+	return apigen.Settings{AllowRegistration: s.AllowRegistration, MaxUploadBytes: s.MaxUploadBytes}
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

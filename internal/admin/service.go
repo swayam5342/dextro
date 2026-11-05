@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -10,9 +11,24 @@ import (
 	"github.com/swayam5342/dextro/internal/audit"
 )
 
+const (
+	minUploadBytes = 1 << 20
+	maxUploadBytes = 5 << 40
+)
+
+// ErrInvalidSettings means a new value is out of range.
+var ErrInvalidSettings = errors.New("invalid settings")
+
 // Settings are the instance-wide options an admin can change.
 type Settings struct {
 	AllowRegistration bool
+	MaxUploadBytes    int64
+}
+
+// Update is a change to Settings. Fields left nil stay as they are.
+type Update struct {
+	AllowRegistration *bool
+	MaxUploadBytes    *int64
 }
 
 // Service holds the rules for instance-wide settings. Only the admin route
@@ -28,32 +44,59 @@ func NewService(store *Store) *Service {
 
 // Settings returns the current settings.
 func (s *Service) Settings(ctx context.Context) (Settings, error) {
-	allowed, err := s.store.AllowRegistration(ctx)
+	return readSettings(ctx, s.store)
+}
+
+func readSettings(ctx context.Context, store *Store) (Settings, error) {
+	allowed, err := store.AllowRegistration(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{AllowRegistration: allowed}, nil
+	limit, err := store.MaxUploadBytes(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
+	return Settings{AllowRegistration: allowed, MaxUploadBytes: limit}, nil
 }
 
 // UpdateSettings saves new settings and records who changed them.
-func (s *Service) UpdateSettings(ctx context.Context, actor uuid.UUID, ip string, next Settings) (Settings, error) {
-	encoded, err := json.Marshal(next.AllowRegistration)
-	if err != nil {
-		return Settings{}, fmt.Errorf("encode setting: %w", err)
+func (s *Service) UpdateSettings(ctx context.Context, actor uuid.UUID, ip string, next Update) (Settings, error) {
+	if next.MaxUploadBytes != nil && (*next.MaxUploadBytes < minUploadBytes || *next.MaxUploadBytes > maxUploadBytes) {
+		return Settings{}, ErrInvalidSettings
 	}
-	err = s.store.InTx(ctx, func(tx *Store) error {
-		if err := tx.SetSetting(ctx, settingAllowRegistration, encoded); err != nil {
-			return err
+	changes := map[string]any{}
+	if next.AllowRegistration != nil {
+		changes[settingAllowRegistration] = *next.AllowRegistration
+	}
+	if next.MaxUploadBytes != nil {
+		changes[settingMaxUploadBytes] = *next.MaxUploadBytes
+	}
+
+	var saved Settings
+	err := s.store.InTx(ctx, func(tx *Store) error {
+		for key, value := range changes {
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("encode setting: %w", err)
+			}
+			if err := tx.SetSetting(ctx, key, encoded); err != nil {
+				return err
+			}
 		}
-		return tx.Audit().Record(ctx, audit.Event{
+		if err := tx.Audit().Record(ctx, audit.Event{
 			ActorID:  actor,
 			Action:   audit.ActionSettingsUpdated,
 			IP:       ip,
-			Metadata: map[string]any{settingAllowRegistration: next.AllowRegistration},
-		})
+			Metadata: changes,
+		}); err != nil {
+			return err
+		}
+		var err error
+		saved, err = readSettings(ctx, tx)
+		return err
 	})
 	if err != nil {
 		return Settings{}, err
 	}
-	return next, nil
+	return saved, nil
 }

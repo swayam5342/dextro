@@ -24,6 +24,10 @@ const (
 	ActionSettingsUpdated  = "settings.updated"
 	ActionStorageConnected = "storage.connected"
 	ActionStorageRemoved   = "storage.removed"
+	ActionAPIKeyCreated    = "api_key.created"
+	ActionAPIKeyRevoked    = "api_key.revoked"
+	ActionFileDeleted      = "file.deleted"
+	ActionFolderDeleted    = "folder.deleted"
 )
 
 // Event is one recorded action. Metadata must never hold secrets or tokens.

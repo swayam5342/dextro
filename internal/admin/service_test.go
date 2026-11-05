@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -33,8 +34,45 @@ func TestRegistrationSetting(t *testing.T) {
 		t.Fatalf("create user: %v", err)
 	}
 
+	t.Run("the upload limit has a default", func(t *testing.T) {
+		got, err := service.Settings(ctx)
+		if err != nil {
+			t.Fatalf("Settings: %v", err)
+		}
+		if got.MaxUploadBytes != 10<<30 {
+			t.Errorf("MaxUploadBytes = %d, want 10 GiB", got.MaxUploadBytes)
+		}
+	})
+
+	t.Run("changing one setting leaves the other alone", func(t *testing.T) {
+		limit := int64(5 << 20)
+		got, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Update{MaxUploadBytes: &limit})
+		if err != nil {
+			t.Fatalf("UpdateSettings: %v", err)
+		}
+		if got.MaxUploadBytes != limit || !got.AllowRegistration {
+			t.Errorf("settings = %+v", got)
+		}
+		stored, err := NewStore(pool).MaxUploadBytes(ctx)
+		if err != nil {
+			t.Fatalf("MaxUploadBytes: %v", err)
+		}
+		if stored != limit {
+			t.Errorf("stored limit = %d", stored)
+		}
+	})
+
+	t.Run("the upload limit must be sensible", func(t *testing.T) {
+		for _, limit := range []int64{0, -1, 1<<20 - 1, 6 << 40} {
+			if _, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Update{MaxUploadBytes: &limit}); !errors.Is(err, ErrInvalidSettings) {
+				t.Errorf("limit %d: error = %v, want ErrInvalidSettings", limit, err)
+			}
+		}
+	})
+
 	t.Run("a change is saved and audited", func(t *testing.T) {
-		got, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Settings{AllowRegistration: false})
+		closed := false
+		got, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Update{AllowRegistration: &closed})
 		if err != nil {
 			t.Fatalf("UpdateSettings: %v", err)
 		}

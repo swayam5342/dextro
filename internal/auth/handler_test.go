@@ -20,6 +20,7 @@ import (
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/db/dbtest"
 	"github.com/swayam5342/dextro/internal/httpx"
+	"github.com/swayam5342/dextro/internal/httpx/apigen"
 )
 
 const testOrigin = "https://files.example.org"
@@ -448,7 +449,7 @@ func testAdminClosesRegistration(t *testing.T, s *server) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	if got := decode[map[string]bool](t, adminBrowser.do(http.MethodGet, "/api/v1/admin/settings", nil)); got["allow_registration"] {
+	if got := decode[apigen.Settings](t, adminBrowser.do(http.MethodGet, "/api/v1/admin/settings", nil)); got.AllowRegistration {
 		t.Errorf("settings = %v", got)
 	}
 	config := decode[map[string]bool](t, s.browser().do(http.MethodGet, "/api/v1/auth/config", nil))
@@ -461,8 +462,10 @@ func testAdminClosesRegistration(t *testing.T, s *server) {
 
 func testSettingsNeedTheField(t *testing.T, s *server) {
 	b := s.signUp("admin@example.org")
+	wantError(t, b.do(http.MethodPatch, "/api/v1/admin/settings", map[string]int64{"max_upload_bytes": 5}),
+		http.StatusBadRequest, "invalid_settings")
 	wantError(t, b.do(http.MethodPatch, "/api/v1/admin/settings", "{}"), http.StatusBadRequest, "bad_request")
-	if got := decode[map[string]bool](t, b.do(http.MethodGet, "/api/v1/admin/settings", nil)); !got["allow_registration"] {
+	if got := decode[apigen.Settings](t, b.do(http.MethodGet, "/api/v1/admin/settings", nil)); !got.AllowRegistration {
 		t.Errorf("an empty body changed the settings: %v", got)
 	}
 }

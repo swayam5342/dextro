@@ -16,7 +16,11 @@ import (
 // ErrSettingNotFound means no value has been stored for the key.
 var ErrSettingNotFound = errors.New("setting not found")
 
-const settingAllowRegistration = "allow_registration"
+const (
+	settingAllowRegistration = "allow_registration"
+	settingMaxUploadBytes    = "max_upload_bytes"
+	defaultMaxUploadBytes    = 10 << 30
+)
 
 // database is a pool or a transaction.
 type database interface {
@@ -85,4 +89,20 @@ func (s *Store) AllowRegistration(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("decode setting %q: %w", settingAllowRegistration, err)
 	}
 	return allowed, nil
+}
+
+// MaxUploadBytes returns the largest file anyone can upload.
+func (s *Store) MaxUploadBytes(ctx context.Context) (int64, error) {
+	raw, err := s.GetSetting(ctx, settingMaxUploadBytes)
+	if errors.Is(err, ErrSettingNotFound) {
+		return defaultMaxUploadBytes, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var limit int64
+	if err := json.Unmarshal(raw, &limit); err != nil {
+		return 0, fmt.Errorf("decode setting %q: %w", settingMaxUploadBytes, err)
+	}
+	return limit, nil
 }
