@@ -128,7 +128,7 @@ func (s *Service) seal(id, userID uuid.UUID, name string, settings gdrive.Settin
 	if err != nil {
 		return record{}, fmt.Errorf("encode settings: %w", err)
 	}
-	encodedCredentials, err := json.Marshal(credentials)
+	encodedCredentials, err := json.Marshal(credentials) //nolint:gosec // Goes straight into Encrypt below.
 	if err != nil {
 		return record{}, fmt.Errorf("encode credentials: %w", err)
 	}
