@@ -21,7 +21,7 @@ OAPI_CODEGEN := $(BIN)/oapi-codegen$(EXE)
 GOLANGCI_LINT := $(BIN)/golangci-lint$(EXE)
 WEB_DEPS := web/node_modules/.modules.yaml
 
-.PHONY: help tools generate check-generated build web-build lint test run dev-web env up down migration clean
+.PHONY: help tools generate check-generated build web-build lint test run run-web dev-web env up down migration clean
 
 help: ## List the available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
@@ -51,7 +51,7 @@ check-generated: generate ## Fail if generated code is out of date
 web-build: $(WEB_DEPS) ## Type-check and build the frontend into web/dist
 	cd web && pnpm build
 
-build: web-build ## Build the server binary, with the frontend embedded, into bin/
+build: web-build ## Build the frontend into web/dist and the Go server into bin/
 	CGO_ENABLED=0 go build -trimpath -o $(BIN)/dextro$(EXE) ./cmd/server
 
 lint: $(GOLANGCI_LINT) $(WEB_DEPS) ## Lint Go and TypeScript, and type-check the frontend
@@ -59,11 +59,15 @@ lint: $(GOLANGCI_LINT) $(WEB_DEPS) ## Lint Go and TypeScript, and type-check the
 	cd web && pnpm lint
 	cd web && pnpm typecheck
 
-test: ## Run the Go tests (needs Docker for the Postgres tests)
+test: ## Run the Go and web server tests (needs Docker for the Postgres tests)
 	go test ./...
+	cd web && pnpm test
 
-run: ## Run the server locally; set DEXTRO_DATABASE_URL first
+run: ## Run the Go server locally; set DEXTRO_DATABASE_URL first
 	go run ./cmd/server
+
+run-web: web-build ## Run the Node web server locally on port 3000
+	cd web && pnpm start
 
 dev-web: $(WEB_DEPS) ## Run the Vite dev server, proxying the API to localhost:8080
 	cd web && pnpm dev
@@ -85,5 +89,4 @@ migration: $(GOOSE) ## Create a migration: make migration name=add_users
 	$(GOOSE) -dir internal/db/migrations create $(name) sql
 
 clean: ## Remove build output, keeping the tools in bin/
-	rm -f $(BIN)/dextro$(EXE)
-	find web/dist -mindepth 1 ! -name .gitkeep -delete
+	rm -rf $(BIN)/dextro$(EXE) web/dist

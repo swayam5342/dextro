@@ -1,6 +1,6 @@
 # dextro
 
-Self-hosted file storage gateway. Users connect their own Google Drive and S3-compatible accounts, then upload, organize, preview and share files from one web app. One Go binary embeds the React frontend and the migrations; PostgreSQL is the only other dependency.
+Self-hosted file storage gateway. Users connect their own Google Drive and S3-compatible accounts, then upload, organize, preview and share files from one web app. It runs as two processes plus PostgreSQL: a Go API server with the migrations embedded, and a Node web server that serves the React build and proxies the API.
 
 ## Commands
 
@@ -9,19 +9,22 @@ Self-hosted file storage gateway. Users connect their own Google Drive and S3-co
 | `make tools` | Install pinned Go tools into `bin/` (the first `sqlc` build takes about 10 minutes on Windows) |
 | `make generate` | Regenerate sqlc and oapi-codegen output |
 | `make check-generated` | Fail if generated code is out of date |
-| `make build` | Build the frontend, then the server into `bin/` |
+| `make build` | Build the frontend into `web/dist` and the Go server into `bin/` |
 | `make lint` | golangci-lint, oxlint and `tsc` |
-| `make test` | Go tests; Docker must be running for the Postgres tests |
+| `make test` | Go and web server tests; Docker must be running for the Postgres tests |
 | `make env` | Create `.env` with random secrets |
 | `make up` / `make down` | Start or stop the stack with Docker Compose |
+| `make run` / `make run-web` | Run the Go server or the Node web server locally |
 | `make dev-web` | Vite dev server, proxying the API to `localhost:8080` |
 | `make migration name=add_users` | Create a goose migration |
 
 On Windows, use `make up` rather than plain `docker compose up`. If the terminal opened at `d:` instead of `D:`, plain Compose builds fail with `additional privileges requested: pass "--allow=fs.read=Dockerfile"`. Docker compares the paths case-sensitively; `make up` corrects the path first.
 
-The app is at <http://127.0.0.1:8080>. S3 (SeaweedFS) is at <http://127.0.0.1:8333>.
+The app is at <http://127.0.0.1:3000>. The Go API is also directly on <http://127.0.0.1:8080>. S3 (SeaweedFS) is at <http://127.0.0.1:8333>.
 
-Environment: `DEXTRO_DATABASE_URL` (required), `DEXTRO_LISTEN_ADDR` (default `:8080`), `DEXTRO_LOG_LEVEL` (default `info`).
+Go server environment: `DEXTRO_DATABASE_URL` (required), `DEXTRO_LISTEN_ADDR` (default `:8080`), `DEXTRO_LOG_LEVEL` (default `info`).
+
+Node web server environment: `DEXTRO_API_URL` (default `http://localhost:8080`), `PORT` (default `3000`).
 
 ## How the repo works
 
@@ -34,7 +37,9 @@ Environment: `DEXTRO_DATABASE_URL` (required), `DEXTRO_LISTEN_ADDR` (default `:8
 - SQL lives in `internal/db/queries`, generating into `internal/db/dbgen`. Migrations live in `internal/db/migrations` and run automatically at startup under an advisory lock.
 - Generated code is committed. Never edit it by hand.
 - Frontend: server data goes through TanStack Query. Routes are code-based: each feature exports its routes from `routes.tsx`, and `web/src/app/router.tsx` assembles them.
-- `web/dist/.gitkeep` lets Go compile before the frontend is built. `web/public/.gitkeep` restores it after each Vite build.
+- `web/server` is the production web server, using only Node's standard library. Browsers talk only to it, and it proxies `/api` and `/health` to Go, so everything stays on one origin: no CORS, and session cookies stay first-party. Don't point the browser straight at the Go server. The proxy streams request and response bodies and has no request timeout, because uploads pass through it.
+- The proxy overwrites `X-Forwarded-For` with the real client address. Only trust that header on the Go side from the proxy.
+- The UI's Content-Security-Policy lives in `web/server/app.mjs`. Go sets a stricter one on API responses.
 - After `shadcn add`, check the new components: the CLI once imported `cn` from a bogus npm package of that name and added it to `package.json`. `cn` is our helper in `@/lib/utils`.
 
 ## Conventions

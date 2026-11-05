@@ -3,7 +3,23 @@
 name: dextro
 
 services:
-  app:
+  # The address browsers use. Serves the UI and proxies the API to the api service.
+  web:
+    build: ./web
+    environment:
+      DEXTRO_API_URL: http://api:8080
+    ports:
+      - 127.0.0.1:3000:3000
+    depends_on:
+      - api
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  api:
     build: .
     environment:
       DEXTRO_DATABASE_URL: postgres://dextro:${POSTGRES_PASSWORD:?run make env to create .env}@postgres:5432/dextro?sslmode=disable

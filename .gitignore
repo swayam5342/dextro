@@ -1,8 +1,7 @@
 # Tools and build output
 /bin/
 /web/node_modules/
-/web/dist/*
-!/web/dist/.gitkeep
+/web/dist/
 
 # Secrets
 .env
