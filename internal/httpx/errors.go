@@ -13,6 +13,10 @@ const (
 	CodeNotFound         = "not_found"
 	CodeMethodNotAllowed = "method_not_allowed"
 	CodeInternal         = "internal_error"
+	CodeUnauthorized     = "unauthorized"
+	CodeForbidden        = "forbidden"
+	CodeOriginNotAllowed = "origin_not_allowed"
+	CodeRateLimited      = "rate_limited"
 )
 
 // WriteError sends the standard error body. The message reaches the client, so
@@ -22,13 +26,28 @@ func WriteError(w http.ResponseWriter, r *http.Request, status int, code, messag
 	body.Error.Code = code
 	body.Error.Message = message
 	body.Error.RequestId = RequestID(r.Context())
-	writeJSON(w, status, body)
+	WriteJSON(w, status, body)
 }
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
+// WriteJSON sends body as JSON with the given status.
+func WriteJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	// The status is already sent, and an encode failure here means the client
 	// went away, so there is nothing useful left to do with the error.
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// maxJSONBody bounds JSON request bodies. No JSON endpoint carries file data.
+const maxJSONBody = 64 << 10
+
+// DecodeJSON reads the request body into dst. If it can't, it sends the error
+// response and returns false.
+func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		WriteError(w, r, http.StatusBadRequest, CodeBadRequest, "The request is not valid.")
+		return false
+	}
+	return true
 }

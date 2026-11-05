@@ -16,9 +16,11 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// api implements the generated server interface. As features arrive, it embeds
-// their handlers.
+// api implements the generated server interface by embedding each feature's
+// handlers. Features depend on this package, so it names them by interface.
 type api struct {
+	AuthHandlers
+	AdminHandlers
 	db     Pinger
 	logger *slog.Logger
 }
@@ -29,12 +31,11 @@ func (a *api) GetHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
 	defer cancel()
 
-	w.Header().Set("Cache-Control", "no-store")
 	if err := a.db.Ping(ctx); err != nil {
 		a.logger.ErrorContext(ctx, "health check: database ping failed",
 			"request_id", RequestID(ctx), "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, apigen.Health{Status: apigen.Unavailable})
+		WriteJSON(w, http.StatusServiceUnavailable, apigen.Health{Status: apigen.Unavailable})
 		return
 	}
-	writeJSON(w, http.StatusOK, apigen.Health{Status: apigen.Ok})
+	WriteJSON(w, http.StatusOK, apigen.Health{Status: apigen.Ok})
 }

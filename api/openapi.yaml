@@ -5,15 +5,20 @@ info:
   description: >
     Self-hosted file storage gateway. Paths in this file are written in full.
     Application endpoints live under /api/v1; /health sits at the root so
-    container checks do not depend on the API version.
+    container checks do not depend on the API version. Every operation needs a
+    session unless it opts out with `security: []`, and everything under
+    /api/v1/admin also needs the admin role.
 servers:
   - url: /
+security:
+  - sessionCookie: []
 paths:
   /health:
     get:
       operationId: getHealth
       summary: Report whether the server can reach its database
       tags: [system]
+      security: []
       responses:
         "200":
           description: The server is healthy.
@@ -27,7 +32,231 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /api/v1/auth/config:
+    get:
+      operationId: getAuthConfig
+      summary: Report which sign-in options this instance offers
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          description: The available options.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthConfig"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/register:
+    post:
+      operationId: register
+      summary: Create an account with an email and password, and sign in
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        "201":
+          description: The account was created and a session cookie was set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Sign in with an email and password
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        "200":
+          description: Signed in; a session cookie was set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: End the current session
+      tags: [auth]
+      responses:
+        "204":
+          description: The session has ended and its cookie was cleared.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/me:
+    get:
+      operationId: getMe
+      summary: Return the signed-in user
+      tags: [auth]
+      responses:
+        "200":
+          description: The signed-in user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/password:
+    post:
+      operationId: changePassword
+      summary: Change the password and end every other session
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePassword"
+      responses:
+        "204":
+          description: The password was changed.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/sessions:
+    get:
+      operationId: listSessions
+      summary: List the signed-in user's active sessions
+      tags: [auth]
+      responses:
+        "200":
+          description: Active sessions, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/sessions/{id}:
+    delete:
+      operationId: revokeSession
+      summary: End one of the signed-in user's sessions
+      tags: [auth]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The session has ended.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/google/start:
+    get:
+      operationId: startGoogleSignIn
+      summary: Redirect the browser to Google to sign in
+      tags: [auth]
+      security: []
+      responses:
+        "302":
+          description: Redirects to Google.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/google/link:
+    post:
+      operationId: linkGoogle
+      summary: Start linking a Google account to the signed-in user
+      description: >
+        A POST rather than a redirect so it passes the Origin check. The client
+        sends the browser to the returned URL.
+      tags: [auth]
+      responses:
+        "200":
+          description: Where to send the browser.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoogleRedirect"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/google/callback:
+    get:
+      operationId: googleCallback
+      summary: Finish a Google sign-in or link
+      description: >
+        Always redirects into the UI. Failures carry a stable code in the
+        `error` query parameter of the redirect.
+      tags: [auth]
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirects into the UI.
+  /api/v1/admin/settings:
+    get:
+      operationId: getSettings
+      summary: Return the instance-wide settings
+      tags: [admin]
+      responses:
+        "200":
+          description: The current settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateSettings
+      summary: Change instance-wide settings
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Settings"
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        default:
+          $ref: "#/components/responses/Error"
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: dextro_session
+  responses:
+    Error:
+      description: The request failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     Health:
       type: object
@@ -36,6 +265,90 @@ components:
         status:
           type: string
           enum: [ok, unavailable]
+    AuthConfig:
+      type: object
+      required: [registration_open, google_enabled]
+      properties:
+        registration_open:
+          type: boolean
+          description: Whether a new account can be created right now.
+        google_enabled:
+          type: boolean
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    ChangePassword:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+    User:
+      type: object
+      required: [id, email, role, has_password, google_linked, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [user, admin]
+        has_password:
+          type: boolean
+          description: False for accounts created through Google.
+        google_linked:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    Session:
+      type: object
+      required: [id, current, user_agent, ip, created_at, last_seen_at, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        current:
+          type: boolean
+          description: True for the session making this request.
+        user_agent:
+          type: string
+        ip:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    GoogleRedirect:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+    Settings:
+      type: object
+      required: [allow_registration]
+      properties:
+        allow_registration:
+          type: boolean
+          description: >
+            When false, nobody can create an account, by password or through a
+            first-time Google sign-in. The first account on an empty instance
+            can always be created.
     Error:
       type: object
       description: Body of every error response.
