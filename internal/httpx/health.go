@@ -22,6 +22,7 @@ type api struct {
 	AuthHandlers
 	AdminHandlers
 	StorageHandlers
+	FilesHandlers
 	db     Pinger
 	logger *slog.Logger
 }

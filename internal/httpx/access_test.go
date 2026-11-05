@@ -51,6 +51,7 @@ func newAccessRouter(t *testing.T, sessions SessionResolver) http.Handler {
 		Auth:         apigen.Unimplemented{},
 		Admin:        apigen.Unimplemented{},
 		Storage:      apigen.Unimplemented{},
+		Files:        apigen.Unimplemented{},
 	})
 }
 
@@ -164,7 +165,7 @@ func TestHandlersReceiveThePrincipal(t *testing.T) {
 		got, _ = PrincipalFrom(r.Context())
 	})
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := loadSession(defaultSessions(), logger)(inner)
+	h := loadSession(defaultSessions(), nil, logger)(inner)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
 	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "admin"})
 	h.ServeHTTP(httptest.NewRecorder(), req)

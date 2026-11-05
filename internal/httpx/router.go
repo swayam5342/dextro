@@ -25,6 +25,30 @@ type AuthHandlers interface {
 	StartGoogleSignIn(w http.ResponseWriter, r *http.Request)
 	LinkGoogle(w http.ResponseWriter, r *http.Request)
 	GoogleCallback(w http.ResponseWriter, r *http.Request, params apigen.GoogleCallbackParams)
+	ListAPIKeys(w http.ResponseWriter, r *http.Request)
+	CreateAPIKey(w http.ResponseWriter, r *http.Request)
+	RevokeAPIKey(w http.ResponseWriter, r *http.Request, id types.UUID)
+}
+
+// FilesHandlers is the part of the API the files feature implements.
+type FilesHandlers interface {
+	ListFolder(w http.ResponseWriter, r *http.Request, params apigen.ListFolderParams)
+	UploadFile(w http.ResponseWriter, r *http.Request, params apigen.UploadFileParams)
+	GetFile(w http.ResponseWriter, r *http.Request, id types.UUID)
+	RenameFile(w http.ResponseWriter, r *http.Request, id types.UUID)
+	DeleteFile(w http.ResponseWriter, r *http.Request, id types.UUID)
+	DownloadFile(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.DownloadFileParams)
+	MoveFile(w http.ResponseWriter, r *http.Request, id types.UUID)
+	TrashFile(w http.ResponseWriter, r *http.Request, id types.UUID)
+	RestoreFile(w http.ResponseWriter, r *http.Request, id types.UUID)
+	CreateFolder(w http.ResponseWriter, r *http.Request)
+	RenameFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
+	DeleteFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
+	MoveFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
+	TrashFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
+	RestoreFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
+	ListTrash(w http.ResponseWriter, r *http.Request)
+	EmptyTrash(w http.ResponseWriter, r *http.Request)
 }
 
 // StorageHandlers is the part of the API the storage feature implements.
@@ -51,9 +75,11 @@ type Deps struct {
 	PublicOrigin   string
 	TrustedProxies []netip.Prefix
 	Sessions       SessionResolver
+	APIKeys        APIKeyResolver
 	Auth           AuthHandlers
 	Admin          AdminHandlers
 	Storage        StorageHandlers
+	Files          FilesHandlers
 }
 
 // NewRouter returns the handler for the whole server.
@@ -68,14 +94,22 @@ func NewRouter(d Deps) http.Handler {
 		WriteError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed, "Method not allowed.")
 	})
 
-	server := &api{AuthHandlers: d.Auth, AdminHandlers: d.Admin, StorageHandlers: d.Storage, db: d.DB, logger: d.Logger}
+	server := &api{
+		AuthHandlers:    d.Auth,
+		AdminHandlers:   d.Admin,
+		StorageHandlers: d.Storage,
+		FilesHandlers:   d.Files,
+		db:              d.DB,
+		logger:          d.Logger,
+	}
 	apigen.HandlerWithOptions(server, apigen.ChiServerOptions{
 		BaseRouter: r,
 		// These wrap each generated route, and the last one listed runs first.
 		Middlewares: []apigen.MiddlewareFunc{
 			requireAdmin,
+			requireKeyScope,
 			requireSession,
-			loadSession(d.Sessions, d.Logger),
+			loadSession(d.Sessions, d.APIKeys, d.Logger),
 			requireOrigin(d.PublicOrigin),
 		},
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {

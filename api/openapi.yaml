@@ -211,6 +211,366 @@ paths:
       responses:
         "302":
           description: Redirects into the UI.
+  /api/v1/auth/api-keys:
+    get:
+      operationId: listAPIKeys
+      summary: List the signed-in user's API keys
+      tags: [auth]
+      responses:
+        "200":
+          description: The user's keys, newest first. Secrets are never included.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/APIKey"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createAPIKey
+      summary: Create an API key
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyInput"
+      responses:
+        "201":
+          description: The key. Its secret appears here once and is never shown again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreated"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/auth/api-keys/{id}:
+    delete:
+      operationId: revokeAPIKey
+      summary: Revoke one of the signed-in user's API keys
+      tags: [auth]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The key no longer works.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files:
+    get:
+      operationId: listFolder
+      summary: List a folder, or the top level if none is given
+      tags: [files]
+      parameters:
+        - name: folder_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: What's in the folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderContents"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: uploadFile
+      summary: Upload a file
+      description: >
+        The request body is the file itself, not a form, so it can stream to the
+        storage account. The body's Content-Type is stored as the file's type.
+      tags: [files]
+      parameters:
+        - name: connection_id
+          in: query
+          description: Required. Not marked so, because generated checks would run before access checks.
+          schema:
+            type: string
+            format: uuid
+        - name: name
+          in: query
+          description: Required, as for connection_id.
+          schema:
+            type: string
+        - name: folder_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          "*/*":
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: The file is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/File"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{id}:
+    get:
+      operationId: getFile
+      summary: Return a file's details
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The file's details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/File"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: renameFile
+      summary: Rename a file
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameInput"
+      responses:
+        "200":
+          description: The renamed file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/File"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteFile
+      summary: Permanently delete a file that's in the trash
+      description: Removes it from the storage account too. API keys can't do this.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The file is gone.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{id}/content:
+    get:
+      operationId: downloadFile
+      summary: Stream a file's content
+      description: >
+        Supports single-range requests. Only images, video and PDF can be shown
+        inline; everything else downloads whatever is asked for.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - name: disposition
+          in: query
+          schema:
+            type: string
+            enum: [inline, attachment]
+      responses:
+        "200":
+          description: The whole file.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: The requested range.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{id}/move:
+    post:
+      operationId: moveFile
+      summary: Move a file to another folder
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFileInput"
+      responses:
+        "200":
+          description: The moved file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/File"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{id}/trash:
+    post:
+      operationId: trashFile
+      summary: Move a file to the trash
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The file is in the trash.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{id}/restore:
+    post:
+      operationId: restoreFile
+      summary: Take a file out of the trash
+      description: It returns to its folder, or to the top level if that folder is in the trash.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The file is back.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/folders:
+    post:
+      operationId: createFolder
+      summary: Create a folder
+      tags: [files]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FolderInput"
+      responses:
+        "201":
+          description: The new folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folder"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/folders/{id}:
+    patch:
+      operationId: renameFolder
+      summary: Rename a folder
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameInput"
+      responses:
+        "200":
+          description: The renamed folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folder"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteFolder
+      summary: Permanently delete a folder that's in the trash, and everything in it
+      description: Removes its files from their storage accounts too. API keys can't do this.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The folder is gone.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/folders/{id}/move:
+    post:
+      operationId: moveFolder
+      summary: Move a folder into another folder
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFolderInput"
+      responses:
+        "200":
+          description: The moved folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folder"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/folders/{id}/trash:
+    post:
+      operationId: trashFolder
+      summary: Move a folder and everything in it to the trash
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The folder is in the trash.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/folders/{id}/restore:
+    post:
+      operationId: restoreFolder
+      summary: Take a folder out of the trash
+      description: It returns to its parent, or to the top level if that's in the trash.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The folder is back.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/trash:
+    get:
+      operationId: listTrash
+      summary: List what's in the trash
+      tags: [files]
+      responses:
+        "200":
+          description: Trashed items. A trashed folder's contents aren't listed separately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trash"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: emptyTrash
+      summary: Permanently delete everything in the trash
+      description: API keys can't do this.
+      tags: [files]
+      responses:
+        "204":
+          description: The trash is empty.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/admin/settings:
     get:
       operationId: getSettings
@@ -234,7 +594,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Settings"
+              $ref: "#/components/schemas/SettingsUpdate"
       responses:
         "200":
           description: The settings after the change.
@@ -354,11 +714,23 @@ paths:
         "302":
           description: Redirects into the UI.
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   securitySchemes:
     sessionCookie:
       type: apiKey
       in: cookie
       name: dextro_session
+    apiKey:
+      type: http
+      scheme: bearer
+      description: Reaches file routes only. Permanent deletes need a session.
   responses:
     Error:
       description: The request failed.
@@ -485,9 +857,174 @@ components:
       properties:
         url:
           type: string
+    File:
+      type: object
+      required: [id, name, size, content_type, preview, connection_id, folder_id, trashed_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        content_type:
+          type: string
+        preview:
+          type: string
+          enum: [image, video, pdf, none]
+          description: How the file can be shown inline, if at all.
+        connection_id:
+          type: string
+          format: uuid
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+        trashed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Folder:
+      type: object
+      required: [id, name, parent_id, trashed_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+        trashed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    FolderContents:
+      type: object
+      required: [path, folders, files]
+      properties:
+        path:
+          type: array
+          description: The folders from the top level down to this one.
+          items:
+            $ref: "#/components/schemas/Folder"
+        folders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Folder"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/File"
+    Trash:
+      type: object
+      required: [folders, files]
+      properties:
+        folders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Folder"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/File"
+    NameInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    FolderInput:
+      type: object
+      required: [name, parent_id]
+      properties:
+        name:
+          type: string
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+    MoveFileInput:
+      type: object
+      required: [folder_id]
+      properties:
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null moves it to the top level.
+    MoveFolderInput:
+      type: object
+      required: [parent_id]
+      properties:
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null moves it to the top level.
+    APIKey:
+      type: object
+      required: [id, name, prefix, scopes, created_at, last_used_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        prefix:
+          type: string
+          description: The start of the key, for telling keys apart.
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: ["files:read", "files:write"]
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+    APIKeyInput:
+      type: object
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: ["files:read", "files:write"]
+    APIKeyCreated:
+      type: object
+      required: [key, token]
+      properties:
+        key:
+          $ref: "#/components/schemas/APIKey"
+        token:
+          type: string
+          description: The secret, sent as a bearer token. Shown only this once.
     Settings:
       type: object
-      required: [allow_registration]
+      required: [allow_registration, max_upload_bytes]
       properties:
         allow_registration:
           type: boolean
@@ -495,6 +1032,19 @@ components:
             When false, nobody can create an account, by password or through a
             first-time Google sign-in. The first account on an empty instance
             can always be created.
+        max_upload_bytes:
+          type: integer
+          format: int64
+          description: The largest file anyone can upload.
+    SettingsUpdate:
+      type: object
+      description: Only the fields present are changed.
+      properties:
+        allow_registration:
+          type: boolean
+        max_upload_bytes:
+          type: integer
+          format: int64
     Error:
       type: object
       description: Body of every error response.

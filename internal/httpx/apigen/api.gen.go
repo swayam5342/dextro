@@ -14,6 +14,42 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for APIKeyScopes.
+const (
+	APIKeyScopesFilesRead  APIKeyScopes = "files:read"
+	APIKeyScopesFilesWrite APIKeyScopes = "files:write"
+)
+
+// Valid indicates whether the value is a known member of the APIKeyScopes enum.
+func (e APIKeyScopes) Valid() bool {
+	switch e {
+	case APIKeyScopesFilesRead:
+		return true
+	case APIKeyScopesFilesWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for APIKeyInputScopes.
+const (
+	APIKeyInputScopesFilesRead  APIKeyInputScopes = "files:read"
+	APIKeyInputScopesFilesWrite APIKeyInputScopes = "files:write"
+)
+
+// Valid indicates whether the value is a known member of the APIKeyInputScopes enum.
+func (e APIKeyInputScopes) Valid() bool {
+	switch e {
+	case APIKeyInputScopesFilesRead:
+		return true
+	case APIKeyInputScopesFilesWrite:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectionProvider.
 const (
 	GoogleDrive ConnectionProvider = "google_drive"
@@ -26,6 +62,30 @@ func (e ConnectionProvider) Valid() bool {
 	case GoogleDrive:
 		return true
 	case S3:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FilePreview.
+const (
+	Image FilePreview = "image"
+	None  FilePreview = "none"
+	Pdf   FilePreview = "pdf"
+	Video FilePreview = "video"
+)
+
+// Valid indicates whether the value is a known member of the FilePreview enum.
+func (e FilePreview) Valid() bool {
+	switch e {
+	case Image:
+		return true
+	case None:
+		return true
+	case Pdf:
+		return true
+	case Video:
 		return true
 	default:
 		return false
@@ -67,6 +127,56 @@ func (e UserRole) Valid() bool {
 		return false
 	}
 }
+
+// Defines values for DownloadFileParamsDisposition.
+const (
+	Attachment DownloadFileParamsDisposition = "attachment"
+	Inline     DownloadFileParamsDisposition = "inline"
+)
+
+// Valid indicates whether the value is a known member of the DownloadFileParamsDisposition enum.
+func (e DownloadFileParamsDisposition) Valid() bool {
+	switch e {
+	case Attachment:
+		return true
+	case Inline:
+		return true
+	default:
+		return false
+	}
+}
+
+// APIKey defines model for APIKey.
+type APIKey struct {
+	CreatedAt  time.Time          `json:"created_at"`
+	Id         openapi_types.UUID `json:"id"`
+	LastUsedAt *time.Time         `json:"last_used_at"`
+	Name       string             `json:"name"`
+
+	// Prefix The start of the key, for telling keys apart.
+	Prefix string         `json:"prefix"`
+	Scopes []APIKeyScopes `json:"scopes"`
+}
+
+// APIKeyScopes defines model for APIKey.Scopes.
+type APIKeyScopes string
+
+// APIKeyCreated defines model for APIKeyCreated.
+type APIKeyCreated struct {
+	Key APIKey `json:"key"`
+
+	// Token The secret, sent as a bearer token. Shown only this once.
+	Token string `json:"token"`
+}
+
+// APIKeyInput defines model for APIKeyInput.
+type APIKeyInput struct {
+	Name   string              `json:"name"`
+	Scopes []APIKeyInputScopes `json:"scopes"`
+}
+
+// APIKeyInputScopes defines model for APIKeyInput.Scopes.
+type APIKeyInputScopes string
 
 // AuthConfig defines model for AuthConfig.
 type AuthConfig struct {
@@ -116,6 +226,50 @@ type Error struct {
 	} `json:"error"`
 }
 
+// File defines model for File.
+type File struct {
+	ConnectionId openapi_types.UUID  `json:"connection_id"`
+	ContentType  string              `json:"content_type"`
+	CreatedAt    time.Time           `json:"created_at"`
+	FolderId     *openapi_types.UUID `json:"folder_id"`
+	Id           openapi_types.UUID  `json:"id"`
+	Name         string              `json:"name"`
+
+	// Preview How the file can be shown inline, if at all.
+	Preview   FilePreview `json:"preview"`
+	Size      int64       `json:"size"`
+	TrashedAt *time.Time  `json:"trashed_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+}
+
+// FilePreview How the file can be shown inline, if at all.
+type FilePreview string
+
+// Folder defines model for Folder.
+type Folder struct {
+	CreatedAt time.Time           `json:"created_at"`
+	Id        openapi_types.UUID  `json:"id"`
+	Name      string              `json:"name"`
+	ParentId  *openapi_types.UUID `json:"parent_id"`
+	TrashedAt *time.Time          `json:"trashed_at"`
+	UpdatedAt time.Time           `json:"updated_at"`
+}
+
+// FolderContents defines model for FolderContents.
+type FolderContents struct {
+	Files   []File   `json:"files"`
+	Folders []Folder `json:"folders"`
+
+	// Path The folders from the top level down to this one.
+	Path []Folder `json:"path"`
+}
+
+// FolderInput defines model for FolderInput.
+type FolderInput struct {
+	Name     string              `json:"name"`
+	ParentId *openapi_types.UUID `json:"parent_id"`
+}
+
 // GoogleRedirect defines model for GoogleRedirect.
 type GoogleRedirect struct {
 	Url string `json:"url"`
@@ -128,6 +282,23 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// MoveFileInput defines model for MoveFileInput.
+type MoveFileInput struct {
+	// FolderId Null moves it to the top level.
+	FolderId *openapi_types.UUID `json:"folder_id"`
+}
+
+// MoveFolderInput defines model for MoveFolderInput.
+type MoveFolderInput struct {
+	// ParentId Null moves it to the top level.
+	ParentId *openapi_types.UUID `json:"parent_id"`
+}
+
+// NameInput defines model for NameInput.
+type NameInput struct {
+	Name string `json:"name"`
+}
 
 // S3ConnectionInput defines model for S3ConnectionInput.
 type S3ConnectionInput struct {
@@ -160,6 +331,21 @@ type Session struct {
 type Settings struct {
 	// AllowRegistration When false, nobody can create an account, by password or through a first-time Google sign-in. The first account on an empty instance can always be created.
 	AllowRegistration bool `json:"allow_registration"`
+
+	// MaxUploadBytes The largest file anyone can upload.
+	MaxUploadBytes int64 `json:"max_upload_bytes"`
+}
+
+// SettingsUpdate Only the fields present are changed.
+type SettingsUpdate struct {
+	AllowRegistration *bool  `json:"allow_registration,omitempty"`
+	MaxUploadBytes    *int64 `json:"max_upload_bytes,omitempty"`
+}
+
+// Trash defines model for Trash.
+type Trash struct {
+	Files   []File   `json:"files"`
+	Folders []Folder `json:"folders"`
 }
 
 // User defines model for User.
@@ -177,11 +363,37 @@ type User struct {
 // UserRole defines model for User.Role.
 type UserRole string
 
+// Id defines model for Id.
+type Id = openapi_types.UUID
+
 // GoogleCallbackParams defines parameters for GoogleCallback.
 type GoogleCallbackParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
 	State *string `form:"state,omitempty" json:"state,omitempty"`
 }
+
+// ListFolderParams defines parameters for ListFolder.
+type ListFolderParams struct {
+	FolderId *openapi_types.UUID `form:"folder_id,omitempty" json:"folder_id,omitempty"`
+}
+
+// UploadFileParams defines parameters for UploadFile.
+type UploadFileParams struct {
+	// ConnectionId Required. Not marked so, because generated checks would run before access checks.
+	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
+
+	// Name Required, as for connection_id.
+	Name     *string             `form:"name,omitempty" json:"name,omitempty"`
+	FolderId *openapi_types.UUID `form:"folder_id,omitempty" json:"folder_id,omitempty"`
+}
+
+// DownloadFileParams defines parameters for DownloadFile.
+type DownloadFileParams struct {
+	Disposition *DownloadFileParamsDisposition `form:"disposition,omitempty" json:"disposition,omitempty"`
+}
+
+// DownloadFileParamsDisposition defines parameters for DownloadFile.
+type DownloadFileParamsDisposition string
 
 // GoogleDriveCallbackParams defines parameters for GoogleDriveCallback.
 type GoogleDriveCallbackParams struct {
@@ -190,7 +402,10 @@ type GoogleDriveCallbackParams struct {
 }
 
 // UpdateSettingsJSONRequestBody defines body for UpdateSettings for application/json ContentType.
-type UpdateSettingsJSONRequestBody = Settings
+type UpdateSettingsJSONRequestBody = SettingsUpdate
+
+// CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
+type CreateAPIKeyJSONRequestBody = APIKeyInput
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = Credentials
@@ -200,6 +415,21 @@ type ChangePasswordJSONRequestBody = ChangePassword
 
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = Credentials
+
+// RenameFileJSONRequestBody defines body for RenameFile for application/json ContentType.
+type RenameFileJSONRequestBody = NameInput
+
+// MoveFileJSONRequestBody defines body for MoveFile for application/json ContentType.
+type MoveFileJSONRequestBody = MoveFileInput
+
+// CreateFolderJSONRequestBody defines body for CreateFolder for application/json ContentType.
+type CreateFolderJSONRequestBody = FolderInput
+
+// RenameFolderJSONRequestBody defines body for RenameFolder for application/json ContentType.
+type RenameFolderJSONRequestBody = NameInput
+
+// MoveFolderJSONRequestBody defines body for MoveFolder for application/json ContentType.
+type MoveFolderJSONRequestBody = MoveFolderInput
 
 // CreateS3ConnectionJSONRequestBody defines body for CreateS3Connection for application/json ContentType.
 type CreateS3ConnectionJSONRequestBody = S3ConnectionInput
@@ -212,6 +442,15 @@ type ServerInterface interface {
 	// UpdateSettings Change instance-wide settings
 	// (PATCH /api/v1/admin/settings)
 	UpdateSettings(w http.ResponseWriter, r *http.Request)
+	// ListAPIKeys List the signed-in user's API keys
+	// (GET /api/v1/auth/api-keys)
+	ListAPIKeys(w http.ResponseWriter, r *http.Request)
+	// CreateAPIKey Create an API key
+	// (POST /api/v1/auth/api-keys)
+	CreateAPIKey(w http.ResponseWriter, r *http.Request)
+	// RevokeAPIKey Revoke one of the signed-in user's API keys
+	// (DELETE /api/v1/auth/api-keys/{id})
+	RevokeAPIKey(w http.ResponseWriter, r *http.Request, id Id)
 	// GetAuthConfig Report which sign-in options this instance offers
 	// (GET /api/v1/auth/config)
 	GetAuthConfig(w http.ResponseWriter, r *http.Request)
@@ -245,6 +484,51 @@ type ServerInterface interface {
 	// RevokeSession End one of the signed-in user's sessions
 	// (DELETE /api/v1/auth/sessions/{id})
 	RevokeSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ListFolder List a folder, or the top level if none is given
+	// (GET /api/v1/files)
+	ListFolder(w http.ResponseWriter, r *http.Request, params ListFolderParams)
+	// UploadFile Upload a file
+	// (POST /api/v1/files)
+	UploadFile(w http.ResponseWriter, r *http.Request, params UploadFileParams)
+	// DeleteFile Permanently delete a file that's in the trash
+	// (DELETE /api/v1/files/{id})
+	DeleteFile(w http.ResponseWriter, r *http.Request, id Id)
+	// GetFile Return a file's details
+	// (GET /api/v1/files/{id})
+	GetFile(w http.ResponseWriter, r *http.Request, id Id)
+	// RenameFile Rename a file
+	// (PATCH /api/v1/files/{id})
+	RenameFile(w http.ResponseWriter, r *http.Request, id Id)
+	// DownloadFile Stream a file's content
+	// (GET /api/v1/files/{id}/content)
+	DownloadFile(w http.ResponseWriter, r *http.Request, id Id, params DownloadFileParams)
+	// MoveFile Move a file to another folder
+	// (POST /api/v1/files/{id}/move)
+	MoveFile(w http.ResponseWriter, r *http.Request, id Id)
+	// RestoreFile Take a file out of the trash
+	// (POST /api/v1/files/{id}/restore)
+	RestoreFile(w http.ResponseWriter, r *http.Request, id Id)
+	// TrashFile Move a file to the trash
+	// (POST /api/v1/files/{id}/trash)
+	TrashFile(w http.ResponseWriter, r *http.Request, id Id)
+	// CreateFolder Create a folder
+	// (POST /api/v1/folders)
+	CreateFolder(w http.ResponseWriter, r *http.Request)
+	// DeleteFolder Permanently delete a folder that's in the trash, and everything in it
+	// (DELETE /api/v1/folders/{id})
+	DeleteFolder(w http.ResponseWriter, r *http.Request, id Id)
+	// RenameFolder Rename a folder
+	// (PATCH /api/v1/folders/{id})
+	RenameFolder(w http.ResponseWriter, r *http.Request, id Id)
+	// MoveFolder Move a folder into another folder
+	// (POST /api/v1/folders/{id}/move)
+	MoveFolder(w http.ResponseWriter, r *http.Request, id Id)
+	// RestoreFolder Take a folder out of the trash
+	// (POST /api/v1/folders/{id}/restore)
+	RestoreFolder(w http.ResponseWriter, r *http.Request, id Id)
+	// TrashFolder Move a folder and everything in it to the trash
+	// (POST /api/v1/folders/{id}/trash)
+	TrashFolder(w http.ResponseWriter, r *http.Request, id Id)
 	// ListConnections List the signed-in user's storage connections
 	// (GET /api/v1/storage/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
@@ -263,6 +547,12 @@ type ServerInterface interface {
 	// ConnectGoogleDrive Start connecting a Google Drive account
 	// (POST /api/v1/storage/google/connect)
 	ConnectGoogleDrive(w http.ResponseWriter, r *http.Request)
+	// EmptyTrash Permanently delete everything in the trash
+	// (DELETE /api/v1/trash)
+	EmptyTrash(w http.ResponseWriter, r *http.Request)
+	// ListTrash List what's in the trash
+	// (GET /api/v1/trash)
+	ListTrash(w http.ResponseWriter, r *http.Request)
 	// GetHealth Report whether the server can reach its database
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -281,6 +571,24 @@ func (_ Unimplemented) GetSettings(w http.ResponseWriter, r *http.Request) {
 // UpdateSettings Change instance-wide settings
 // (PATCH /api/v1/admin/settings)
 func (_ Unimplemented) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListAPIKeys List the signed-in user's API keys
+// (GET /api/v1/auth/api-keys)
+func (_ Unimplemented) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAPIKey Create an API key
+// (POST /api/v1/auth/api-keys)
+func (_ Unimplemented) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeAPIKey Revoke one of the signed-in user's API keys
+// (DELETE /api/v1/auth/api-keys/{id})
+func (_ Unimplemented) RevokeAPIKey(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -350,6 +658,96 @@ func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListFolder List a folder, or the top level if none is given
+// (GET /api/v1/files)
+func (_ Unimplemented) ListFolder(w http.ResponseWriter, r *http.Request, params ListFolderParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UploadFile Upload a file
+// (POST /api/v1/files)
+func (_ Unimplemented) UploadFile(w http.ResponseWriter, r *http.Request, params UploadFileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteFile Permanently delete a file that's in the trash
+// (DELETE /api/v1/files/{id})
+func (_ Unimplemented) DeleteFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFile Return a file's details
+// (GET /api/v1/files/{id})
+func (_ Unimplemented) GetFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RenameFile Rename a file
+// (PATCH /api/v1/files/{id})
+func (_ Unimplemented) RenameFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DownloadFile Stream a file's content
+// (GET /api/v1/files/{id}/content)
+func (_ Unimplemented) DownloadFile(w http.ResponseWriter, r *http.Request, id Id, params DownloadFileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MoveFile Move a file to another folder
+// (POST /api/v1/files/{id}/move)
+func (_ Unimplemented) MoveFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RestoreFile Take a file out of the trash
+// (POST /api/v1/files/{id}/restore)
+func (_ Unimplemented) RestoreFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TrashFile Move a file to the trash
+// (POST /api/v1/files/{id}/trash)
+func (_ Unimplemented) TrashFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateFolder Create a folder
+// (POST /api/v1/folders)
+func (_ Unimplemented) CreateFolder(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteFolder Permanently delete a folder that's in the trash, and everything in it
+// (DELETE /api/v1/folders/{id})
+func (_ Unimplemented) DeleteFolder(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RenameFolder Rename a folder
+// (PATCH /api/v1/folders/{id})
+func (_ Unimplemented) RenameFolder(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MoveFolder Move a folder into another folder
+// (POST /api/v1/folders/{id}/move)
+func (_ Unimplemented) MoveFolder(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RestoreFolder Take a folder out of the trash
+// (POST /api/v1/folders/{id}/restore)
+func (_ Unimplemented) RestoreFolder(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TrashFolder Move a folder and everything in it to the trash
+// (POST /api/v1/folders/{id}/trash)
+func (_ Unimplemented) TrashFolder(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListConnections List the signed-in user's storage connections
 // (GET /api/v1/storage/connections)
 func (_ Unimplemented) ListConnections(w http.ResponseWriter, r *http.Request) {
@@ -383,6 +781,18 @@ func (_ Unimplemented) GoogleDriveCallback(w http.ResponseWriter, r *http.Reques
 // ConnectGoogleDrive Start connecting a Google Drive account
 // (POST /api/v1/storage/google/connect)
 func (_ Unimplemented) ConnectGoogleDrive(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// EmptyTrash Permanently delete everything in the trash
+// (DELETE /api/v1/trash)
+func (_ Unimplemented) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTrash List what's in the trash
+// (GET /api/v1/trash)
+func (_ Unimplemented) ListTrash(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -420,6 +830,60 @@ func (siw *ServerInterfaceWrapper) UpdateSettings(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAPIKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAPIKeys(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAPIKey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAPIKey(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -627,6 +1091,440 @@ func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListFolder operation middleware
+func (siw *ServerInterfaceWrapper) ListFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFolderParams
+
+	// ------------- Optional query parameter "folder_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "folder_id", r.URL.Query(), &params.FolderId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "folder_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "folder_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFolder(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadFile operation middleware
+func (siw *ServerInterfaceWrapper) UploadFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UploadFileParams
+
+	// ------------- Optional query parameter "connection_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "connection_id", r.URL.Query(), &params.ConnectionId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "connection_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connection_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "folder_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "folder_id", r.URL.Query(), &params.FolderId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "folder_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "folder_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadFile(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFile operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFile operation middleware
+func (siw *ServerInterfaceWrapper) GetFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameFile operation middleware
+func (siw *ServerInterfaceWrapper) RenameFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadFile operation middleware
+func (siw *ServerInterfaceWrapper) DownloadFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadFileParams
+
+	// ------------- Optional query parameter "disposition" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "disposition", r.URL.Query(), &params.Disposition, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "disposition"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "disposition", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadFile(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveFile operation middleware
+func (siw *ServerInterfaceWrapper) MoveFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreFile operation middleware
+func (siw *ServerInterfaceWrapper) RestoreFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TrashFile operation middleware
+func (siw *ServerInterfaceWrapper) TrashFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TrashFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateFolder operation middleware
+func (siw *ServerInterfaceWrapper) CreateFolder(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFolder(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFolder operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameFolder operation middleware
+func (siw *ServerInterfaceWrapper) RenameFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveFolder operation middleware
+func (siw *ServerInterfaceWrapper) MoveFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreFolder operation middleware
+func (siw *ServerInterfaceWrapper) RestoreFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TrashFolder operation middleware
+func (siw *ServerInterfaceWrapper) TrashFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TrashFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListConnections operation middleware
 func (siw *ServerInterfaceWrapper) ListConnections(w http.ResponseWriter, r *http.Request) {
 
@@ -758,6 +1656,34 @@ func (siw *ServerInterfaceWrapper) ConnectGoogleDrive(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ConnectGoogleDrive(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EmptyTrash operation middleware
+func (siw *ServerInterfaceWrapper) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EmptyTrash(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTrash operation middleware
+func (siw *ServerInterfaceWrapper) ListTrash(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTrash(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -929,6 +1855,66 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/google/callback", wrapper.GoogleCallback)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/api-keys", wrapper.ListAPIKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/api-keys", wrapper.CreateAPIKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/auth/api-keys/{id}", wrapper.RevokeAPIKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/files", wrapper.ListFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/files", wrapper.UploadFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/files/{id}", wrapper.DeleteFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/files/{id}", wrapper.GetFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/files/{id}", wrapper.RenameFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/files/{id}/content", wrapper.DownloadFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/files/{id}/move", wrapper.MoveFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/files/{id}/trash", wrapper.TrashFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/files/{id}/restore", wrapper.RestoreFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/folders", wrapper.CreateFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/folders/{id}", wrapper.DeleteFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/folders/{id}", wrapper.RenameFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/folders/{id}/move", wrapper.MoveFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/folders/{id}/trash", wrapper.TrashFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/folders/{id}/restore", wrapper.RestoreFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/trash", wrapper.EmptyTrash)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/trash", wrapper.ListTrash)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/settings", wrapper.GetSettings)
