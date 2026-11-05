@@ -44,7 +44,8 @@ ORDER BY trashed_at DESC, id;
 -- name: ListFilesUnderFolderForOwner :many
 WITH RECURSIVE tree AS (
     SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.id = $2
-    UNION ALL
+    -- UNION rather than UNION ALL, so a loop in the tree ends the walk.
+    UNION
     SELECT c.id FROM folders c JOIN tree ON c.parent_id = tree.id WHERE c.user_id = $1
 )
 SELECT files.*
@@ -77,6 +78,8 @@ WITH RECURSIVE path AS (
     FROM folders p
     JOIN path ON p.id = path.parent_id
     WHERE p.user_id = $1
+      -- The depth changes every row, so only a limit can end a walk round a loop.
+      AND path.depth < 1000
 )
 SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at
 FROM path

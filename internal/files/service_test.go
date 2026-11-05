@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -250,6 +251,7 @@ func TestService(t *testing.T) {
 		{"the trash lists only what was trashed directly", testTrashListing},
 		{"removing a connection forgets its files", testConnectionRemoval},
 		{"reading a file's content", testOpen},
+		{"a loop in the folder tree can.t hang the server", testFolderLoopCannotHang},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -966,5 +968,27 @@ func testOpen(t *testing.T, f *fixture) {
 	stored.getErr = errors.New("connection reset")
 	if _, err := f.service.Open(f.ctx, a.id, file.ID, nil); !errors.Is(err, ErrProviderFailed) {
 		t.Errorf("provider down: error = %v, want ErrProviderFailed", err)
+	}
+}
+
+// Moves can never make a loop, but one could still come from a manual edit of the
+// database. It must not be able to hang the queries that walk the tree.
+func testFolderLoopCannotHang(t *testing.T, f *fixture) {
+	a := f.account(t)
+	one := f.folder(t, a, nil, "One")
+	two := f.folder(t, a, &one.ID, "Two")
+	if _, err := f.pool.Exec(f.ctx, `UPDATE folders SET parent_id = $1 WHERE id = $2`, two.ID, one.ID); err != nil {
+		t.Fatalf("make a loop: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(f.ctx, 5*time.Second)
+	defer cancel()
+	if _, err := f.service.List(ctx, a.id, &one.ID); errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+		t.Fatalf("List hung: %v", err)
+	}
+	if err := f.service.TrashFolder(ctx, a.id, one.ID); err != nil {
+		t.Fatalf("TrashFolder: %v", err)
+	}
+	if err := f.service.DeleteFolder(ctx, a.id, one.ID, testIP); err != nil {
+		t.Fatalf("DeleteFolder: %v", err)
 	}
 }
