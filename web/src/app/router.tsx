@@ -4,6 +4,7 @@ import { createRouter } from "@tanstack/react-router";
 import { adminSettingsRoute } from "@/features/admin/routes";
 import { accountRoute, authedRoute, registerRoute, signInRoute } from "@/features/auth/routes";
 import { statusRoute } from "@/features/status/routes";
+import { storageRoute } from "@/features/storage/routes";
 
 import { rootRoute } from "./root-route";
 
@@ -13,7 +14,7 @@ export const router = createRouter({
   routeTree: rootRoute.addChildren([
     signInRoute,
     registerRoute,
-    authedRoute.addChildren([statusRoute, accountRoute, adminSettingsRoute]),
+    authedRoute.addChildren([statusRoute, storageRoute, accountRoute, adminSettingsRoute]),
   ]),
   context: { queryClient },
 });

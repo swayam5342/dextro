@@ -15,6 +15,9 @@ export function UserNav() {
   }
   return (
     <nav className="flex items-center gap-1">
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/storage">Storage</Link>
+      </Button>
       {user.role === "admin" && (
         <Button asChild variant="ghost" size="sm">
           <Link to="/admin/settings">Server settings</Link>
