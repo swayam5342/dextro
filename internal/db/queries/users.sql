@@ -40,3 +40,7 @@ WHERE provider = $1 AND subject = $2;
 -- name: CreateIdentity :exec
 INSERT INTO user_identities (provider, subject, user_id, email)
 VALUES ($1, $2, $3, $4);
+
+-- Serializes account creation so exactly one sign-up can be the first.
+-- name: LockUserCreation :exec
+SELECT pg_advisory_xact_lock(hashtextextended('dextro.user_creation', 0));

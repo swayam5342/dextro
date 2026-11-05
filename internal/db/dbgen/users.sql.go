@@ -144,6 +144,16 @@ func (q *Queries) GetUserForLogin(ctx context.Context, email string) (User, erro
 	return i, err
 }
 
+const lockUserCreation = `-- name: LockUserCreation :exec
+SELECT pg_advisory_xact_lock(hashtextextended('dextro.user_creation', 0))
+`
+
+// Serializes account creation so exactly one sign-up can be the first.
+func (q *Queries) LockUserCreation(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockUserCreation)
+	return err
+}
+
 const updateUserPassword = `-- name: UpdateUserPassword :execrows
 UPDATE users
 SET password_hash = $2,

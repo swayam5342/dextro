@@ -32,13 +32,20 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 
 // UpdateSettings implements apigen.ServerInterface.
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
-	var body apigen.Settings
+	// A pointer tells a missing field from false, which would close registration.
+	var body struct {
+		AllowRegistration *bool `json:"allow_registration"`
+	}
 	if !httpx.DecodeJSON(w, r, &body) {
+		return
+	}
+	if body.AllowRegistration == nil {
+		httpx.WriteError(w, r, http.StatusBadRequest, httpx.CodeBadRequest, "The request is not valid.")
 		return
 	}
 	principal, _ := httpx.PrincipalFrom(r.Context())
 	settings, err := h.service.UpdateSettings(r.Context(), principal.UserID, httpx.ClientIP(r.Context()),
-		Settings{AllowRegistration: body.AllowRegistration})
+		Settings{AllowRegistration: *body.AllowRegistration})
 	if err != nil {
 		h.fail(w, r, err)
 		return
