@@ -1,5 +1,5 @@
-// Package storage connects users' own storage accounts to dextro.
-package storage
+// Package provider defines what dextro needs from a storage service.
+package provider
 
 import (
 	"context"

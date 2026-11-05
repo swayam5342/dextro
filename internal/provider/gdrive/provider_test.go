@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/swayam5342/dextro/internal/storage/storagetest"
+	"github.com/swayam5342/dextro/internal/provider/providertest"
 )
 
 const testVerifier = "the-verifier-the-verifier-the-verifier-the-verifier"
@@ -34,8 +34,8 @@ func TestConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	p.pageSize = storagetest.ListPageSize
-	storagetest.Run(t, p)
+	p.pageSize = providertest.ListPageSize
+	providertest.Run(t, p)
 	if f.permissionCalls != 0 {
 		t.Errorf("permission calls = %d, want none", f.permissionCalls)
 	}

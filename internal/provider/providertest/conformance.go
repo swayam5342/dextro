@@ -1,6 +1,6 @@
-// Package storagetest holds the tests every provider must pass, and a fake
+// Package providertest holds the tests every provider must pass, and a fake
 // provider for testing the code above that interface.
-package storagetest
+package providertest
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/dextro/internal/provider"
 )
 
 // ListPageSize is the page size providers must be configured with for Run, so
@@ -22,24 +22,24 @@ const ListPageSize = 2
 // largeBody is bigger than any adapter's upload chunk, so it takes several.
 const largeBody = 40 << 20
 
-// Run checks that a provider behaves as the storage.Provider contract says. The
+// Run checks that a provider behaves as the provider.Provider contract says. The
 // provider must start empty and page listings at ListPageSize.
-func Run(t *testing.T, provider storage.Provider) {
+func Run(t *testing.T, p provider.Provider) {
 	t.Helper()
 	ctx := context.Background()
 
-	put := func(t *testing.T, name, body string) storage.Object {
+	put := func(t *testing.T, name, body string) provider.Object {
 		t.Helper()
-		object, err := provider.Put(ctx, storage.Upload{Name: name, ContentType: "text/plain", Body: strings.NewReader(body)})
+		object, err := p.Put(ctx, provider.Upload{Name: name, ContentType: "text/plain", Body: strings.NewReader(body)})
 		if err != nil {
 			t.Fatalf("Put(%q): %v", name, err)
 		}
-		t.Cleanup(func() { _ = provider.Delete(ctx, object.ID) })
+		t.Cleanup(func() { _ = p.Delete(ctx, object.ID) })
 		return object
 	}
 	read := func(t *testing.T, id string) string {
 		t.Helper()
-		reader, err := provider.Get(ctx, id)
+		reader, err := p.Get(ctx, id)
 		if err != nil {
 			t.Fatalf("Get: %v", err)
 		}
@@ -50,12 +50,12 @@ func Run(t *testing.T, provider storage.Provider) {
 		}
 		return string(body)
 	}
-	listAll := func(t *testing.T) []storage.Object {
+	listAll := func(t *testing.T) []provider.Object {
 		t.Helper()
-		var all []storage.Object
+		var all []provider.Object
 		token := ""
 		for range 100 {
-			page, err := provider.List(ctx, token)
+			page, err := p.List(ctx, token)
 			if err != nil {
 				t.Fatalf("List: %v", err)
 			}
@@ -69,7 +69,7 @@ func Run(t *testing.T, provider storage.Provider) {
 	}
 
 	t.Run("check succeeds", func(t *testing.T) {
-		if err := provider.Check(ctx); err != nil {
+		if err := p.Check(ctx); err != nil {
 			t.Fatalf("Check: %v", err)
 		}
 	})
@@ -139,10 +139,10 @@ func Run(t *testing.T, provider storage.Provider) {
 
 	t.Run("deleting removes the object", func(t *testing.T) {
 		object := put(t, "gone.txt", "x")
-		if err := provider.Delete(ctx, object.ID); err != nil {
+		if err := p.Delete(ctx, object.ID); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}
-		if _, err := provider.Get(ctx, object.ID); !errors.Is(err, storage.ErrObjectNotFound) {
+		if _, err := p.Get(ctx, object.ID); !errors.Is(err, provider.ErrObjectNotFound) {
 			t.Errorf("Get after delete: error = %v, want ErrObjectNotFound", err)
 		}
 		for _, listed := range listAll(t) {
@@ -154,10 +154,10 @@ func Run(t *testing.T, provider storage.Provider) {
 
 	t.Run("missing objects are reported as such", func(t *testing.T) {
 		object := put(t, "once.txt", "x")
-		if err := provider.Delete(ctx, object.ID); err != nil {
+		if err := p.Delete(ctx, object.ID); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}
-		if err := provider.Delete(ctx, object.ID); !errors.Is(err, storage.ErrObjectNotFound) {
+		if err := p.Delete(ctx, object.ID); !errors.Is(err, provider.ErrObjectNotFound) {
 			t.Errorf("Delete twice: error = %v, want ErrObjectNotFound", err)
 		}
 	})
@@ -166,17 +166,17 @@ func Run(t *testing.T, provider storage.Provider) {
 		// Not a Seeker or a Len-er, so the provider can't learn the size up front.
 		body := io.LimitReader(pattern{}, largeBody)
 		want := sha256.New()
-		object, err := provider.Put(ctx, storage.Upload{
+		object, err := p.Put(ctx, provider.Upload{
 			Name: "large.bin", ContentType: "application/octet-stream", Body: io.TeeReader(body, want),
 		})
 		if err != nil {
 			t.Fatalf("Put: %v", err)
 		}
-		t.Cleanup(func() { _ = provider.Delete(ctx, object.ID) })
+		t.Cleanup(func() { _ = p.Delete(ctx, object.ID) })
 		if object.Size != largeBody {
 			t.Errorf("Size = %d, want %d", object.Size, largeBody)
 		}
-		reader, err := provider.Get(ctx, object.ID)
+		reader, err := p.Get(ctx, object.ID)
 		if err != nil {
 			t.Fatalf("Get: %v", err)
 		}
@@ -194,7 +194,7 @@ func Run(t *testing.T, provider storage.Provider) {
 		before := len(listAll(t))
 		boom := errors.New("client went away")
 		body := io.MultiReader(strings.NewReader("partial"), failing{boom})
-		_, err := provider.Put(ctx, storage.Upload{Name: "broken.txt", ContentType: "text/plain", Body: body})
+		_, err := p.Put(ctx, provider.Upload{Name: "broken.txt", ContentType: "text/plain", Body: body})
 		if err == nil {
 			t.Fatal("Put succeeded, want error")
 		}

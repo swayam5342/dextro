@@ -19,7 +19,7 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/dextro/internal/provider"
 )
 
 const (
@@ -53,7 +53,7 @@ type Provider struct {
 	pageSize int32
 }
 
-var _ storage.Provider = (*Provider)(nil)
+var _ provider.Provider = (*Provider)(nil)
 
 // Open returns a Provider that makes its requests through httpClient, which must
 // be the guarded client because the endpoint is user-supplied.
@@ -76,7 +76,7 @@ func Open(s Settings, c Credentials, httpClient *http.Client) (*Provider, error)
 	return &Provider{client: client, bucket: s.Bucket, pageSize: defaultPageSize}, nil
 }
 
-// Check implements storage.Provider.
+// Check implements provider.Provider.
 func (p *Provider) Check(ctx context.Context) error {
 	if _, err := p.client.HeadBucket(ctx, &awss3.HeadBucketInput{Bucket: &p.bucket}); err != nil {
 		return fmt.Errorf("reach bucket: %w", err)
@@ -84,11 +84,11 @@ func (p *Provider) Check(ctx context.Context) error {
 	return nil
 }
 
-// Put implements storage.Provider. A file that fits in one part goes up in a
+// Put implements provider.Provider. A file that fits in one part goes up in a
 // single request; anything larger goes up one part at a time, reusing one buffer.
-func (p *Provider) Put(ctx context.Context, upload storage.Upload) (storage.Object, error) {
+func (p *Provider) Put(ctx context.Context, upload provider.Upload) (provider.Object, error) {
 	if upload.Name == "" {
-		return storage.Object{}, errors.New("object name is required")
+		return provider.Object{}, errors.New("object name is required")
 	}
 	key := objectPrefix + uuid.NewString() + "/" + escapeName(upload.Name)
 	buffer := make([]byte, partSize)
@@ -104,21 +104,21 @@ func (p *Provider) Put(ctx context.Context, upload storage.Upload) (storage.Obje
 			Body:        bytes.NewReader(buffer[:n]),
 		})
 		if err != nil {
-			return storage.Object{}, fmt.Errorf("put object: %w", err)
+			return provider.Object{}, fmt.Errorf("put object: %w", err)
 		}
 		size = int64(n)
 	case err != nil:
-		return storage.Object{}, fmt.Errorf("read upload: %w", err)
+		return provider.Object{}, fmt.Errorf("read upload: %w", err)
 	default:
 		if size, err = p.putParts(ctx, key, upload, buffer); err != nil {
-			return storage.Object{}, err
+			return provider.Object{}, err
 		}
 	}
-	return storage.Object{ID: key, Name: upload.Name, Size: size, ModifiedAt: time.Now()}, nil
+	return provider.Object{ID: key, Name: upload.Name, Size: size, ModifiedAt: time.Now()}, nil
 }
 
 // putParts sends a file whose first part is already in buffer.
-func (p *Provider) putParts(ctx context.Context, key string, upload storage.Upload, buffer []byte) (size int64, err error) {
+func (p *Provider) putParts(ctx context.Context, key string, upload provider.Upload, buffer []byte) (size int64, err error) {
 	created, err := p.client.CreateMultipartUpload(ctx, &awss3.CreateMultipartUploadInput{
 		Bucket:      &p.bucket,
 		Key:         &key,
@@ -179,14 +179,14 @@ func (p *Provider) abort(ctx context.Context, key string, uploadID *string) {
 	})
 }
 
-// Get implements storage.Provider.
+// Get implements provider.Provider.
 func (p *Provider) Get(ctx context.Context, id string) (io.ReadCloser, error) {
 	if !ownsKey(id) {
-		return nil, storage.ErrObjectNotFound
+		return nil, provider.ErrObjectNotFound
 	}
 	out, err := p.client.GetObject(ctx, &awss3.GetObjectInput{Bucket: &p.bucket, Key: &id})
 	if isNotFound(err) {
-		return nil, storage.ErrObjectNotFound
+		return nil, provider.ErrObjectNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get object: %w", err)
@@ -194,15 +194,15 @@ func (p *Provider) Get(ctx context.Context, id string) (io.ReadCloser, error) {
 	return out.Body, nil
 }
 
-// Delete implements storage.Provider. S3 reports success for a key that doesn't
+// Delete implements provider.Provider. S3 reports success for a key that doesn't
 // exist, so it looks first in order to keep to the contract.
 func (p *Provider) Delete(ctx context.Context, id string) error {
 	if !ownsKey(id) {
-		return storage.ErrObjectNotFound
+		return provider.ErrObjectNotFound
 	}
 	_, err := p.client.HeadObject(ctx, &awss3.HeadObjectInput{Bucket: &p.bucket, Key: &id})
 	if isNotFound(err) {
-		return storage.ErrObjectNotFound
+		return provider.ErrObjectNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("find object: %w", err)
@@ -213,8 +213,8 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List implements storage.Provider.
-func (p *Provider) List(ctx context.Context, pageToken string) (storage.ObjectPage, error) {
+// List implements provider.Provider.
+func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectPage, error) {
 	input := &awss3.ListObjectsV2Input{
 		Bucket:  &p.bucket,
 		Prefix:  aws.String(objectPrefix),
@@ -225,15 +225,15 @@ func (p *Provider) List(ctx context.Context, pageToken string) (storage.ObjectPa
 	}
 	out, err := p.client.ListObjectsV2(ctx, input)
 	if err != nil {
-		return storage.ObjectPage{}, fmt.Errorf("list objects: %w", err)
+		return provider.ObjectPage{}, fmt.Errorf("list objects: %w", err)
 	}
-	page := storage.ObjectPage{Objects: make([]storage.Object, 0, len(out.Contents))}
+	page := provider.ObjectPage{Objects: make([]provider.Object, 0, len(out.Contents))}
 	for _, item := range out.Contents {
 		key := aws.ToString(item.Key)
 		if !ownsKey(key) {
 			continue
 		}
-		page.Objects = append(page.Objects, storage.Object{
+		page.Objects = append(page.Objects, provider.Object{
 			ID:         key,
 			Name:       nameFromKey(key),
 			Size:       aws.ToInt64(item.Size),
@@ -246,7 +246,7 @@ func (p *Provider) List(ctx context.Context, pageToken string) (storage.ObjectPa
 	return page, nil
 }
 
-func contentType(upload storage.Upload) *string {
+func contentType(upload provider.Upload) *string {
 	if upload.ContentType == "" {
 		return nil
 	}

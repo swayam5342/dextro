@@ -16,7 +16,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/dextro/internal/provider"
 )
 
 const (
@@ -164,9 +164,9 @@ type Provider struct {
 	pageSize int64
 }
 
-var _ storage.Provider = (*Provider)(nil)
+var _ provider.Provider = (*Provider)(nil)
 
-// Check implements storage.Provider.
+// Check implements provider.Provider.
 func (p *Provider) Check(ctx context.Context) error {
 	folder, err := p.service.Files.Get(p.folderID).Fields("id,trashed").Context(ctx).Do()
 	if isNotFound(err) {
@@ -181,8 +181,8 @@ func (p *Provider) Check(ctx context.Context) error {
 	return nil
 }
 
-// Put implements storage.Provider.
-func (p *Provider) Put(ctx context.Context, upload storage.Upload) (storage.Object, error) {
+// Put implements provider.Provider.
+func (p *Provider) Put(ctx context.Context, upload provider.Upload) (provider.Object, error) {
 	options := []googleapi.MediaOption{googleapi.ChunkSize(chunkSize)}
 	if upload.ContentType != "" {
 		options = append(options, googleapi.ContentType(upload.ContentType))
@@ -190,16 +190,16 @@ func (p *Provider) Put(ctx context.Context, upload storage.Upload) (storage.Obje
 	file := &drive.File{Name: upload.Name, Parents: []string{p.folderID}}
 	created, err := p.service.Files.Create(file).Media(upload.Body, options...).Fields(fileFields).Context(ctx).Do()
 	if err != nil {
-		return storage.Object{}, fmt.Errorf("upload file: %w", err)
+		return provider.Object{}, fmt.Errorf("upload file: %w", err)
 	}
 	return toObject(created), nil
 }
 
-// Get implements storage.Provider.
+// Get implements provider.Provider.
 func (p *Provider) Get(ctx context.Context, id string) (io.ReadCloser, error) {
 	response, err := p.service.Files.Get(id).Context(ctx).Download() //nolint:bodyclose // The caller closes it.
 	if isNotFound(err) {
-		return nil, storage.ErrObjectNotFound
+		return nil, provider.ErrObjectNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("download file: %w", err)
@@ -207,11 +207,11 @@ func (p *Provider) Get(ctx context.Context, id string) (io.ReadCloser, error) {
 	return response.Body, nil
 }
 
-// Delete implements storage.Provider.
+// Delete implements provider.Provider.
 func (p *Provider) Delete(ctx context.Context, id string) error {
 	err := p.service.Files.Delete(id).Context(ctx).Do()
 	if isNotFound(err) {
-		return storage.ErrObjectNotFound
+		return provider.ErrObjectNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("delete file: %w", err)
@@ -219,8 +219,8 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List implements storage.Provider.
-func (p *Provider) List(ctx context.Context, pageToken string) (storage.ObjectPage, error) {
+// List implements provider.Provider.
+func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectPage, error) {
 	query := fmt.Sprintf("'%s' in parents and mimeType != '%s' and trashed = false", escapeQuery(p.folderID), folderMimeType)
 	call := p.service.Files.List().Q(query).
 		Fields(googleapi.Field("nextPageToken,files(" + fileFields + ")")).
@@ -230,19 +230,19 @@ func (p *Provider) List(ctx context.Context, pageToken string) (storage.ObjectPa
 	}
 	found, err := call.Do()
 	if err != nil {
-		return storage.ObjectPage{}, fmt.Errorf("list files: %w", err)
+		return provider.ObjectPage{}, fmt.Errorf("list files: %w", err)
 	}
-	page := storage.ObjectPage{Objects: make([]storage.Object, 0, len(found.Files)), NextPageToken: found.NextPageToken}
+	page := provider.ObjectPage{Objects: make([]provider.Object, 0, len(found.Files)), NextPageToken: found.NextPageToken}
 	for _, file := range found.Files {
 		page.Objects = append(page.Objects, toObject(file))
 	}
 	return page, nil
 }
 
-func toObject(file *drive.File) storage.Object {
+func toObject(file *drive.File) provider.Object {
 	// A bad timestamp isn't worth failing over; the zero time just shows as unknown.
 	modified, _ := time.Parse(time.RFC3339, file.ModifiedTime)
-	return storage.Object{ID: file.Id, Name: file.Name, Size: file.Size, ModifiedAt: modified}
+	return provider.Object{ID: file.Id, Name: file.Name, Size: file.Size, ModifiedAt: modified}
 }
 
 func escapeQuery(value string) string {

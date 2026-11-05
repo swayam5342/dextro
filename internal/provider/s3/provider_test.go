@@ -18,8 +18,8 @@ import (
 	// Imported for its Docker-on-Windows fix.
 	_ "github.com/swayam5342/dextro/internal/db/dbtest"
 	"github.com/swayam5342/dextro/internal/netguard"
-	"github.com/swayam5342/dextro/internal/storage"
-	"github.com/swayam5342/dextro/internal/storage/storagetest"
+	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/dextro/internal/provider/providertest"
 )
 
 const (
@@ -85,16 +85,16 @@ func TestProvider(t *testing.T) {
 		return p
 	}
 	p := open(t, settings, credentials)
-	p.pageSize = storagetest.ListPageSize
+	p.pageSize = providertest.ListPageSize
 	createBucket(t, p, settings.Bucket)
 
 	t.Run("conformance", func(t *testing.T) {
-		storagetest.Run(t, p)
+		providertest.Run(t, p)
 	})
 
 	t.Run("failed uploads leave no parts behind", func(t *testing.T) {
 		body := io.MultiReader(io.LimitReader(zeros{}, partSize+1), failing{})
-		if _, err := p.Put(context.Background(), storage.Upload{Name: "broken.bin", Body: body}); err == nil {
+		if _, err := p.Put(context.Background(), provider.Upload{Name: "broken.bin", Body: body}); err == nil {
 			t.Fatal("Put succeeded, want error")
 		}
 		out, err := p.client.ListMultipartUploads(context.Background(), &awss3.ListMultipartUploadsInput{Bucket: aws.String(settings.Bucket)})
@@ -117,10 +117,10 @@ func TestProvider(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PutObject: %v", err)
 		}
-		if _, err := p.Get(ctx, foreign); !errors.Is(err, storage.ErrObjectNotFound) {
+		if _, err := p.Get(ctx, foreign); !errors.Is(err, provider.ErrObjectNotFound) {
 			t.Errorf("Get: error = %v, want ErrObjectNotFound", err)
 		}
-		if err := p.Delete(ctx, foreign); !errors.Is(err, storage.ErrObjectNotFound) {
+		if err := p.Delete(ctx, foreign); !errors.Is(err, provider.ErrObjectNotFound) {
 			t.Errorf("Delete: error = %v, want ErrObjectNotFound", err)
 		}
 		page, err := p.List(ctx, "")
@@ -138,7 +138,7 @@ func TestProvider(t *testing.T) {
 	})
 
 	t.Run("uploads never set a public acl", func(t *testing.T) {
-		object, err := p.Put(context.Background(), storage.Upload{Name: "private.txt", Body: strings.NewReader("x")})
+		object, err := p.Put(context.Background(), provider.Upload{Name: "private.txt", Body: strings.NewReader("x")})
 		if err != nil {
 			t.Fatalf("Put: %v", err)
 		}
@@ -182,7 +182,7 @@ func TestProvider(t *testing.T) {
 				}
 			}
 		}()
-		object, err := p.Put(context.Background(), storage.Upload{Name: "big.bin", Body: io.LimitReader(zeros{}, size)})
+		object, err := p.Put(context.Background(), provider.Upload{Name: "big.bin", Body: io.LimitReader(zeros{}, size)})
 		close(done)
 		<-sampled
 		if err != nil {

@@ -1,4 +1,4 @@
-package storagetest
+package providertest
 
 import "testing"
 
