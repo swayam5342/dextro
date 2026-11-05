@@ -78,6 +78,11 @@ env: ## Create .env with random secrets, or add any missing from an existing one
 			"$$(openssl rand -hex 24)" "$$(openssl rand -hex 10)" "$$(openssl rand -hex 24)" > .env; \
 		echo "created .env"; \
 	fi
+	@grep -q '^ENCRYPTION_KEYS=' .env || { \
+		[ -z "$$(tail -c1 .env)" ] || echo >> .env; \
+		printf 'ENCRYPTION_KEYS=k1:%s\n' "$$(openssl rand -base64 32)" >> .env; \
+		echo "added ENCRYPTION_KEYS to .env"; \
+	}
 
 up: env ## Build and start the whole stack
 	$(COMPOSE) up --build
