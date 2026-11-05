@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/swayam5342/dextro/internal/db/dbgen"
 )
@@ -43,8 +45,8 @@ type Event struct {
 	Metadata map[string]any
 }
 
-// Store writes audit events. Pass a transaction to record an event atomically
-// with the change it describes.
+// Store reads and writes audit events. Pass a transaction to record an event
+// atomically with the change it describes.
 type Store struct {
 	queries *dbgen.Queries
 }
@@ -74,4 +76,48 @@ func (s *Store) Record(ctx context.Context, e Event) error {
 		return fmt.Errorf("record audit event %q: %w", e.Action, err)
 	}
 	return nil
+}
+
+// Filter narrows a listing. Zero values mean no filter.
+type Filter struct {
+	Action string
+	// Before keeps events older than this ID.
+	Before int64
+}
+
+// Entry is a recorded event, as the admin reads it.
+type Entry struct {
+	ID int64
+	// ActorEmail is nil for the command line, or if nobody could be identified or
+	// the account has since been deleted.
+	ActorEmail *string
+	Action     string
+	IP         string
+	Metadata   map[string]any
+	CreatedAt  time.Time
+}
+
+// List returns up to limit events, newest first. It covers every user on purpose,
+// and only the admin's audit log calls it.
+func (s *Store) List(ctx context.Context, filter Filter, limit int32) ([]Entry, error) {
+	rows, err := s.queries.ListAuditEvents(ctx, dbgen.ListAuditEventsParams{
+		Action:   pgtype.Text{String: filter.Action, Valid: filter.Action != ""},
+		Before:   pgtype.Int8{Int64: filter.Before, Valid: filter.Before != 0},
+		PageSize: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list audit events: %w", err)
+	}
+	entries := make([]Entry, 0, len(rows))
+	for _, row := range rows {
+		entry := Entry{ID: row.ID, Action: row.Action, IP: row.Ip, CreatedAt: row.CreatedAt}
+		if row.ActorEmail.Valid {
+			entry.ActorEmail = &row.ActorEmail.String
+		}
+		if err := json.Unmarshal(row.Metadata, &entry.Metadata); err != nil {
+			return nil, fmt.Errorf("decode audit metadata: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
 }

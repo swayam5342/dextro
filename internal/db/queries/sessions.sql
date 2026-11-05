@@ -30,3 +30,7 @@ DELETE FROM sessions WHERE user_id = $1 AND expires_at <= now();
 
 -- name: DeleteAllSessionsForUser :exec
 DELETE FROM sessions WHERE user_id = $1;
+
+-- Instance-wide on purpose: only the background cleanup calls this.
+-- name: DeleteExpiredSessions :execrows
+DELETE FROM sessions WHERE expires_at <= now();

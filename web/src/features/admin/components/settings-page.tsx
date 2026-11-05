@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { Field, FormError } from "@/components/field";
@@ -49,11 +48,6 @@ export function SettingsPage() {
       {isPending && <p className="text-sm text-muted-foreground">Loading settings…</p>}
       {isError && <FormError message="Settings couldn't be loaded. Reload the page to try again." />}
       {settings && <UploadLimit current={settings.max_upload_bytes} />}
-      <p className="text-sm">
-        <Link to="/status" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
-          Server status
-        </Link>
-      </p>
     </div>
   );
 }

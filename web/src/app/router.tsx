@@ -1,7 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 
-import { adminSettingsRoute, adminUsersRoute } from "@/features/admin/routes";
+import {
+  adminAuditRoute,
+  adminSettingsRoute,
+  adminStatusRoute,
+  adminUsersRoute,
+} from "@/features/admin/routes";
 import {
   accountRoute,
   authedRoute,
@@ -10,7 +15,6 @@ import {
   signInRoute,
 } from "@/features/auth/routes";
 import { filesRoute, trashRoute } from "@/features/files/routes";
-import { statusRoute } from "@/features/status/routes";
 import { storageRoute } from "@/features/storage/routes";
 
 import { rootRoute } from "./root-route";
@@ -25,11 +29,12 @@ export const router = createRouter({
     authedRoute.addChildren([
       filesRoute,
       trashRoute,
-      statusRoute,
       storageRoute,
       accountRoute,
       adminSettingsRoute,
       adminUsersRoute,
+      adminStatusRoute,
+      adminAuditRoute,
     ]),
   ]),
   context: { queryClient },

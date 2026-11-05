@@ -172,6 +172,12 @@ export function AccountPage({
             <Button asChild variant="outline">
               <Link to="/admin/settings">Server settings</Link>
             </Button>
+            <Button asChild variant="outline">
+              <Link to="/admin/status">Server status</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/admin/audit">Audit log</Link>
+            </Button>
           </>
         )}
       </div>

@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
 import {
+  Activity,
   ChevronDown,
   Check,
   Database,
   Folder,
+  ScrollText,
   Search,
   Settings,
   Trash2,
@@ -32,7 +34,7 @@ import { connectionsQuery, poolQuery } from "@/features/storage/queries";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/storage" | "/admin/settings" | "/admin/users"; icon: LucideIcon; label: string }) {
+function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
   return (
     <Link
       to={to}
@@ -138,6 +140,8 @@ function Sidebar() {
           <nav aria-label="Admin" className="flex flex-col gap-0.5">
             <NavLink to="/admin/users" icon={Users} label="Users" />
             <NavLink to="/admin/settings" icon={Settings} label="Server settings" />
+            <NavLink to="/admin/status" icon={Activity} label="Server status" />
+            <NavLink to="/admin/audit" icon={ScrollText} label="Audit log" />
           </nav>
         </>
       )}

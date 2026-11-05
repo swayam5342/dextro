@@ -31,3 +31,31 @@ RETURNING *;
 -- name: DeleteConnectionForOwner :execrows
 DELETE FROM storage_connections
 WHERE user_id = $1 AND id = $2;
+
+-- Instance-wide on purpose: only the background quota sync calls this.
+-- name: ListAllConnectionsForQuotaSync :many
+SELECT *
+FROM storage_connections
+ORDER BY created_at, id;
+
+-- A failed check keeps the last known usage, which is better than nothing.
+-- name: RecordConnectionCheck :exec
+UPDATE storage_connections
+SET checked_at = now(),
+    check_ok = sqlc.arg(check_ok)::boolean,
+    used_bytes = CASE WHEN sqlc.arg(check_ok)::boolean THEN sqlc.arg(used_bytes)::bigint ELSE used_bytes END
+WHERE id = sqlc.arg(id);
+
+-- Instance-wide on purpose: only the admin's status page calls this.
+-- name: GetConnectionTotals :one
+SELECT count(*) AS accounts,
+       coalesce(sum(used_bytes), 0)::bigint AS used_bytes
+FROM storage_connections;
+
+-- Instance-wide on purpose: only the admin's status page calls this.
+-- name: ListUnreachableConnections :many
+SELECT c.settings, c.checked_at::timestamptz AS checked_at, u.email AS owner_email
+FROM storage_connections c
+JOIN users u ON u.id = c.user_id
+WHERE c.check_ok = false
+ORDER BY c.checked_at, c.id;

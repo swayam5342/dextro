@@ -466,3 +466,9 @@ func (s *Service) LinkGoogle(ctx context.Context, userID uuid.UUID, id GoogleIde
 		return tx.Audit().Record(ctx, audit.Event{ActorID: userID, Action: audit.ActionGoogleLinked, IP: c.IP})
 	})
 }
+
+// DeleteExpiredSessions clears out sessions that can no longer be used. Signing in
+// clears a person's own, so this is for people who stopped coming back.
+func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	return s.store.DeleteExpiredSessions(ctx)
+}

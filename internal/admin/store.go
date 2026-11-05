@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -87,4 +88,33 @@ func (s *Store) MaxUploadBytes(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("decode setting %q: %w", settingMaxUploadBytes, err)
 	}
 	return limit, nil
+}
+
+// JobRun is the last finish of a background job.
+type JobRun struct {
+	Name       string
+	FinishedAt time.Time
+	Succeeded  bool
+}
+
+// RecordJobRun saves how a background job just finished.
+func (s *Store) RecordJobRun(ctx context.Context, name string, succeeded bool) error {
+	err := s.queries.RecordJobRun(ctx, dbgen.RecordJobRunParams{Name: name, Succeeded: succeeded})
+	if err != nil {
+		return fmt.Errorf("record job run: %w", err)
+	}
+	return nil
+}
+
+// ListJobRuns returns the last finish of every job that has run.
+func (s *Store) ListJobRuns(ctx context.Context) ([]JobRun, error) {
+	rows, err := s.queries.ListJobRuns(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list job runs: %w", err)
+	}
+	runs := make([]JobRun, 0, len(rows))
+	for _, row := range rows {
+		runs = append(runs, JobRun{Name: row.Name, FinishedAt: row.FinishedAt, Succeeded: row.Succeeded})
+	}
+	return runs, nil
 }

@@ -64,6 +64,8 @@ type fixture struct {
 	mu       sync.Mutex
 	accounts map[string]*providertest.Fake
 	opened   []gdrive.Credentials
+	// wrap, if set, changes the provider an account opens to.
+	wrap func(provider.Provider) provider.Provider
 }
 
 // account returns the in-memory Drive behind an email address.
@@ -91,6 +93,9 @@ func newFixture(t *testing.T, pool *pgxpool.Pool) *fixture {
 			f.mu.Lock()
 			f.opened = append(f.opened, c)
 			f.mu.Unlock()
+			if f.wrap != nil {
+				return f.wrap(f.account(s.Email)), nil
+			}
 			return f.account(s.Email), nil
 		},
 		DriveAuth: f.drive,

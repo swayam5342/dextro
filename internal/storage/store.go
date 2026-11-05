@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -147,4 +148,57 @@ func toRecord(row dbgen.StorageConnection) record {
 		settings: row.Settings,
 		sealed:   secrets.Sealed{KeyID: row.SecretKeyID, Ciphertext: row.SecretCiphertext},
 	}
+}
+
+// ListAllConnectionsForQuotaSync returns every user's connections. It is unscoped
+// on purpose and is for the background sync only.
+func (s *Store) ListAllConnectionsForQuotaSync(ctx context.Context) ([]record, error) {
+	rows, err := s.queries.ListAllConnectionsForQuotaSync(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list connections: %w", err)
+	}
+	records := make([]record, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, toRecord(row))
+	}
+	return records, nil
+}
+
+// RecordConnectionCheck saves what the background sync saw of one account.
+func (s *Store) RecordConnectionCheck(ctx context.Context, id uuid.UUID, ok bool, used int64) error {
+	err := s.queries.RecordConnectionCheck(ctx, dbgen.RecordConnectionCheckParams{ID: id, CheckOk: ok, UsedBytes: used})
+	if err != nil {
+		return fmt.Errorf("record connection check: %w", err)
+	}
+	return nil
+}
+
+// ConnectionTotals adds up every user's accounts, for the admin's status page.
+func (s *Store) ConnectionTotals(ctx context.Context) (Health, error) {
+	row, err := s.queries.GetConnectionTotals(ctx)
+	if err != nil {
+		return Health{}, fmt.Errorf("total connections: %w", err)
+	}
+	return Health{Accounts: row.Accounts, UsedBytes: row.UsedBytes}, nil
+}
+
+// unreachableRow is an account the last sync couldn't reach.
+type unreachableRow struct {
+	Settings   []byte
+	CheckedAt  time.Time
+	OwnerEmail string
+}
+
+// ListUnreachableConnections returns accounts the last sync couldn't reach, for
+// the admin's status page.
+func (s *Store) ListUnreachableConnections(ctx context.Context) ([]unreachableRow, error) {
+	rows, err := s.queries.ListUnreachableConnections(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list unreachable connections: %w", err)
+	}
+	unreachable := make([]unreachableRow, 0, len(rows))
+	for _, row := range rows {
+		unreachable = append(unreachable, unreachableRow{Settings: row.Settings, CheckedAt: row.CheckedAt, OwnerEmail: row.OwnerEmail})
+	}
+	return unreachable, nil
 }

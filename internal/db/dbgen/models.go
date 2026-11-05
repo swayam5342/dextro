@@ -55,6 +55,12 @@ type Folder struct {
 	UpdatedAt time.Time
 }
 
+type JobRun struct {
+	Name       string
+	FinishedAt time.Time
+	Succeeded  bool
+}
+
 type Session struct {
 	ID         uuid.UUID
 	UserID     uuid.UUID
@@ -82,6 +88,9 @@ type StorageConnection struct {
 	SecretCiphertext []byte
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	CheckedAt        *time.Time
+	CheckOk          pgtype.Bool
+	UsedBytes        pgtype.Int8
 }
 
 type User struct {

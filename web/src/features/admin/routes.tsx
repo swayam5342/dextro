@@ -2,7 +2,9 @@ import { createRoute, redirect } from "@tanstack/react-router";
 
 import { authedRoute } from "@/features/auth/routes";
 
+import { AuditPage } from "./components/audit-page";
 import { SettingsPage } from "./components/settings-page";
+import { StatusPage } from "./components/status-page";
 import { UsersPage } from "./components/users-page";
 
 // This only keeps people away from pages that would fail. The server is what
@@ -25,4 +27,18 @@ export const adminUsersRoute = createRoute({
   path: "/admin/users",
   beforeLoad: adminOnly,
   component: UsersPage,
+});
+
+export const adminStatusRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/status",
+  beforeLoad: adminOnly,
+  component: StatusPage,
+});
+
+export const adminAuditRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/audit",
+  beforeLoad: adminOnly,
+  component: AuditPage,
 });

@@ -141,6 +141,7 @@ func TestService(t *testing.T) {
 		{"the reset command", testResetPasswordCommand},
 		{"the reset command refuses unknown users", testResetPasswordCommandUnknownUser},
 		{"api keys wait for the password change", testAPIKeyWaitsForPasswordChange},
+		{"cleaning up expired sessions", testDeleteExpiredSessions},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -20,6 +20,7 @@ import (
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/files"
 	"github.com/swayam5342/dextro/internal/httpx"
+	"github.com/swayam5342/dextro/internal/jobs"
 	"github.com/swayam5342/dextro/internal/platform"
 	"github.com/swayam5342/dextro/internal/provider/gdrive"
 	"github.com/swayam5342/dextro/internal/secrets"
@@ -71,6 +72,7 @@ func run() error {
 		return err
 	}
 	filesService := files.NewService(files.NewStore(pool), storageService)
+	settings := admin.NewStore(pool)
 	router := httpx.NewRouter(httpx.Deps{
 		Logger:         logger,
 		DB:             pool,
@@ -79,10 +81,21 @@ func run() error {
 		Sessions:       authService,
 		APIKeys:        authService,
 		Auth:           auth.NewHandler(authService, google, logger),
-		Admin:          admin.NewHandler(admin.NewService(admin.NewStore(pool)), logger),
+		Admin:          admin.NewHandler(admin.NewService(settings, storageService), logger),
 		Storage:        storage.NewHandler(storageService, logger),
 		Files:          files.NewHandler(filesService, logger),
 	})
+
+	runner, err := jobs.Start(ctx, jobs.Deps{
+		Pool:     pool,
+		Logger:   logger,
+		Quotas:   storageService,
+		Sessions: authService,
+		Runs:     settings,
+	})
+	if err != nil {
+		return err
+	}
 
 	// There is no WriteTimeout or ReadTimeout because uploads and downloads can
 	// legitimately run for hours.
@@ -93,7 +106,11 @@ func run() error {
 		IdleTimeout:       2 * time.Minute,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
-	return serve(ctx, server, logger)
+	serveErr := serve(ctx, server, logger)
+	// ctx may already have ended, and the jobs still get time to finish.
+	stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	return errors.Join(serveErr, runner.Stop(stopCtx))
 }
 
 func newStorageService(cfg config.Config, pool *pgxpool.Pool) (*storage.Service, error) {

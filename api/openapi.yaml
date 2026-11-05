@@ -724,6 +724,47 @@ paths:
           description: The password was set.
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/admin/status:
+    get:
+      operationId: getServerStatus
+      summary: Report on background jobs and linked accounts across the server
+      tags: [admin]
+      responses:
+        "200":
+          description: What the background jobs last saw.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerStatus"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/audit:
+    get:
+      operationId: listAuditEvents
+      summary: List security-relevant events, newest first
+      tags: [admin]
+      parameters:
+        - name: action
+          in: query
+          description: Only events with this action.
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: >
+            The next_before of the previous page. A string, because the generated
+            code rejects a bad number before the access checks run.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPage"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/storage/connections:
     get:
       operationId: listConnections
@@ -1204,6 +1245,83 @@ components:
       properties:
         password:
           type: string
+    JobRun:
+      type: object
+      required: [name, finished_at, succeeded]
+      properties:
+        name:
+          type: string
+        finished_at:
+          type: string
+          format: date-time
+        succeeded:
+          type: boolean
+    UnreachableAccount:
+      type: object
+      required: [owner_email, summary, checked_at]
+      properties:
+        owner_email:
+          type: string
+        summary:
+          type: string
+          description: The Google account that couldn't be reached.
+        checked_at:
+          type: string
+          format: date-time
+    ServerStatus:
+      type: object
+      required: [jobs, accounts, used_bytes, unreachable_accounts]
+      properties:
+        jobs:
+          type: array
+          description: Only jobs that have finished at least once.
+          items:
+            $ref: "#/components/schemas/JobRun"
+        accounts:
+          type: integer
+          format: int64
+          description: Storage accounts linked across the whole server.
+        used_bytes:
+          type: integer
+          format: int64
+          description: Space used across them, as of the last quota sync.
+        unreachable_accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/UnreachableAccount"
+    AuditEvent:
+      type: object
+      required: [id, action, actor_email, ip, metadata, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        action:
+          type: string
+        actor_email:
+          type: string
+          nullable: true
+          description: Null for the command line, or if nobody could be identified or the account is gone.
+        ip:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    AuditPage:
+      type: object
+      required: [events, next_before]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        next_before:
+          type: string
+          nullable: true
+          description: Pass this as `before` for the next page. Null on the last page.
     Error:
       type: object
       description: Body of every error response.

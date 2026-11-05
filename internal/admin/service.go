@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/swayam5342/dextro/internal/audit"
+	"github.com/swayam5342/dextro/internal/storage"
 )
 
 const (
@@ -29,15 +30,21 @@ type Update struct {
 	MaxUploadBytes *int64
 }
 
-// Service holds the rules for instance-wide settings. Only the admin route
-// group calls it, so it does no access checks of its own.
+// AccountHealth is what the status page needs from the storage feature.
+type AccountHealth interface {
+	Health(ctx context.Context) (storage.Health, error)
+}
+
+// Service holds the rules for instance-wide settings and maintenance. Only the
+// admin route group calls it, so it does no access checks of its own.
 type Service struct {
-	store *Store
+	store  *Store
+	health AccountHealth
 }
 
 // NewService returns a Service backed by store.
-func NewService(store *Store) *Service {
-	return &Service{store: store}
+func NewService(store *Store, health AccountHealth) *Service {
+	return &Service{store: store, health: health}
 }
 
 // Settings returns the current settings.

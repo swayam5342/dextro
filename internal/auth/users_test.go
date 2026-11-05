@@ -309,6 +309,28 @@ func testResetPasswordCommandUnknownUser(t *testing.T, f *fixture) {
 	}
 }
 
+func testDeleteExpiredSessions(t *testing.T, f *fixture) {
+	f.register(t, "admin@example.org")
+	stale := f.register(t, "stale@example.org")
+	live := f.register(t, "live@example.org")
+	if _, err := f.pool.Exec(f.ctx, `UPDATE sessions SET expires_at = now() - interval '1 minute' WHERE user_id = $1`, stale.User.ID); err != nil {
+		t.Fatalf("expire session: %v", err)
+	}
+	deleted, err := f.service.DeleteExpiredSessions(f.ctx)
+	if err != nil {
+		t.Fatalf("DeleteExpiredSessions: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+	if got := f.count(t, `SELECT count(*) FROM sessions WHERE user_id = $1`, stale.User.ID); got != 0 {
+		t.Errorf("expired sessions left = %d", got)
+	}
+	if _, err := f.service.ResolveSession(f.ctx, live.Token); err != nil {
+		t.Errorf("a live session stopped working: %v", err)
+	}
+}
+
 func testAPIKeyWaitsForPasswordChange(t *testing.T, f *fixture) {
 	admin := f.register(t, "admin@example.org")
 	person := f.register(t, "person@example.org")

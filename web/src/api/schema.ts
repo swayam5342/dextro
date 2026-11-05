@@ -83,6 +83,40 @@ export interface components {
     NewPassword: {
       password: string;
     };
+    JobRun: {
+      name: string;
+      finished_at: string;
+      succeeded: boolean;
+    };
+    UnreachableAccount: {
+      owner_email: string;
+      /** The Google account that couldn't be reached. */
+      summary: string;
+      checked_at: string;
+    };
+    ServerStatus: {
+      /** Only jobs that have finished at least once. */
+      jobs: components["schemas"]["JobRun"][];
+      /** Storage accounts linked across the whole server. */
+      accounts: number;
+      /** Space used across them, as of the last quota sync. */
+      used_bytes: number;
+      unreachable_accounts: components["schemas"]["UnreachableAccount"][];
+    };
+    AuditEvent: {
+      id: number;
+      action: string;
+      /** Null for the command line, or if nobody could be identified or the account is gone. */
+      actor_email: string | null;
+      ip: string;
+      metadata: Record<string, unknown>;
+      created_at: string;
+    };
+    AuditPage: {
+      events: components["schemas"]["AuditEvent"][];
+      /** Pass this as `before` for the next page. Null on the last page. */
+      next_before: string | null;
+    };
     SearchResults: {
       folders: components["schemas"]["Folder"][];
       files: components["schemas"]["File"][];
@@ -377,6 +411,21 @@ export interface paths {
   "/api/v1/admin/settings": {
     get: Operation<{ 200: JsonBody<Schemas["Settings"]> }>;
     patch: JsonOperation<Schemas["SettingsUpdate"], { 200: JsonBody<Schemas["Settings"]> }>;
+  };
+  "/api/v1/admin/status": {
+    get: Operation<{ 200: JsonBody<Schemas["ServerStatus"]> }>;
+  };
+  "/api/v1/admin/audit": {
+    get: {
+      parameters: {
+        query?: { action?: string; before?: string };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: { 200: JsonBody<Schemas["AuditPage"]>; default: JsonBody<Schemas["Error"]> };
+    };
   };
   "/api/v1/admin/users": {
     get: Operation<{ 200: JsonBody<Schemas["ManagedUser"][]> }>;

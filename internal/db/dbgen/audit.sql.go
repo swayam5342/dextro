@@ -7,8 +7,10 @@ package dbgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
@@ -31,4 +33,57 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.Metadata,
 	)
 	return err
+}
+
+const listAuditEvents = `-- name: ListAuditEvents :many
+SELECT e.id, e.action, e.ip, e.metadata, e.created_at, u.email AS actor_email
+FROM audit_events e
+LEFT JOIN users u ON u.id = e.actor_id
+WHERE ($1::text IS NULL OR e.action = $1)
+  AND ($2::bigint IS NULL OR e.id < $2)
+ORDER BY e.id DESC
+LIMIT $3
+`
+
+type ListAuditEventsParams struct {
+	Action   pgtype.Text
+	Before   pgtype.Int8
+	PageSize int32
+}
+
+type ListAuditEventsRow struct {
+	ID         int64
+	Action     string
+	Ip         string
+	Metadata   []byte
+	CreatedAt  time.Time
+	ActorEmail pgtype.Text
+}
+
+// Instance-wide on purpose: only the admin's audit log calls this.
+func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error) {
+	rows, err := q.db.Query(ctx, listAuditEvents, arg.Action, arg.Before, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuditEventsRow{}
+	for rows.Next() {
+		var i ListAuditEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Action,
+			&i.Ip,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.ActorEmail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

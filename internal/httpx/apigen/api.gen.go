@@ -193,6 +193,26 @@ type APIKeyInput struct {
 // APIKeyInputScopes defines model for APIKeyInput.Scopes.
 type APIKeyInputScopes string
 
+// AuditEvent defines model for AuditEvent.
+type AuditEvent struct {
+	Action string `json:"action"`
+
+	// ActorEmail Null for the command line, or if nobody could be identified or the account is gone.
+	ActorEmail *string                `json:"actor_email"`
+	CreatedAt  time.Time              `json:"created_at"`
+	Id         int64                  `json:"id"`
+	Ip         string                 `json:"ip"`
+	Metadata   map[string]interface{} `json:"metadata"`
+}
+
+// AuditPage defines model for AuditPage.
+type AuditPage struct {
+	Events []AuditEvent `json:"events"`
+
+	// NextBefore Pass this as `before` for the next page. Null on the last page.
+	NextBefore *string `json:"next_before"`
+}
+
 // AuthConfig defines model for AuthConfig.
 type AuthConfig struct {
 	GoogleEnabled bool `json:"google_enabled"`
@@ -298,6 +318,13 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// JobRun defines model for JobRun.
+type JobRun struct {
+	FinishedAt time.Time `json:"finished_at"`
+	Name       string    `json:"name"`
+	Succeeded  bool      `json:"succeeded"`
+}
+
 // ManagedUser An account as the admin sees it. It says nothing about the person's files.
 type ManagedUser struct {
 	CreatedAt    time.Time          `json:"created_at"`
@@ -368,6 +395,19 @@ type SearchResults struct {
 	Folders []Folder `json:"folders"`
 }
 
+// ServerStatus defines model for ServerStatus.
+type ServerStatus struct {
+	// Accounts Storage accounts linked across the whole server.
+	Accounts int64 `json:"accounts"`
+
+	// Jobs Only jobs that have finished at least once.
+	Jobs                []JobRun             `json:"jobs"`
+	UnreachableAccounts []UnreachableAccount `json:"unreachable_accounts"`
+
+	// UsedBytes Space used across them, as of the last quota sync.
+	UsedBytes int64 `json:"used_bytes"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -398,6 +438,15 @@ type Trash struct {
 	Folders []Folder `json:"folders"`
 }
 
+// UnreachableAccount defines model for UnreachableAccount.
+type UnreachableAccount struct {
+	CheckedAt  time.Time `json:"checked_at"`
+	OwnerEmail string    `json:"owner_email"`
+
+	// Summary The Google account that couldn't be reached.
+	Summary string `json:"summary"`
+}
+
 // User defines model for User.
 type User struct {
 	CreatedAt    time.Time `json:"created_at"`
@@ -418,6 +467,15 @@ type UserRole string
 
 // Id defines model for Id.
 type Id = openapi_types.UUID
+
+// ListAuditEventsParams defines parameters for ListAuditEvents.
+type ListAuditEventsParams struct {
+	// Action Only events with this action.
+	Action *string `form:"action,omitempty" json:"action,omitempty"`
+
+	// Before The next_before of the previous page. A string, because the generated code rejects a bad number before the access checks run.
+	Before *string `form:"before,omitempty" json:"before,omitempty"`
+}
 
 // GoogleCallbackParams defines parameters for GoogleCallback.
 type GoogleCallbackParams struct {
@@ -498,12 +556,18 @@ type MoveFolderJSONRequestBody = MoveFolderInput
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListAuditEvents List security-relevant events, newest first
+	// (GET /api/v1/admin/audit)
+	ListAuditEvents(w http.ResponseWriter, r *http.Request, params ListAuditEventsParams)
 	// GetSettings Return the instance-wide settings
 	// (GET /api/v1/admin/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
 	// UpdateSettings Change instance-wide settings
 	// (PATCH /api/v1/admin/settings)
 	UpdateSettings(w http.ResponseWriter, r *http.Request)
+	// GetServerStatus Report on background jobs and linked accounts across the server
+	// (GET /api/v1/admin/status)
+	GetServerStatus(w http.ResponseWriter, r *http.Request)
 	// ListUsers List every account on the server
 	// (GET /api/v1/admin/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -642,6 +706,12 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// ListAuditEvents List security-relevant events, newest first
+// (GET /api/v1/admin/audit)
+func (_ Unimplemented) ListAuditEvents(w http.ResponseWriter, r *http.Request, params ListAuditEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetSettings Return the instance-wide settings
 // (GET /api/v1/admin/settings)
 func (_ Unimplemented) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -651,6 +721,12 @@ func (_ Unimplemented) GetSettings(w http.ResponseWriter, r *http.Request) {
 // UpdateSettings Change instance-wide settings
 // (PATCH /api/v1/admin/settings)
 func (_ Unimplemented) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetServerStatus Report on background jobs and linked accounts across the server
+// (GET /api/v1/admin/status)
+func (_ Unimplemented) GetServerStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -927,6 +1003,52 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// ListAuditEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListAuditEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAuditEventsParams
+
+	// ------------- Optional query parameter "action" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "action", r.URL.Query(), &params.Action, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "action"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "action", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAuditEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -946,6 +1068,20 @@ func (siw *ServerInterfaceWrapper) UpdateSettings(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetServerStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetServerStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetServerStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2197,6 +2333,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/admin/users/{id}/password", wrapper.ResetUserPassword)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/admin/status", wrapper.GetServerStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAuditEvents)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/storage/connections", wrapper.ListConnections)

@@ -71,6 +71,8 @@ type StorageHandlers interface {
 type AdminHandlers interface {
 	GetSettings(w http.ResponseWriter, r *http.Request)
 	UpdateSettings(w http.ResponseWriter, r *http.Request)
+	GetServerStatus(w http.ResponseWriter, r *http.Request)
+	ListAuditEvents(w http.ResponseWriter, r *http.Request, params apigen.ListAuditEventsParams)
 }
 
 // Deps is everything the router needs.

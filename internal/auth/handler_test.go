@@ -226,7 +226,7 @@ func newServer(t *testing.T, pool *pgxpool.Pool, google GoogleClient) *server {
 		PublicOrigin: testOrigin,
 		Sessions:     service,
 		Auth:         NewHandler(service, google, logger),
-		Admin:        admin.NewHandler(admin.NewService(admin.NewStore(pool)), logger),
+		Admin:        admin.NewHandler(admin.NewService(admin.NewStore(pool), nil), logger),
 	})
 	return s
 }

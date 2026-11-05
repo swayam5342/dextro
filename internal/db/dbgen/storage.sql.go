@@ -7,6 +7,7 @@ package dbgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -14,7 +15,7 @@ import (
 const createConnection = `-- name: CreateConnection :one
 INSERT INTO storage_connections (id, user_id, provider, name, settings, secret_key_id, secret_ciphertext)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at
+RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes
 `
 
 type CreateConnectionParams struct {
@@ -48,6 +49,9 @@ func (q *Queries) CreateConnection(ctx context.Context, arg CreateConnectionPara
 		&i.SecretCiphertext,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckedAt,
+		&i.CheckOk,
+		&i.UsedBytes,
 	)
 	return i, err
 }
@@ -71,7 +75,7 @@ func (q *Queries) DeleteConnectionForOwner(ctx context.Context, arg DeleteConnec
 }
 
 const getConnectionByNameForOwner = `-- name: GetConnectionByNameForOwner :one
-SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes
 FROM storage_connections
 WHERE user_id = $1 AND name = $2
 `
@@ -94,12 +98,15 @@ func (q *Queries) GetConnectionByNameForOwner(ctx context.Context, arg GetConnec
 		&i.SecretCiphertext,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckedAt,
+		&i.CheckOk,
+		&i.UsedBytes,
 	)
 	return i, err
 }
 
 const getConnectionForOwner = `-- name: GetConnectionForOwner :one
-SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes
 FROM storage_connections
 WHERE user_id = $1 AND id = $2
 `
@@ -122,12 +129,74 @@ func (q *Queries) GetConnectionForOwner(ctx context.Context, arg GetConnectionFo
 		&i.SecretCiphertext,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckedAt,
+		&i.CheckOk,
+		&i.UsedBytes,
 	)
 	return i, err
 }
 
+const getConnectionTotals = `-- name: GetConnectionTotals :one
+SELECT count(*) AS accounts,
+       coalesce(sum(used_bytes), 0)::bigint AS used_bytes
+FROM storage_connections
+`
+
+type GetConnectionTotalsRow struct {
+	Accounts  int64
+	UsedBytes int64
+}
+
+// Instance-wide on purpose: only the admin's status page calls this.
+func (q *Queries) GetConnectionTotals(ctx context.Context) (GetConnectionTotalsRow, error) {
+	row := q.db.QueryRow(ctx, getConnectionTotals)
+	var i GetConnectionTotalsRow
+	err := row.Scan(&i.Accounts, &i.UsedBytes)
+	return i, err
+}
+
+const listAllConnectionsForQuotaSync = `-- name: ListAllConnectionsForQuotaSync :many
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes
+FROM storage_connections
+ORDER BY created_at, id
+`
+
+// Instance-wide on purpose: only the background quota sync calls this.
+func (q *Queries) ListAllConnectionsForQuotaSync(ctx context.Context) ([]StorageConnection, error) {
+	rows, err := q.db.Query(ctx, listAllConnectionsForQuotaSync)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StorageConnection{}
+	for rows.Next() {
+		var i StorageConnection
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Provider,
+			&i.Name,
+			&i.Settings,
+			&i.SecretKeyID,
+			&i.SecretCiphertext,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CheckedAt,
+			&i.CheckOk,
+			&i.UsedBytes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConnectionsForOwner = `-- name: ListConnectionsForOwner :many
-SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes
 FROM storage_connections
 WHERE user_id = $1
 ORDER BY created_at, id
@@ -152,6 +221,9 @@ func (q *Queries) ListConnectionsForOwner(ctx context.Context, userID uuid.UUID)
 			&i.SecretCiphertext,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CheckedAt,
+			&i.CheckOk,
+			&i.UsedBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -163,6 +235,61 @@ func (q *Queries) ListConnectionsForOwner(ctx context.Context, userID uuid.UUID)
 	return items, nil
 }
 
+const listUnreachableConnections = `-- name: ListUnreachableConnections :many
+SELECT c.settings, c.checked_at::timestamptz AS checked_at, u.email AS owner_email
+FROM storage_connections c
+JOIN users u ON u.id = c.user_id
+WHERE c.check_ok = false
+ORDER BY c.checked_at, c.id
+`
+
+type ListUnreachableConnectionsRow struct {
+	Settings   []byte
+	CheckedAt  time.Time
+	OwnerEmail string
+}
+
+// Instance-wide on purpose: only the admin's status page calls this.
+func (q *Queries) ListUnreachableConnections(ctx context.Context) ([]ListUnreachableConnectionsRow, error) {
+	rows, err := q.db.Query(ctx, listUnreachableConnections)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnreachableConnectionsRow{}
+	for rows.Next() {
+		var i ListUnreachableConnectionsRow
+		if err := rows.Scan(&i.Settings, &i.CheckedAt, &i.OwnerEmail); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recordConnectionCheck = `-- name: RecordConnectionCheck :exec
+UPDATE storage_connections
+SET checked_at = now(),
+    check_ok = $1::boolean,
+    used_bytes = CASE WHEN $1::boolean THEN $2::bigint ELSE used_bytes END
+WHERE id = $3
+`
+
+type RecordConnectionCheckParams struct {
+	CheckOk   bool
+	UsedBytes int64
+	ID        uuid.UUID
+}
+
+// A failed check keeps the last known usage, which is better than nothing.
+func (q *Queries) RecordConnectionCheck(ctx context.Context, arg RecordConnectionCheckParams) error {
+	_, err := q.db.Exec(ctx, recordConnectionCheck, arg.CheckOk, arg.UsedBytes, arg.ID)
+	return err
+}
+
 const updateConnectionForOwner = `-- name: UpdateConnectionForOwner :one
 UPDATE storage_connections
 SET settings = $3,
@@ -170,7 +297,7 @@ SET settings = $3,
     secret_ciphertext = $5,
     updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at
+RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes
 `
 
 type UpdateConnectionForOwnerParams struct {
@@ -200,6 +327,9 @@ func (q *Queries) UpdateConnectionForOwner(ctx context.Context, arg UpdateConnec
 		&i.SecretCiphertext,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CheckedAt,
+		&i.CheckOk,
+		&i.UsedBytes,
 	)
 	return i, err
 }

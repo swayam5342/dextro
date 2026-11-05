@@ -236,7 +236,7 @@ func testKeyHandlers(t *testing.T, pool *pgxpool.Pool) {
 		Sessions:     service,
 		APIKeys:      service,
 		Auth:         NewHandler(service, nil, logger),
-		Admin:        admin.NewHandler(admin.NewService(admin.NewStore(pool)), logger),
+		Admin:        admin.NewHandler(admin.NewService(admin.NewStore(pool), nil), logger),
 	})
 
 	owner := s.signUp("owner@example.org")

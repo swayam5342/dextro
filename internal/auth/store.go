@@ -356,3 +356,13 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolationID
 }
+
+// DeleteExpiredSessions clears every user's expired sessions. It is unscoped on
+// purpose and is for the background cleanup only.
+func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	deleted, err := s.queries.DeleteExpiredSessions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return deleted, nil
+}

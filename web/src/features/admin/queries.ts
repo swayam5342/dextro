@@ -1,4 +1,4 @@
-import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { toApiError } from "@/api/errors";
@@ -86,3 +86,46 @@ export function useDeleteUser() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: usersQuery.queryKey }),
   });
 }
+
+export const statusQuery = queryOptions({
+  queryKey: ["admin-status"],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/admin/status");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
+export function auditQuery(action: string) {
+  return infiniteQueryOptions({
+    queryKey: ["admin-audit", action],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
+      const { data, error } = await api.GET("/api/v1/admin/audit", {
+        params: { query: { action: action || undefined, before: pageParam } },
+      });
+      if (!data) {
+        throw toApiError(error);
+      }
+      return data;
+    },
+    getNextPageParam: (page) => page.next_before ?? undefined,
+  });
+}
+
+export const healthQuery = queryOptions({
+  queryKey: ["health"],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/health");
+    // The server answers 503 with the same body when it can't reach Postgres.
+    const health = data ?? error;
+    if (!health) {
+      throw new Error("Empty health response");
+    }
+    return health;
+  },
+  refetchInterval: 30_000,
+  retry: false,
+});
