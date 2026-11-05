@@ -24,18 +24,14 @@ const (
 	flowTTL        = 10 * time.Minute
 	secretBytes    = 32
 
-	// Trying a connection makes the server contact an address the user chose, so
-	// each attempt is limited, per user.
+	// Each check calls out to Google, so they are limited per user.
 	checkBurst = 10
 	checkEvery = 30 * time.Second
 )
 
 // Error codes the storage API adds to the shared ones. Clients may depend on these.
 const (
-	codeInvalidConnection  = "invalid_connection"
-	codeEndpointNotAllowed = "endpoint_not_allowed"
-	codeConnectionFailed   = "connection_failed"
-	codeNameTaken          = "connection_name_taken"
+	codeConnectionFailed = "connection_failed"
 )
 
 // Codes sent to the UI in the error query parameter after a Google redirect.
@@ -69,34 +65,6 @@ func (h *Handler) ListConnections(w http.ResponseWriter, r *http.Request) {
 		body = append(body, toAPI(c))
 	}
 	httpx.WriteJSON(w, http.StatusOK, body)
-}
-
-// CreateS3Connection implements apigen.ServerInterface.
-func (h *Handler) CreateS3Connection(w http.ResponseWriter, r *http.Request) {
-	principal, _ := httpx.PrincipalFrom(r.Context())
-	if !h.allowCheck(w, r, principal.UserID) {
-		return
-	}
-	var body apigen.S3ConnectionInput
-	if !httpx.DecodeJSON(w, r, &body) {
-		return
-	}
-	in := S3Input{
-		Name:            body.Name,
-		Endpoint:        body.Endpoint,
-		Bucket:          body.Bucket,
-		AccessKeyID:     body.AccessKeyId,
-		SecretAccessKey: body.SecretAccessKey,
-	}
-	if body.Region != nil {
-		in.Region = *body.Region
-	}
-	connection, err := h.service.CreateS3(r.Context(), principal.UserID, in, httpx.ClientIP(r.Context()))
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	httpx.WriteJSON(w, http.StatusCreated, toAPI(connection))
 }
 
 // DeleteConnection implements apigen.ServerInterface.
@@ -194,24 +162,16 @@ func (h *Handler) allowCheck(w http.ResponseWriter, r *http.Request, userID uuid
 }
 
 // fail sends the response for a service error. Why a connection failed goes to
-// the logs only: repeating it to the client would let someone use this server
-// to probe what's reachable from it.
+// the logs only, because the reason comes from outside and can hold anything.
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, ErrInvalidConnection):
-		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidConnection, "Check the connection details and try again.")
-	case errors.Is(err, ErrEndpointNotAllowed):
-		httpx.WriteError(w, r, http.StatusBadRequest, codeEndpointNotAllowed,
-			"This endpoint isn't allowed. Use an https:// address on the public internet.")
-	case errors.Is(err, ErrNameTaken):
-		httpx.WriteError(w, r, http.StatusConflict, codeNameTaken, "You already have a connection with this name.")
 	case errors.Is(err, ErrConnectionNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
 	case errors.Is(err, ErrConnectionFailed):
 		h.logger.WarnContext(r.Context(), "storage connection failed",
 			"request_id", httpx.RequestID(r.Context()), "error", err)
 		httpx.WriteError(w, r, http.StatusUnprocessableEntity, codeConnectionFailed,
-			"The account couldn't be reached with these details.")
+			"This account couldn't be reached.")
 	default:
 		h.logger.ErrorContext(r.Context(), "storage request failed",
 			"request_id", httpx.RequestID(r.Context()), "error", err)

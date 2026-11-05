@@ -620,27 +620,6 @@ paths:
                   $ref: "#/components/schemas/Connection"
         default:
           $ref: "#/components/responses/Error"
-  /api/v1/storage/connections/s3:
-    post:
-      operationId: createS3Connection
-      summary: Connect an S3-compatible bucket
-      description: The details are tried against the bucket before anything is saved.
-      tags: [storage]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/S3ConnectionInput"
-      responses:
-        "201":
-          description: The bucket is connected.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Connection"
-        default:
-          $ref: "#/components/responses/Error"
   /api/v1/storage/connections/{id}:
     delete:
       operationId: deleteConnection
@@ -826,31 +805,13 @@ components:
           type: string
         provider:
           type: string
-          enum: [s3, google_drive]
+          enum: [google_drive]
         summary:
           type: string
           description: What the connection points at, for showing to its owner.
         created_at:
           type: string
           format: date-time
-    S3ConnectionInput:
-      type: object
-      required: [name, endpoint, bucket, access_key_id, secret_access_key]
-      properties:
-        name:
-          type: string
-        endpoint:
-          type: string
-          description: The service's base URL, such as https://s3.example.com.
-        region:
-          type: string
-          description: Defaults to us-east-1.
-        bucket:
-          type: string
-        access_key_id:
-          type: string
-        secret_access_key:
-          type: string
     GoogleRedirect:
       type: object
       required: [url]

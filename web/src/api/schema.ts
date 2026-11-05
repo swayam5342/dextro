@@ -45,20 +45,10 @@ export interface components {
     Connection: {
       id: string;
       name: string;
-      provider: "s3" | "google_drive";
+      provider: "google_drive";
       /** What the connection points at, for showing to its owner. */
       summary: string;
       created_at: string;
-    };
-    S3ConnectionInput: {
-      name: string;
-      /** The service's base URL, such as https://s3.example.com. */
-      endpoint: string;
-      /** Defaults to us-east-1. */
-      region?: string;
-      bucket: string;
-      access_key_id: string;
-      secret_access_key: string;
     };
     Settings: {
       /**
@@ -263,9 +253,6 @@ export interface paths {
   };
   "/api/v1/storage/connections": {
     get: Operation<{ 200: JsonBody<Schemas["Connection"][]> }>;
-  };
-  "/api/v1/storage/connections/s3": {
-    post: JsonOperation<Schemas["S3ConnectionInput"], { 201: JsonBody<Schemas["Connection"]> }>;
   };
   "/api/v1/storage/connections/{id}": {
     delete: PathOperation;

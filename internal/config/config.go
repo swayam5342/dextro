@@ -28,9 +28,6 @@ type Config struct {
 	EncryptionKeys map[string][]byte
 	// ActiveKeyID names the key new values are encrypted with.
 	ActiveKeyID string
-	// S3AllowedHosts are the only S3 endpoints allowed to be on a private address.
-	// An entry is a host, or host:port to allow just that port.
-	S3AllowedHosts []string
 }
 
 // GoogleEnabled reports whether Google sign-in is configured.
@@ -79,7 +76,6 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.EncryptionKeys, cfg.ActiveKeyID, err = parseEncryptionKeys(getenv("DEXTRO_ENCRYPTION_KEYS"), getenv("DEXTRO_ENCRYPTION_KEY_ID")); err != nil {
 		errs = append(errs, err)
 	}
-	cfg.S3AllowedHosts = parseHosts(getenv("DEXTRO_S3_ALLOWED_HOSTS"))
 
 	if err := errors.Join(errs...); err != nil {
 		return Config{}, err
@@ -237,14 +233,4 @@ func isBlank(key []byte) bool {
 		}
 	}
 	return true
-}
-
-func parseHosts(raw string) []string {
-	var hosts []string
-	for entry := range strings.SplitSeq(raw, ",") {
-		if host := strings.ToLower(strings.TrimSpace(entry)); host != "" {
-			hosts = append(hosts, host)
-		}
-	}
-	return hosts
 }

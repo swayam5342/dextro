@@ -24,7 +24,6 @@ function UploadLimit({ current }: { current: number }) {
       <Field
         id="max-upload"
         label="Largest upload, in GiB"
-        hint="S3 connections also have their own limit of about 156 GiB per file."
         type="number"
         min="0.001"
         step="any"

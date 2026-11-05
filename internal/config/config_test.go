@@ -277,23 +277,3 @@ func TestLoadErrorsNeverContainTheEncryptionKey(t *testing.T) {
 		t.Errorf("error leaks the key: %q", err)
 	}
 }
-
-func TestLoadReadsS3AllowedHosts(t *testing.T) {
-	cfg, err := Load(env(valid("DEXTRO_S3_ALLOWED_HOSTS", " seaweedfs , NAS.local:9000,")))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(cfg.S3AllowedHosts) != 2 || cfg.S3AllowedHosts[0] != "seaweedfs" || cfg.S3AllowedHosts[1] != "nas.local:9000" {
-		t.Errorf("S3AllowedHosts = %v", cfg.S3AllowedHosts)
-	}
-}
-
-func TestLoadAllowsNoPrivateS3HostsByDefault(t *testing.T) {
-	cfg, err := Load(env(valid()))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(cfg.S3AllowedHosts) != 0 {
-		t.Errorf("S3AllowedHosts = %v, want none", cfg.S3AllowedHosts)
-	}
-}

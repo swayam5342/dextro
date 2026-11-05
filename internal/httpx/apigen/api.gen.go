@@ -53,15 +53,12 @@ func (e APIKeyInputScopes) Valid() bool {
 // Defines values for ConnectionProvider.
 const (
 	GoogleDrive ConnectionProvider = "google_drive"
-	S3          ConnectionProvider = "s3"
 )
 
 // Valid indicates whether the value is a known member of the ConnectionProvider enum.
 func (e ConnectionProvider) Valid() bool {
 	switch e {
 	case GoogleDrive:
-		return true
-	case S3:
 		return true
 	default:
 		return false
@@ -300,20 +297,6 @@ type NameInput struct {
 	Name string `json:"name"`
 }
 
-// S3ConnectionInput defines model for S3ConnectionInput.
-type S3ConnectionInput struct {
-	AccessKeyId string `json:"access_key_id"`
-	Bucket      string `json:"bucket"`
-
-	// Endpoint The service's base URL, such as https://s3.example.com.
-	Endpoint string `json:"endpoint"`
-	Name     string `json:"name"`
-
-	// Region Defaults to us-east-1.
-	Region          *string `json:"region,omitempty"`
-	SecretAccessKey string  `json:"secret_access_key"`
-}
-
 // Session defines model for Session.
 type Session struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -431,9 +414,6 @@ type RenameFolderJSONRequestBody = NameInput
 // MoveFolderJSONRequestBody defines body for MoveFolder for application/json ContentType.
 type MoveFolderJSONRequestBody = MoveFolderInput
 
-// CreateS3ConnectionJSONRequestBody defines body for CreateS3Connection for application/json ContentType.
-type CreateS3ConnectionJSONRequestBody = S3ConnectionInput
-
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetSettings Return the instance-wide settings
@@ -532,9 +512,6 @@ type ServerInterface interface {
 	// ListConnections List the signed-in user's storage connections
 	// (GET /api/v1/storage/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
-	// CreateS3Connection Connect an S3-compatible bucket
-	// (POST /api/v1/storage/connections/s3)
-	CreateS3Connection(w http.ResponseWriter, r *http.Request)
 	// DeleteConnection Remove a connection and forget its credentials
 	// (DELETE /api/v1/storage/connections/{id})
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -751,12 +728,6 @@ func (_ Unimplemented) TrashFolder(w http.ResponseWriter, r *http.Request, id Id
 // ListConnections List the signed-in user's storage connections
 // (GET /api/v1/storage/connections)
 func (_ Unimplemented) ListConnections(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// CreateS3Connection Connect an S3-compatible bucket
-// (POST /api/v1/storage/connections/s3)
-func (_ Unimplemented) CreateS3Connection(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1539,20 +1510,6 @@ func (siw *ServerInterfaceWrapper) ListConnections(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// CreateS3Connection operation middleware
-func (siw *ServerInterfaceWrapper) CreateS3Connection(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateS3Connection(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // DeleteConnection operation middleware
 func (siw *ServerInterfaceWrapper) DeleteConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -1924,9 +1881,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/storage/connections", wrapper.ListConnections)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/storage/connections/s3", wrapper.CreateS3Connection)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/storage/connections/{id}", wrapper.DeleteConnection)

@@ -7,14 +7,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/swayam5342/dextro/internal/audit"
 	"github.com/swayam5342/dextro/internal/db/dbgen"
 	"github.com/swayam5342/dextro/internal/secrets"
 )
-
-const pgUniqueViolation = "23505"
 
 // database is a pool or a transaction.
 type database interface {
@@ -54,8 +51,7 @@ func (s *Store) Audit() *audit.Store {
 	return audit.NewStore(s.db)
 }
 
-// CreateConnection saves a new connection. It returns ErrNameTaken if the owner
-// already has one with this name.
+// CreateConnection saves a new connection.
 func (s *Store) CreateConnection(ctx context.Context, r record) (record, error) {
 	row, err := s.queries.CreateConnection(ctx, dbgen.CreateConnectionParams{
 		ID:               r.ID,
@@ -66,9 +62,6 @@ func (s *Store) CreateConnection(ctx context.Context, r record) (record, error) 
 		SecretKeyID:      r.sealed.KeyID,
 		SecretCiphertext: r.sealed.Ciphertext,
 	})
-	if isUniqueViolation(err) {
-		return record{}, ErrNameTaken
-	}
 	if err != nil {
 		return record{}, fmt.Errorf("create connection: %w", err)
 	}
@@ -154,9 +147,4 @@ func toRecord(row dbgen.StorageConnection) record {
 		settings: row.Settings,
 		sealed:   secrets.Sealed{KeyID: row.SecretKeyID, Ciphertext: row.SecretCiphertext},
 	}
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation
 }

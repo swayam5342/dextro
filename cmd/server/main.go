@@ -20,7 +20,6 @@ import (
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/files"
 	"github.com/swayam5342/dextro/internal/httpx"
-	"github.com/swayam5342/dextro/internal/netguard"
 	"github.com/swayam5342/dextro/internal/platform"
 	"github.com/swayam5342/dextro/internal/provider/gdrive"
 	"github.com/swayam5342/dextro/internal/secrets"
@@ -102,7 +101,6 @@ func newStorageService(cfg config.Config, pool *pgxpool.Pool) (*storage.Service,
 	if err != nil {
 		return nil, err
 	}
-	guard := netguard.New(cfg.S3AllowedHosts)
 	// Both stay nil when Google isn't configured, which turns its routes off.
 	var drive *gdrive.Client
 	var driveAuth storage.DriveAuth
@@ -113,8 +111,7 @@ func newStorageService(cfg config.Config, pool *pgxpool.Pool) (*storage.Service,
 	return storage.NewService(storage.Deps{
 		Store:     storage.NewStore(pool),
 		Keyring:   keyring,
-		Guard:     guard,
-		Openers:   storage.NewOpeners(guard, drive),
+		OpenDrive: storage.NewOpenDrive(drive),
 		DriveAuth: driveAuth,
 	}), nil
 }

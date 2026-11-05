@@ -54,7 +54,6 @@ type FilesHandlers interface {
 // StorageHandlers is the part of the API the storage feature implements.
 type StorageHandlers interface {
 	ListConnections(w http.ResponseWriter, r *http.Request)
-	CreateS3Connection(w http.ResponseWriter, r *http.Request)
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	TestConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	ConnectGoogleDrive(w http.ResponseWriter, r *http.Request)

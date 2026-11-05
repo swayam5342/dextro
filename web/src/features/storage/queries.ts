@@ -2,9 +2,6 @@ import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query
 
 import { api } from "@/api/client";
 import { toApiError } from "@/api/errors";
-import type { components } from "@/api/schema";
-
-type S3ConnectionInput = components["schemas"]["S3ConnectionInput"];
 
 export const connectionsQuery = queryOptions({
   queryKey: ["storage-connections"],
@@ -16,20 +13,6 @@ export const connectionsQuery = queryOptions({
     return data;
   },
 });
-
-export function useCreateS3Connection() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: S3ConnectionInput) => {
-      const { data, error } = await api.POST("/api/v1/storage/connections/s3", { body });
-      if (!data) {
-        throw toApiError(error);
-      }
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: connectionsQuery.queryKey }),
-  });
-}
 
 export function useTestConnection(id: string) {
   return useMutation({

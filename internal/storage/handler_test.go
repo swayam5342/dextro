@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -53,17 +52,9 @@ func (s *server) signedIn(t *testing.T) *browser {
 	return &browser{s: s, t: t, userID: id, cookies: map[string]string{httpx.SessionCookieName: id.String()}}
 }
 
-func (b *browser) do(method, target string, body any) *httptest.ResponseRecorder {
+func (b *browser) do(method, target string) *httptest.ResponseRecorder {
 	b.t.Helper()
-	var reader io.Reader
-	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			b.t.Fatalf("encode body: %v", err)
-		}
-		reader = bytes.NewReader(encoded)
-	}
-	req := httptest.NewRequest(method, target, reader)
+	req := httptest.NewRequest(method, target, nil)
 	req.Header.Set("Origin", testOrigin)
 	for name, value := range b.cookies {
 		req.AddCookie(&http.Cookie{Name: name, Value: value})
@@ -78,16 +69,6 @@ func (b *browser) do(method, target string, body any) *httptest.ResponseRecorder
 		}
 	}
 	return rec
-}
-
-func validBody(name string) map[string]string {
-	return map[string]string{
-		"name":              name,
-		"endpoint":          testEndpoint,
-		"bucket":            "my-bucket",
-		"access_key_id":     "the-access-key",
-		"secret_access_key": secretKey,
-	}
 }
 
 func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
@@ -124,19 +105,10 @@ func wantRedirect(t *testing.T, rec *httptest.ResponseRecorder, location string)
 	}
 }
 
-func (b *browser) create(name string) apigen.Connection {
-	b.t.Helper()
-	rec := b.do(http.MethodPost, "/api/v1/storage/connections/s3", validBody(name))
-	if rec.Code != http.StatusCreated {
-		b.t.Fatalf("create: status = %d, body %s", rec.Code, rec.Body)
-	}
-	return decode[apigen.Connection](b.t, rec)
-}
-
 // startDrive begins connecting Drive and returns the state handed to Google.
 func (b *browser) startDrive() string {
 	b.t.Helper()
-	rec := b.do(http.MethodPost, "/api/v1/storage/google/connect", nil)
+	rec := b.do(http.MethodPost, "/api/v1/storage/google/connect")
 	if rec.Code != http.StatusOK {
 		b.t.Fatalf("connect: status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -148,7 +120,7 @@ func (b *browser) startDrive() string {
 }
 
 func (b *browser) callback(state string) *httptest.ResponseRecorder {
-	return b.do(http.MethodGet, "/api/v1/storage/google/callback?code=the-code&state="+url.QueryEscape(state), nil)
+	return b.do(http.MethodGet, "/api/v1/storage/google/callback?code=the-code&state="+url.QueryEscape(state))
 }
 
 // TestHandlers shares one Postgres between its subtests, emptying it each time.
@@ -158,19 +130,18 @@ func TestHandlers(t *testing.T) {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tests := []struct {
 		name string
 		run  func(*testing.T, *server)
 	}{
-		{"connecting and listing", testHandlerCreateAndList},
+		{"listing connections", testHandlerList},
 		{"responses never carry credentials", testResponsesHideCredentials},
-		{"errors have stable codes", testHandlerErrors},
-		{"malformed json is refused", testHandlerMalformedJSON},
-		{"failure details stay out of responses", testFailureDetailsAreHidden},
 		{"testing a connection", testHandlerTest},
+		{"failure details stay out of responses", testFailureDetailsAreHidden},
 		{"users can't reach each other's connections", testHandlerIsolation},
 		{"removing a connection", testHandlerDelete},
-		{"outbound checks are rate limited", testChecksAreRateLimited},
+		{"connection checks are rate limited", testChecksAreRateLimited},
 		{"google drive is off without credentials", testDriveDisabled},
 		{"connecting google drive", testHandlerDrive},
 		{"the flow cookie is safe", testDriveFlowCookie},
@@ -186,142 +157,98 @@ func TestHandlers(t *testing.T) {
 			if _, err := pool.Exec(ctx, `TRUNCATE users, audit_events CASCADE`); err != nil {
 				t.Fatalf("reset database: %v", err)
 			}
-			tt.run(t, newServer(t, newFixture(t, pool)))
+			f := newFixture(t, pool)
+			tt.run(t, &server{fixture: f, handler: httpx.NewRouter(httpx.Deps{
+				Logger:       logger,
+				DB:           f.pool,
+				PublicOrigin: testOrigin,
+				Sessions:     sessions{},
+				Storage:      NewHandler(f.service, logger),
+			})})
 		})
 	}
 }
 
-func newServer(t *testing.T, f *fixture) *server {
-	t.Helper()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return &server{fixture: f, handler: httpx.NewRouter(httpx.Deps{
-		Logger:       logger,
-		DB:           f.pool,
-		PublicOrigin: testOrigin,
-		Sessions:     sessions{},
-		Storage:      NewHandler(f.service, logger),
-	})}
-}
-
-func testHandlerCreateAndList(t *testing.T, s *server) {
+func testHandlerList(t *testing.T, s *server) {
 	b := s.signedIn(t)
-	created := b.create("Backups")
-	if created.Name != "Backups" || created.Provider != apigen.S3 || created.Summary != "my-bucket on s3.dextro.test" {
-		t.Errorf("connection = %+v", created)
-	}
-	list := decode[[]apigen.Connection](t, b.do(http.MethodGet, "/api/v1/storage/connections", nil))
-	if len(list) != 1 || list[0].Id != created.Id {
+	created := s.connect(t, b.userID, "person@example.org")
+	list := decode[[]apigen.Connection](t, b.do(http.MethodGet, "/api/v1/storage/connections"))
+	if len(list) != 1 || list[0].Id != created.ID || list[0].Provider != apigen.GoogleDrive || list[0].Summary != "person@example.org" {
 		t.Errorf("list = %+v", list)
 	}
 }
 
 func testResponsesHideCredentials(t *testing.T, s *server) {
 	b := s.signedIn(t)
-	rec := b.do(http.MethodPost, "/api/v1/storage/connections/s3", validBody("Backups"))
-	list := b.do(http.MethodGet, "/api/v1/storage/connections", nil)
-	for _, body := range []string{rec.Body.String(), list.Body.String()} {
-		for _, secret := range []string{secretKey, "the-access-key", "ciphertext"} {
-			if strings.Contains(body, secret) {
-				t.Errorf("response contains %q: %s", secret, body)
-			}
+	s.connect(t, b.userID, "person@example.org")
+	body := b.do(http.MethodGet, "/api/v1/storage/connections").Body.String()
+	for _, secret := range []string{refreshToken, "ciphertext", "folder-1"} {
+		if strings.Contains(body, secret) {
+			t.Errorf("response contains %q: %s", secret, body)
 		}
-	}
-}
-
-func testHandlerErrors(t *testing.T, s *server) {
-	b := s.signedIn(t)
-	b.create("Backups")
-	post := func(body map[string]string) *httptest.ResponseRecorder {
-		return b.do(http.MethodPost, "/api/v1/storage/connections/s3", body)
-	}
-
-	wantError(t, post(validBody("Backups")), http.StatusConflict, "connection_name_taken")
-
-	bad := validBody("Other")
-	bad["bucket"] = "../nope"
-	wantError(t, post(bad), http.StatusBadRequest, "invalid_connection")
-
-	internal := validBody("Other")
-	internal["endpoint"] = "https://169.254.169.254"
-	wantError(t, post(internal), http.StatusBadRequest, "endpoint_not_allowed")
-
-	s.fake.CheckErr = errors.New("access denied")
-	wantError(t, post(validBody("Other")), http.StatusUnprocessableEntity, "connection_failed")
-}
-
-func testHandlerMalformedJSON(t *testing.T, s *server) {
-	b := s.signedIn(t)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/storage/connections/s3", strings.NewReader("{not json"))
-	req.Header.Set("Origin", testOrigin)
-	req.AddCookie(&http.Cookie{Name: httpx.SessionCookieName, Value: b.userID.String()})
-	rec := httptest.NewRecorder()
-	s.handler.ServeHTTP(rec, req)
-	wantError(t, rec, http.StatusBadRequest, "bad_request")
-}
-
-func testFailureDetailsAreHidden(t *testing.T, s *server) {
-	b := s.signedIn(t)
-	s.fake.CheckErr = errors.New("dial tcp 10.1.2.3:9000: connection refused")
-	rec := b.do(http.MethodPost, "/api/v1/storage/connections/s3", validBody("Backups"))
-	if strings.Contains(rec.Body.String(), "10.1.2.3") {
-		t.Errorf("response leaks the failure: %s", rec.Body)
 	}
 }
 
 func testHandlerTest(t *testing.T, s *server) {
 	b := s.signedIn(t)
-	id := b.create("Backups").Id.String()
-	if rec := b.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test", nil); rec.Code != http.StatusNoContent {
+	id := s.connect(t, b.userID, "person@example.org").ID.String()
+	if rec := b.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test"); rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	s.fake.CheckErr = errors.New("expired")
-	wantError(t, b.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test", nil), http.StatusUnprocessableEntity, "connection_failed")
+	s.account("person@example.org").CheckErr = errors.New("expired")
+	wantError(t, b.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test"), http.StatusUnprocessableEntity, "connection_failed")
+}
+
+func testFailureDetailsAreHidden(t *testing.T, s *server) {
+	b := s.signedIn(t)
+	id := s.connect(t, b.userID, "person@example.org").ID.String()
+	s.account("person@example.org").CheckErr = errors.New("token endpoint said secret-detail")
+	rec := b.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test")
+	if strings.Contains(rec.Body.String(), "secret-detail") {
+		t.Errorf("response leaks the failure: %s", rec.Body)
+	}
 }
 
 func testHandlerIsolation(t *testing.T, s *server) {
 	owner, other := s.signedIn(t), s.signedIn(t)
-	id := owner.create("Backups").Id.String()
+	id := s.connect(t, owner.userID, "person@example.org").ID.String()
 
-	wantError(t, other.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test", nil), http.StatusNotFound, "not_found")
-	wantError(t, other.do(http.MethodDelete, "/api/v1/storage/connections/"+id, nil), http.StatusNotFound, "not_found")
-	if list := decode[[]apigen.Connection](t, other.do(http.MethodGet, "/api/v1/storage/connections", nil)); len(list) != 0 {
+	wantError(t, other.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test"), http.StatusNotFound, "not_found")
+	wantError(t, other.do(http.MethodDelete, "/api/v1/storage/connections/"+id), http.StatusNotFound, "not_found")
+	if list := decode[[]apigen.Connection](t, other.do(http.MethodGet, "/api/v1/storage/connections")); len(list) != 0 {
 		t.Errorf("list = %+v", list)
 	}
-	if list := decode[[]apigen.Connection](t, owner.do(http.MethodGet, "/api/v1/storage/connections", nil)); len(list) != 1 {
+	if list := decode[[]apigen.Connection](t, owner.do(http.MethodGet, "/api/v1/storage/connections")); len(list) != 1 {
 		t.Errorf("the owner's connection changed: %+v", list)
 	}
 }
 
 func testHandlerDelete(t *testing.T, s *server) {
 	b := s.signedIn(t)
-	id := b.create("Backups").Id.String()
-	if rec := b.do(http.MethodDelete, "/api/v1/storage/connections/"+id, nil); rec.Code != http.StatusNoContent {
+	id := s.connect(t, b.userID, "person@example.org").ID.String()
+	if rec := b.do(http.MethodDelete, "/api/v1/storage/connections/"+id); rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	wantError(t, b.do(http.MethodDelete, "/api/v1/storage/connections/"+id, nil), http.StatusNotFound, "not_found")
+	wantError(t, b.do(http.MethodDelete, "/api/v1/storage/connections/"+id), http.StatusNotFound, "not_found")
 }
 
 func testChecksAreRateLimited(t *testing.T, s *server) {
 	b := s.signedIn(t)
-	id := b.create("Backups").Id.String()
+	id := s.connect(t, b.userID, "person@example.org").ID.String()
 	var last *httptest.ResponseRecorder
-	for range checkBurst {
-		last = b.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test", nil)
+	for range checkBurst + 1 {
+		last = b.do(http.MethodPost, "/api/v1/storage/connections/"+id+"/test")
 	}
 	wantError(t, last, http.StatusTooManyRequests, "rate_limited")
 	if last.Header().Get("Retry-After") == "" {
 		t.Error("Retry-After is missing")
 	}
-	wantError(t, b.do(http.MethodPost, "/api/v1/storage/connections/s3", validBody("Other")), http.StatusTooManyRequests, "rate_limited")
-
-	other := s.signedIn(t)
-	other.create("Theirs")
 }
 
 func testDriveDisabled(t *testing.T, s *server) {
 	s.service.driveAuth = nil
 	b := s.signedIn(t)
-	wantError(t, b.do(http.MethodPost, "/api/v1/storage/google/connect", nil), http.StatusNotFound, "not_found")
+	wantError(t, b.do(http.MethodPost, "/api/v1/storage/google/connect"), http.StatusNotFound, "not_found")
 	wantRedirect(t, b.callback("x"), "/storage?error=google_failed")
 }
 
@@ -331,14 +258,14 @@ func testHandlerDrive(t *testing.T, s *server) {
 	if _, ok := b.cookies[flowCookieName]; ok {
 		t.Error("the flow cookie was not cleared")
 	}
-	list := decode[[]apigen.Connection](t, b.do(http.MethodGet, "/api/v1/storage/connections", nil))
+	list := decode[[]apigen.Connection](t, b.do(http.MethodGet, "/api/v1/storage/connections"))
 	if len(list) != 1 || list[0].Provider != apigen.GoogleDrive || list[0].Summary != "person@example.org" {
 		t.Errorf("list = %+v", list)
 	}
 }
 
 func testDriveFlowCookie(t *testing.T, s *server) {
-	rec := s.signedIn(t).do(http.MethodPost, "/api/v1/storage/google/connect", nil)
+	rec := s.signedIn(t).do(http.MethodPost, "/api/v1/storage/google/connect")
 	for _, c := range rec.Result().Cookies() {
 		if c.Name != flowCookieName {
 			continue
@@ -386,7 +313,7 @@ func testDriveCallbackReplay(t *testing.T, s *server) {
 func testDriveCancelled(t *testing.T, s *server) {
 	b := s.signedIn(t)
 	state := b.startDrive()
-	rec := b.do(http.MethodGet, "/api/v1/storage/google/callback?error=access_denied&state="+url.QueryEscape(state), nil)
+	rec := b.do(http.MethodGet, "/api/v1/storage/google/callback?error=access_denied&state="+url.QueryEscape(state))
 	wantRedirect(t, rec, "/storage?error=google_cancelled")
 }
 

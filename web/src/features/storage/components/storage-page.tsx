@@ -11,7 +11,6 @@ import {
   useRemoveConnection,
   useTestConnection,
 } from "../queries";
-import { S3Form } from "./s3-form";
 
 type Connection = components["schemas"]["Connection"];
 
@@ -23,7 +22,6 @@ const REDIRECT_MESSAGES: Record<string, string> = {
 function ConnectionRow({ connection }: { connection: Connection }) {
   const test = useTestConnection(connection.id);
   const remove = useRemoveConnection(connection.id);
-  const isDrive = connection.provider === "google_drive";
 
   function handleRemove() {
     const confirmed = window.confirm(
@@ -40,7 +38,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{connection.name}</p>
           <p className="truncate text-sm text-muted-foreground">
-            {isDrive ? `Google Drive, ${connection.summary}` : connection.summary}
+            {connection.summary}
           </p>
         </div>
         <div className="flex gap-2">
@@ -55,9 +53,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
       {test.isSuccess && <p className="text-sm">This connection works.</p>}
       <FormError
         message={
-          test.error && isDrive
-            ? "This account couldn't be reached. Use Connect Google Drive to repair it."
-            : test.error?.message
+          test.error ? "This account couldn't be reached. Use Connect Google Drive to repair it." : undefined
         }
       />
       <FormError message={remove.error?.message} />
@@ -77,7 +73,7 @@ function ConnectionList() {
   if (connections.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nothing is connected yet. Add a Google Drive account or an S3 bucket below to store files in it.
+        Nothing is connected yet. Connect a Google Drive account below to store files in it.
       </p>
     );
   }
@@ -125,14 +121,6 @@ export function StoragePage({
       {connected === "google" && <p className="text-sm">Google Drive connected.</p>}
       <ConnectionList />
       {config?.google_enabled && <GoogleDriveSection />}
-      <section className="space-y-3 border-t pt-6">
-        <h2 className="font-medium">S3 bucket</h2>
-        <p className="text-sm text-muted-foreground">
-          Works with Amazon S3 and other S3-compatible services. The details are tried before they're
-          saved.
-        </p>
-        <S3Form />
-      </section>
     </div>
   );
 }
