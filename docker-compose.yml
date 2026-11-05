@@ -10,6 +10,10 @@ services:
       DEXTRO_API_URL: http://api:8080
     ports:
       - 127.0.0.1:3000:3000
+    networks:
+      default:
+        # Fixed so the api service can trust X-Forwarded-For from this address alone.
+        ipv4_address: 172.30.0.250
     depends_on:
       - api
     read_only: true
@@ -23,6 +27,10 @@ services:
     build: .
     environment:
       DEXTRO_DATABASE_URL: postgres://dextro:${POSTGRES_PASSWORD:?run make env to create .env}@postgres:5432/dextro?sslmode=disable
+      DEXTRO_PUBLIC_URL: ${PUBLIC_URL:-http://127.0.0.1:3000}
+      DEXTRO_TRUSTED_PROXIES: 172.30.0.250
+      DEXTRO_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      DEXTRO_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     ports:
       - 127.0.0.1:8080:8080
     depends_on:
@@ -62,6 +70,12 @@ services:
       - 127.0.0.1:8333:8333
     volumes:
       - seaweedfs-data:/data
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
 
 volumes:
   postgres-data:

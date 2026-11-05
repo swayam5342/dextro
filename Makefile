@@ -63,7 +63,7 @@ test: ## Run the Go and web server tests (needs Docker for the Postgres tests)
 	go test ./...
 	cd web && pnpm test
 
-run: ## Run the Go server locally; set DEXTRO_DATABASE_URL first
+run: ## Run the Go server locally; set DEXTRO_DATABASE_URL and DEXTRO_PUBLIC_URL first
 	go run ./cmd/server
 
 run-web: web-build ## Run the Node web server locally on port 3000
