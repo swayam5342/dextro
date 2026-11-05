@@ -101,7 +101,7 @@ func validateDatabaseURL(raw string) error {
 }
 
 // parsePublicURL reduces raw to the scheme and host browsers will send as their
-// Origin, which has no trailing slash and is always lowercase.
+// Origin: lowercase, with no trailing slash or default port.
 func parsePublicURL(raw string) (string, error) {
 	if raw == "" {
 		return "", errors.New("is required")
@@ -120,7 +120,11 @@ func parsePublicURL(raw string) (string, error) {
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 		return "", errors.New("must be only a scheme and host, with no path")
 	}
-	return scheme + "://" + strings.ToLower(u.Host), nil
+	host := strings.ToLower(u.Host)
+	if (scheme == "https" && u.Port() == "443") || (scheme == "http" && u.Port() == "80") {
+		host = strings.TrimSuffix(host, ":"+u.Port())
+	}
+	return scheme + "://" + host, nil
 }
 
 // parseTrustedProxies reads a comma-separated list of addresses and CIDR ranges.

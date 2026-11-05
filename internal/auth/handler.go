@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/oapi-codegen/runtime/types"
 
 	"github.com/swayam5342/dextro/internal/httpx"
@@ -39,7 +38,7 @@ const (
 
 // Error codes the auth API adds to the shared ones. Clients may depend on these.
 const (
-	codeInvalidCredentials = "invalid_credentials"
+	codeInvalidCredentials = "invalid_credentials" //nolint:gosec // An error code, not a credential.
 	codeInvalidEmail       = "invalid_email"
 	codeWeakPassword       = "weak_password"
 	codeEmailTaken         = "email_taken"
@@ -207,7 +206,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 // RevokeSession implements apigen.ServerInterface.
 func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request, id types.UUID) {
 	principal, _ := httpx.PrincipalFrom(r.Context())
-	if err := h.service.RevokeSession(r.Context(), principal.UserID, uuid.UUID(id), clientFrom(r)); err != nil {
+	if err := h.service.RevokeSession(r.Context(), principal.UserID, id, clientFrom(r)); err != nil {
 		h.fail(w, r, err)
 		return
 	}
@@ -231,7 +230,8 @@ func (h *Handler) StartGoogleSignIn(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/sign-in?error="+redirectGoogleFailed, http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+	// target comes from Google's discovery document, never from the request.
+	http.Redirect(w, r, target, http.StatusFound) //nolint:gosec
 }
 
 // LinkGoogle implements apigen.ServerInterface.

@@ -113,6 +113,10 @@ func TestLoadNormalizesThePublicURLToAnOrigin(t *testing.T) {
 		{"https://files.example.org/", "https://files.example.org"},
 		{"http://127.0.0.1:3000", "http://127.0.0.1:3000"},
 		{"HTTPS://Files.Example.org", "https://files.example.org"},
+		{"https://files.example.org:443", "https://files.example.org"},
+		{"http://files.example.org:80", "http://files.example.org"},
+		{"https://files.example.org:8443", "https://files.example.org:8443"},
+		{"http://[::1]:80", "http://[::1]"},
 	}
 	for _, tt := range tests {
 		cfg, err := Load(env(valid("DEXTRO_PUBLIC_URL", tt.raw)))
