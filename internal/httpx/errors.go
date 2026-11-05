@@ -13,7 +13,6 @@ const (
 	CodeNotFound         = "not_found"
 	CodeMethodNotAllowed = "method_not_allowed"
 	CodeInternal         = "internal_error"
-	CodeUIUnavailable    = "ui_unavailable"
 )
 
 // WriteError sends the standard error body. The message reaches the client, so

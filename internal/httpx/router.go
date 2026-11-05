@@ -2,7 +2,6 @@
 package httpx
 
 import (
-	"io/fs"
 	"log/slog"
 	"net/http"
 
@@ -15,7 +14,6 @@ import (
 type Deps struct {
 	Logger *slog.Logger
 	DB     Pinger
-	UI     fs.FS
 }
 
 // NewRouter returns the handler for the whole server.
@@ -23,7 +21,9 @@ func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(assignRequestID, accessLog(d.Logger), recoverPanics(d.Logger), securityHeaders)
 
-	r.NotFound(newSPA(d.UI).ServeHTTP)
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		WriteError(w, r, http.StatusNotFound, CodeNotFound, "Not found.")
+	})
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed, "Method not allowed.")
 	})

@@ -79,14 +79,10 @@ func recoverPanics(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// contentSecurityPolicy applies to the app itself. Routes serving user files
-// must replace it with the stricter policy from the security rules.
-const contentSecurityPolicy = "default-src 'self'; " +
-	"img-src 'self' data: blob:; " +
-	"object-src 'none'; " +
-	"base-uri 'self'; " +
-	"form-action 'self'; " +
-	"frame-ancestors 'none'"
+// contentSecurityPolicy locks down API responses, which never need to load
+// anything. The policy for the UI lives in web/server. Routes serving user
+// files must replace this with the policy from the security rules.
+const contentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'"
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

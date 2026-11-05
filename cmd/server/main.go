@@ -16,7 +16,6 @@ import (
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/httpx"
 	"github.com/swayam5342/dextro/internal/platform"
-	"github.com/swayam5342/dextro/web"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -48,16 +47,11 @@ func run() error {
 		return err
 	}
 
-	ui, err := web.UI()
-	if err != nil {
-		return err
-	}
-
 	// There is no WriteTimeout or ReadTimeout because uploads and downloads can
 	// legitimately run for hours.
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           httpx.NewRouter(httpx.Deps{Logger: logger, DB: pool, UI: ui}),
+		Handler:           httpx.NewRouter(httpx.Deps{Logger: logger, DB: pool}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
