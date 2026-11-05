@@ -13,15 +13,17 @@ import (
 
 // Actions recorded in audit_events. Stored values, so don't rename them.
 const (
-	ActionUserRegistered  = "user.registered"
-	ActionRoleChanged     = "user.role_changed"
-	ActionLogin           = "auth.login"
-	ActionLoginFailed     = "auth.login_failed"
-	ActionLogout          = "auth.logout"
-	ActionPasswordChanged = "auth.password_changed"
-	ActionSessionRevoked  = "auth.session_revoked"
-	ActionGoogleLinked    = "auth.google_linked"
-	ActionSettingsUpdated = "settings.updated"
+	ActionUserRegistered   = "user.registered"
+	ActionRoleChanged      = "user.role_changed"
+	ActionLogin            = "auth.login"
+	ActionLoginFailed      = "auth.login_failed"
+	ActionLogout           = "auth.logout"
+	ActionPasswordChanged  = "auth.password_changed"
+	ActionSessionRevoked   = "auth.session_revoked"
+	ActionGoogleLinked     = "auth.google_linked"
+	ActionSettingsUpdated  = "settings.updated"
+	ActionStorageConnected = "storage.connected"
+	ActionStorageRemoved   = "storage.removed"
 )
 
 // Event is one recorded action. Metadata must never hold secrets or tokens.

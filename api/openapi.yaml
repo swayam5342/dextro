@@ -244,6 +244,115 @@ paths:
                 $ref: "#/components/schemas/Settings"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/storage/connections:
+    get:
+      operationId: listConnections
+      summary: List the signed-in user's storage connections
+      tags: [storage]
+      responses:
+        "200":
+          description: The user's connections, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Connection"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/connections/s3:
+    post:
+      operationId: createS3Connection
+      summary: Connect an S3-compatible bucket
+      description: The details are tried against the bucket before anything is saved.
+      tags: [storage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/S3ConnectionInput"
+      responses:
+        "201":
+          description: The bucket is connected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/connections/{id}:
+    delete:
+      operationId: deleteConnection
+      summary: Remove a connection and forget its credentials
+      description: Files already in the account stay there.
+      tags: [storage]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The connection is gone.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/connections/{id}/test:
+    post:
+      operationId: testConnection
+      summary: Check that a connection still works
+      tags: [storage]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The connection works.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/google/connect:
+    post:
+      operationId: connectGoogleDrive
+      summary: Start connecting a Google Drive account
+      description: >
+        A POST rather than a redirect so it passes the Origin check. The client
+        sends the browser to the returned URL.
+      tags: [storage]
+      responses:
+        "200":
+          description: Where to send the browser.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoogleRedirect"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/google/callback:
+    get:
+      operationId: googleDriveCallback
+      summary: Finish connecting a Google Drive account
+      description: >
+        Always redirects into the UI. Failures carry a stable code in the
+        `error` query parameter of the redirect.
+      tags: [storage]
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirects into the UI.
 components:
   securitySchemes:
     sessionCookie:
@@ -333,6 +442,43 @@ components:
         expires_at:
           type: string
           format: date-time
+    Connection:
+      type: object
+      description: A storage account. Credentials are never included.
+      required: [id, name, provider, summary, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        provider:
+          type: string
+          enum: [s3, google_drive]
+        summary:
+          type: string
+          description: What the connection points at, for showing to its owner.
+        created_at:
+          type: string
+          format: date-time
+    S3ConnectionInput:
+      type: object
+      required: [name, endpoint, bucket, access_key_id, secret_access_key]
+      properties:
+        name:
+          type: string
+        endpoint:
+          type: string
+          description: The service's base URL, such as https://s3.example.com.
+        region:
+          type: string
+          description: Defaults to us-east-1.
+        bucket:
+          type: string
+        access_key_id:
+          type: string
+        secret_access_key:
+          type: string
     GoogleRedirect:
       type: object
       required: [url]

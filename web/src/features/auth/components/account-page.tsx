@@ -14,7 +14,7 @@ import {
   useLinkGoogle,
   useRevokeSession,
 } from "../queries";
-import { Field, FormError } from "./field";
+import { Field, FormError } from "@/components/field";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

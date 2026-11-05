@@ -27,6 +27,16 @@ type AuthHandlers interface {
 	GoogleCallback(w http.ResponseWriter, r *http.Request, params apigen.GoogleCallbackParams)
 }
 
+// StorageHandlers is the part of the API the storage feature implements.
+type StorageHandlers interface {
+	ListConnections(w http.ResponseWriter, r *http.Request)
+	CreateS3Connection(w http.ResponseWriter, r *http.Request)
+	DeleteConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
+	TestConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
+	ConnectGoogleDrive(w http.ResponseWriter, r *http.Request)
+	GoogleDriveCallback(w http.ResponseWriter, r *http.Request, params apigen.GoogleDriveCallbackParams)
+}
+
 // AdminHandlers is the part of the API the admin feature implements.
 type AdminHandlers interface {
 	GetSettings(w http.ResponseWriter, r *http.Request)
@@ -43,6 +53,7 @@ type Deps struct {
 	Sessions       SessionResolver
 	Auth           AuthHandlers
 	Admin          AdminHandlers
+	Storage        StorageHandlers
 }
 
 // NewRouter returns the handler for the whole server.
@@ -57,7 +68,7 @@ func NewRouter(d Deps) http.Handler {
 		WriteError(w, r, http.StatusMethodNotAllowed, CodeMethodNotAllowed, "Method not allowed.")
 	})
 
-	server := &api{AuthHandlers: d.Auth, AdminHandlers: d.Admin, db: d.DB, logger: d.Logger}
+	server := &api{AuthHandlers: d.Auth, AdminHandlers: d.Admin, StorageHandlers: d.Storage, db: d.DB, logger: d.Logger}
 	apigen.HandlerWithOptions(server, apigen.ChiServerOptions{
 		BaseRouter: r,
 		// These wrap each generated route, and the last one listed runs first.

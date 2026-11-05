@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import { Field, FormError } from "./field";
+import { Field, FormError } from "@/components/field";
 
 interface CredentialsFormProps {
   submitLabel: string;

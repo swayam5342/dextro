@@ -21,6 +21,7 @@ type Pinger interface {
 type api struct {
 	AuthHandlers
 	AdminHandlers
+	StorageHandlers
 	db     Pinger
 	logger *slog.Logger
 }

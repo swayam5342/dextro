@@ -14,6 +14,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ConnectionProvider.
+const (
+	GoogleDrive ConnectionProvider = "google_drive"
+	S3          ConnectionProvider = "s3"
+)
+
+// Valid indicates whether the value is a known member of the ConnectionProvider enum.
+func (e ConnectionProvider) Valid() bool {
+	switch e {
+	case GoogleDrive:
+		return true
+	case S3:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Ok          HealthStatus = "ok"
@@ -64,6 +82,20 @@ type ChangePassword struct {
 	NewPassword     string `json:"new_password"`
 }
 
+// Connection A storage account. Credentials are never included.
+type Connection struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	Provider  ConnectionProvider `json:"provider"`
+
+	// Summary What the connection points at, for showing to its owner.
+	Summary string `json:"summary"`
+}
+
+// ConnectionProvider defines model for Connection.Provider.
+type ConnectionProvider string
+
 // Credentials defines model for Credentials.
 type Credentials struct {
 	Email    string `json:"email"`
@@ -96,6 +128,20 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// S3ConnectionInput defines model for S3ConnectionInput.
+type S3ConnectionInput struct {
+	AccessKeyId string `json:"access_key_id"`
+	Bucket      string `json:"bucket"`
+
+	// Endpoint The service's base URL, such as https://s3.example.com.
+	Endpoint string `json:"endpoint"`
+	Name     string `json:"name"`
+
+	// Region Defaults to us-east-1.
+	Region          *string `json:"region,omitempty"`
+	SecretAccessKey string  `json:"secret_access_key"`
+}
 
 // Session defines model for Session.
 type Session struct {
@@ -137,6 +183,12 @@ type GoogleCallbackParams struct {
 	State *string `form:"state,omitempty" json:"state,omitempty"`
 }
 
+// GoogleDriveCallbackParams defines parameters for GoogleDriveCallback.
+type GoogleDriveCallbackParams struct {
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+}
+
 // UpdateSettingsJSONRequestBody defines body for UpdateSettings for application/json ContentType.
 type UpdateSettingsJSONRequestBody = Settings
 
@@ -148,6 +200,9 @@ type ChangePasswordJSONRequestBody = ChangePassword
 
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = Credentials
+
+// CreateS3ConnectionJSONRequestBody defines body for CreateS3Connection for application/json ContentType.
+type CreateS3ConnectionJSONRequestBody = S3ConnectionInput
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -190,6 +245,24 @@ type ServerInterface interface {
 	// RevokeSession End one of the signed-in user's sessions
 	// (DELETE /api/v1/auth/sessions/{id})
 	RevokeSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ListConnections List the signed-in user's storage connections
+	// (GET /api/v1/storage/connections)
+	ListConnections(w http.ResponseWriter, r *http.Request)
+	// CreateS3Connection Connect an S3-compatible bucket
+	// (POST /api/v1/storage/connections/s3)
+	CreateS3Connection(w http.ResponseWriter, r *http.Request)
+	// DeleteConnection Remove a connection and forget its credentials
+	// (DELETE /api/v1/storage/connections/{id})
+	DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// TestConnection Check that a connection still works
+	// (POST /api/v1/storage/connections/{id}/test)
+	TestConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GoogleDriveCallback Finish connecting a Google Drive account
+	// (GET /api/v1/storage/google/callback)
+	GoogleDriveCallback(w http.ResponseWriter, r *http.Request, params GoogleDriveCallbackParams)
+	// ConnectGoogleDrive Start connecting a Google Drive account
+	// (POST /api/v1/storage/google/connect)
+	ConnectGoogleDrive(w http.ResponseWriter, r *http.Request)
 	// GetHealth Report whether the server can reach its database
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -274,6 +347,42 @@ func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request) {
 // RevokeSession End one of the signed-in user's sessions
 // (DELETE /api/v1/auth/sessions/{id})
 func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListConnections List the signed-in user's storage connections
+// (GET /api/v1/storage/connections)
+func (_ Unimplemented) ListConnections(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateS3Connection Connect an S3-compatible bucket
+// (POST /api/v1/storage/connections/s3)
+func (_ Unimplemented) CreateS3Connection(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteConnection Remove a connection and forget its credentials
+// (DELETE /api/v1/storage/connections/{id})
+func (_ Unimplemented) DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TestConnection Check that a connection still works
+// (POST /api/v1/storage/connections/{id}/test)
+func (_ Unimplemented) TestConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GoogleDriveCallback Finish connecting a Google Drive account
+// (GET /api/v1/storage/google/callback)
+func (_ Unimplemented) GoogleDriveCallback(w http.ResponseWriter, r *http.Request, params GoogleDriveCallbackParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ConnectGoogleDrive Start connecting a Google Drive account
+// (POST /api/v1/storage/google/connect)
+func (_ Unimplemented) ConnectGoogleDrive(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -518,6 +627,146 @@ func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListConnections operation middleware
+func (siw *ServerInterfaceWrapper) ListConnections(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConnections(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateS3Connection operation middleware
+func (siw *ServerInterfaceWrapper) CreateS3Connection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateS3Connection(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteConnection operation middleware
+func (siw *ServerInterfaceWrapper) DeleteConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestConnection operation middleware
+func (siw *ServerInterfaceWrapper) TestConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GoogleDriveCallback operation middleware
+func (siw *ServerInterfaceWrapper) GoogleDriveCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GoogleDriveCallbackParams
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GoogleDriveCallback(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConnectGoogleDrive operation middleware
+func (siw *ServerInterfaceWrapper) ConnectGoogleDrive(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConnectGoogleDrive(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -686,6 +935,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/admin/settings", wrapper.UpdateSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/storage/connections", wrapper.ListConnections)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/storage/connections/s3", wrapper.CreateS3Connection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/storage/connections/{id}", wrapper.DeleteConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/test", wrapper.TestConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/storage/google/connect", wrapper.ConnectGoogleDrive)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/storage/google/callback", wrapper.GoogleDriveCallback)
 	})
 
 	return r

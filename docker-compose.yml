@@ -31,6 +31,10 @@ services:
       DEXTRO_TRUSTED_PROXIES: 172.30.0.250
       DEXTRO_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       DEXTRO_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DEXTRO_ENCRYPTION_KEYS: ${ENCRYPTION_KEYS:?run make env to add it to .env}
+      DEXTRO_ENCRYPTION_KEY_ID: ${ENCRYPTION_KEY_ID:-}
+      # The dev SeaweedFS is on a private address, so it has to be allowed by name.
+      DEXTRO_S3_ALLOWED_HOSTS: ${S3_ALLOWED_HOSTS:-seaweedfs}
     ports:
       - 127.0.0.1:8080:8080
     depends_on:

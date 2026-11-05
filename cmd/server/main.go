@@ -12,12 +12,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/swayam5342/dextro/internal/admin"
 	"github.com/swayam5342/dextro/internal/auth"
 	"github.com/swayam5342/dextro/internal/config"
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/httpx"
+	"github.com/swayam5342/dextro/internal/netguard"
 	"github.com/swayam5342/dextro/internal/platform"
+	"github.com/swayam5342/dextro/internal/provider/gdrive"
+	"github.com/swayam5342/dextro/internal/secrets"
+	"github.com/swayam5342/dextro/internal/storage"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -59,6 +65,11 @@ func run() error {
 	if cfg.GoogleEnabled() {
 		google = auth.NewGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/api/v1/auth/google/callback")
 	}
+
+	storageHandler, err := newStorageHandler(cfg, pool, logger)
+	if err != nil {
+		return err
+	}
 	router := httpx.NewRouter(httpx.Deps{
 		Logger:         logger,
 		DB:             pool,
@@ -67,6 +78,7 @@ func run() error {
 		Sessions:       authService,
 		Auth:           auth.NewHandler(authService, google, logger),
 		Admin:          admin.NewHandler(admin.NewService(admin.NewStore(pool)), logger),
+		Storage:        storageHandler,
 	})
 
 	// There is no WriteTimeout or ReadTimeout because uploads and downloads can
@@ -79,6 +91,29 @@ func run() error {
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
 	return serve(ctx, server, logger)
+}
+
+func newStorageHandler(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) (*storage.Handler, error) {
+	keyring, err := secrets.NewKeyring(cfg.EncryptionKeys, cfg.ActiveKeyID)
+	if err != nil {
+		return nil, err
+	}
+	guard := netguard.New(cfg.S3AllowedHosts)
+	// Both stay nil when Google isn't configured, which turns its routes off.
+	var drive *gdrive.Client
+	var driveAuth storage.DriveAuth
+	if cfg.GoogleEnabled() {
+		drive = gdrive.NewClient(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/api/v1/storage/google/callback")
+		driveAuth = drive
+	}
+	service := storage.NewService(storage.Deps{
+		Store:     storage.NewStore(pool),
+		Keyring:   keyring,
+		Guard:     guard,
+		Openers:   storage.NewOpeners(guard, drive),
+		DriveAuth: driveAuth,
+	})
+	return storage.NewHandler(service, logger), nil
 }
 
 // serve runs the server until ctx ends, then drains in-flight requests.

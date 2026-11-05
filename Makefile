@@ -63,7 +63,7 @@ test: ## Run the Go and web server tests (needs Docker for the Postgres tests)
 	go test ./...
 	cd web && pnpm test
 
-run: ## Run the Go server locally; set DEXTRO_DATABASE_URL and DEXTRO_PUBLIC_URL first
+run: ## Run the Go server locally; set DEXTRO_DATABASE_URL, DEXTRO_PUBLIC_URL and DEXTRO_ENCRYPTION_KEYS first
 	go run ./cmd/server
 
 run-web: web-build ## Run the Node web server locally on port 3000
@@ -72,7 +72,7 @@ run-web: web-build ## Run the Node web server locally on port 3000
 dev-web: $(WEB_DEPS) ## Run the Vite dev server, proxying the API to localhost:8080
 	cd web && pnpm dev
 
-env: ## Create .env with random secrets if it doesn't exist
+env: ## Create .env with random secrets, or add any missing from an existing one
 	@if [ -f .env ]; then echo ".env already exists"; else \
 		printf 'POSTGRES_PASSWORD=%s\nS3_ACCESS_KEY=%s\nS3_SECRET_KEY=%s\n' \
 			"$$(openssl rand -hex 24)" "$$(openssl rand -hex 10)" "$$(openssl rand -hex 24)" > .env; \

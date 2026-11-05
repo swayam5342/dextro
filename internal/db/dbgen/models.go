@@ -37,6 +37,18 @@ type Setting struct {
 	UpdatedAt time.Time
 }
 
+type StorageConnection struct {
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	Provider         string
+	Name             string
+	Settings         []byte
+	SecretKeyID      string
+	SecretCiphertext []byte
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type User struct {
 	ID           uuid.UUID
 	Email        string

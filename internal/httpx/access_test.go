@@ -50,6 +50,7 @@ func newAccessRouter(t *testing.T, sessions SessionResolver) http.Handler {
 		Sessions:     sessions,
 		Auth:         apigen.Unimplemented{},
 		Admin:        apigen.Unimplemented{},
+		Storage:      apigen.Unimplemented{},
 	})
 }
 

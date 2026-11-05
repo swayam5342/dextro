@@ -42,6 +42,24 @@ export interface components {
     GoogleRedirect: {
       url: string;
     };
+    Connection: {
+      id: string;
+      name: string;
+      provider: "s3" | "google_drive";
+      /** What the connection points at, for showing to its owner. */
+      summary: string;
+      created_at: string;
+    };
+    S3ConnectionInput: {
+      name: string;
+      /** The service's base URL, such as https://s3.example.com. */
+      endpoint: string;
+      /** Defaults to us-east-1. */
+      region?: string;
+      bucket: string;
+      access_key_id: string;
+      secret_access_key: string;
+    };
     Settings: {
       /**
        * When false, nobody can create an account, by password or through a
@@ -100,6 +118,21 @@ type JsonOperation<Body, Responses> = {
   responses: Responses & { default: JsonBody<Schemas["Error"]> };
 };
 
+/** An operation on one item, identified by its ID in the path. */
+type PathOperation = {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: { id: string };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    204: NoContent;
+    default: JsonBody<Schemas["Error"]>;
+  };
+};
+
 export interface paths {
   "/health": {
     get: {
@@ -133,21 +166,24 @@ export interface paths {
     get: Operation<{ 200: JsonBody<Schemas["Session"][]> }>;
   };
   "/api/v1/auth/sessions/{id}": {
-    delete: {
-      parameters: {
-        query?: never;
-        header?: never;
-        path: { id: string };
-        cookie?: never;
-      };
-      requestBody?: never;
-      responses: {
-        204: NoContent;
-        default: JsonBody<Schemas["Error"]>;
-      };
-    };
+    delete: PathOperation;
   };
   "/api/v1/auth/google/link": {
+    post: Operation<{ 200: JsonBody<Schemas["GoogleRedirect"]> }>;
+  };
+  "/api/v1/storage/connections": {
+    get: Operation<{ 200: JsonBody<Schemas["Connection"][]> }>;
+  };
+  "/api/v1/storage/connections/s3": {
+    post: JsonOperation<Schemas["S3ConnectionInput"], { 201: JsonBody<Schemas["Connection"]> }>;
+  };
+  "/api/v1/storage/connections/{id}": {
+    delete: PathOperation;
+  };
+  "/api/v1/storage/connections/{id}/test": {
+    post: PathOperation;
+  };
+  "/api/v1/storage/google/connect": {
     post: Operation<{ 200: JsonBody<Schemas["GoogleRedirect"]> }>;
   };
   "/api/v1/admin/settings": {
