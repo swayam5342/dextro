@@ -85,12 +85,13 @@ type StorageConnection struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	Email        string
-	PasswordHash pgtype.Text
-	Role         string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                 uuid.UUID
+	Email              string
+	PasswordHash       pgtype.Text
+	Role               string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	MustChangePassword bool
 }
 
 type UserIdentity struct {

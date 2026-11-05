@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/swayam5342/dextro/internal/admin"
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/db/dbtest"
 	"github.com/swayam5342/dextro/internal/httpx"
@@ -27,20 +26,40 @@ type fixture struct {
 	service *Service
 }
 
+// register signs up the first account and adds the rest the way the admin would,
+// minus the forced password change, which most tests aren't about.
 func (f *fixture) register(t *testing.T, email string) Issued {
 	t.Helper()
-	issued, err := f.service.Register(f.ctx, email, goodPassword, client)
+	exists, err := f.service.store.AnyUsers(f.ctx)
 	if err != nil {
-		t.Fatalf("Register(%s): %v", email, err)
+		t.Fatalf("AnyUsers: %v", err)
 	}
-	return issued
+	if !exists {
+		issued, err := f.service.Register(f.ctx, email, goodPassword, client)
+		if err != nil {
+			t.Fatalf("Register(%s): %v", email, err)
+		}
+		return issued
+	}
+	return addUser(t, f.ctx, f.service, email)
 }
 
-func (f *fixture) closeRegistration(t *testing.T) {
+// addUser creates a signed-in account with no password change pending.
+func addUser(t *testing.T, ctx context.Context, service *Service, email string) Issued {
 	t.Helper()
-	if err := admin.NewStore(f.pool).SetSetting(f.ctx, "allow_registration", []byte("false")); err != nil {
-		t.Fatalf("close registration: %v", err)
+	hash, err := service.hasher.hash(ctx, goodPassword)
+	if err != nil {
+		t.Fatalf("hash: %v", err)
 	}
+	userID, err := service.store.CreateUser(ctx, email, hash, RoleUser, false)
+	if err != nil {
+		t.Fatalf("CreateUser(%s): %v", email, err)
+	}
+	issued, err := issueSession(ctx, service.store, userID, client)
+	if err != nil {
+		t.Fatalf("issueSession: %v", err)
+	}
+	return issued
 }
 
 func (f *fixture) count(t *testing.T, query string, args ...any) int {
@@ -73,11 +92,10 @@ func TestService(t *testing.T) {
 		name string
 		run  func(*testing.T, *fixture)
 	}{
-		{"first account becomes admin and later ones do not", testFirstAccountIsAdmin},
+		{"the first account becomes admin", testFirstAccountIsAdmin},
 		{"concurrent first sign-ups produce one admin", testConcurrentFirstSignUps},
 		{"emails are unique whatever their case", testEmailsAreUnique},
-		{"closed registration blocks sign-up", testClosedRegistration},
-		{"the first account ignores closed registration", testFirstAccountIgnoresClosedRegistration},
+		{"sign-up closes after the first account", testClosedRegistration},
 		{"bad input is refused", testRegisterValidates},
 		{"login", testLogin},
 		{"failed logins look alike and are audited", testFailedLogins},
@@ -97,18 +115,32 @@ func TestService(t *testing.T) {
 		{"google accounts with unverified emails are refused", testGoogleUnverifiedIsRefused},
 		{"returning google users sign in by subject", testGoogleReturningUser},
 		{"google never takes over a password account", testGoogleNeverAutoLinks},
-		{"closed registration blocks first-time google sign-ins", testGoogleClosedRegistration},
-		{"closed registration lets returning google users in", testGoogleClosedRegistrationReturning},
+		{"closed sign-up blocks first-time google sign-ins", testGoogleClosedRegistration},
+		{"closed sign-up lets returning google users in", testGoogleClosedRegistrationReturning},
 		{"password sign-up can't claim a google account's email", testPasswordCannotClaimGoogleEmail},
 		{"linking google", testLinkGoogle},
 		{"linking needs a verified email", testLinkGoogleNeedsVerifiedEmail},
 		{"a google account links to one user", testLinkGoogleOwnedByAnother},
 		{"a user links one google account", testLinkGoogleTwice},
 		{"relinking the same google account is harmless", testLinkGoogleSameAgain},
-		{"setting roles", testSetRole},
-		{"setting a role refuses bad input", testSetRoleValidates},
 		{"registration status", testRegistrationOpen},
-		{"the role command", testRunCommandSetsRole},
+		{"the transfer command", testRunCommandTransfersAdmin},
+		{"creating a user", testCreateUser},
+		{"creating a user refuses bad input", testCreateUserValidates},
+		{"listing users", testListUsers},
+		{"resetting a password", testResetUserPassword},
+		{"resetting a password refuses bad input", testResetUserPasswordValidates},
+		{"replacing a temporary password lifts the block", testChangingPasswordLiftsTheBlock},
+		{"deleting a user", testDeleteUser},
+		{"deleting a user refuses bad input", testDeleteUserValidates},
+		{"transferring the admin role", testTransferAdmin},
+		{"a failed transfer keeps the admin", testTransferAdminToNobodyKeepsTheAdmin},
+		{"transferring to the admin changes nothing", testTransferAdminToTheAdmin},
+		{"concurrent transfers leave one admin", testConcurrentTransfers},
+		{"the database refuses a second admin", testDatabaseRefusesASecondAdmin},
+		{"the reset command", testResetPasswordCommand},
+		{"the reset command refuses unknown users", testResetPasswordCommandUnknownUser},
+		{"api keys wait for the password change", testAPIKeyWaitsForPasswordChange},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -123,15 +155,11 @@ func TestService(t *testing.T) {
 
 func testFirstAccountIsAdmin(t *testing.T, f *fixture) {
 	first := f.register(t, "first@example.org")
-	if first.User.Role != RoleAdmin {
-		t.Errorf("first role = %q, want admin", first.User.Role)
+	if first.User.Role != RoleAdmin || first.User.MustChangePassword {
+		t.Errorf("first user = %+v", first.User)
 	}
-	second := f.register(t, "second@example.org")
-	if second.User.Role != RoleUser {
-		t.Errorf("second role = %q, want user", second.User.Role)
-	}
-	if got := f.auditCount(t, "user.registered"); got != 2 {
-		t.Errorf("audit events = %d, want 2", got)
+	if got := f.auditCount(t, "user.registered"); got != 1 {
+		t.Errorf("audit events = %d, want 1", got)
 	}
 }
 
@@ -145,10 +173,17 @@ func testConcurrentFirstSignUps(t *testing.T, f *fixture) {
 		})
 	}
 	wg.Wait()
+	succeeded := 0
 	for _, err := range errs {
-		if err != nil {
-			t.Fatalf("Register: %v", err)
+		switch {
+		case err == nil:
+			succeeded++
+		case !errors.Is(err, ErrRegistrationClosed):
+			t.Errorf("Register: %v", err)
 		}
+	}
+	if succeeded != 1 {
+		t.Errorf("sign-ups that worked = %d, want 1", succeeded)
 	}
 	if got := f.count(t, `SELECT count(*) FROM users WHERE role = 'admin'`); got != 1 {
 		t.Errorf("admins = %d, want 1", got)
@@ -156,8 +191,8 @@ func testConcurrentFirstSignUps(t *testing.T, f *fixture) {
 }
 
 func testEmailsAreUnique(t *testing.T, f *fixture) {
-	f.register(t, "person@example.org")
-	_, err := f.service.Register(f.ctx, "PERSON@Example.org", goodPassword, client)
+	first := f.register(t, "person@example.org")
+	_, err := f.service.CreateUser(f.ctx, first.User.ID, "PERSON@Example.org", goodPassword, client)
 	if !errors.Is(err, ErrEmailTaken) {
 		t.Errorf("error = %v, want ErrEmailTaken", err)
 	}
@@ -165,18 +200,11 @@ func testEmailsAreUnique(t *testing.T, f *fixture) {
 
 func testClosedRegistration(t *testing.T, f *fixture) {
 	f.register(t, "first@example.org")
-	f.closeRegistration(t)
-	_, err := f.service.Register(f.ctx, "second@example.org", goodPassword, client)
-	if !errors.Is(err, ErrRegistrationClosed) {
-		t.Errorf("error = %v, want ErrRegistrationClosed", err)
-	}
-}
-
-func testFirstAccountIgnoresClosedRegistration(t *testing.T, f *fixture) {
-	f.closeRegistration(t)
-	first := f.register(t, "first@example.org")
-	if first.User.Role != RoleAdmin {
-		t.Errorf("role = %q, want admin", first.User.Role)
+	// A taken email gets the same answer, so sign-up can't be used to test addresses.
+	for _, email := range []string{"second@example.org", "first@example.org"} {
+		if _, err := f.service.Register(f.ctx, email, goodPassword, client); !errors.Is(err, ErrRegistrationClosed) {
+			t.Errorf("Register(%s): error = %v, want ErrRegistrationClosed", email, err)
+		}
 	}
 }
 
@@ -286,8 +314,8 @@ func testExpiredSessions(t *testing.T, f *fixture) {
 func testRoleChangeAppliesToLiveSessions(t *testing.T, f *fixture) {
 	f.register(t, "first@example.org")
 	user := f.register(t, "user@example.org")
-	if err := f.service.SetRole(f.ctx, "user@example.org", RoleAdmin); err != nil {
-		t.Fatalf("SetRole: %v", err)
+	if err := f.service.TransferAdmin(f.ctx, "user@example.org"); err != nil {
+		t.Fatalf("TransferAdmin: %v", err)
 	}
 	got, err := f.service.ResolveSession(f.ctx, user.Token)
 	if err != nil {
@@ -428,13 +456,12 @@ func testChangePasswordWithoutOne(t *testing.T, f *fixture) {
 }
 
 func testGoogleCreatesAccount(t *testing.T, f *fixture) {
-	f.register(t, "first@example.org")
 	issued, err := f.service.SignInWithGoogle(f.ctx, googleID("sub-1", "Person@Example.org"), client)
 	if err != nil {
 		t.Fatalf("SignInWithGoogle: %v", err)
 	}
 	u := issued.User
-	if u.Email != "person@example.org" || u.Role != RoleUser || u.HasPassword || !u.GoogleLinked {
+	if u.Email != "person@example.org" || u.HasPassword || !u.GoogleLinked {
 		t.Errorf("user = %+v", u)
 	}
 }
@@ -496,7 +523,6 @@ func testGoogleNeverAutoLinks(t *testing.T, f *fixture) {
 
 func testGoogleClosedRegistration(t *testing.T, f *fixture) {
 	f.register(t, "first@example.org")
-	f.closeRegistration(t)
 	_, err := f.service.SignInWithGoogle(f.ctx, googleID("sub-1", "person@example.org"), client)
 	if !errors.Is(err, ErrRegistrationClosed) {
 		t.Errorf("error = %v, want ErrRegistrationClosed", err)
@@ -507,7 +533,6 @@ func testGoogleClosedRegistrationReturning(t *testing.T, f *fixture) {
 	if _, err := f.service.SignInWithGoogle(f.ctx, googleID("sub-1", "person@example.org"), client); err != nil {
 		t.Fatalf("SignInWithGoogle: %v", err)
 	}
-	f.closeRegistration(t)
 	if _, err := f.service.SignInWithGoogle(f.ctx, googleID("sub-1", "person@example.org"), client); err != nil {
 		t.Errorf("returning user: %v", err)
 	}
@@ -518,8 +543,8 @@ func testPasswordCannotClaimGoogleEmail(t *testing.T, f *fixture) {
 		t.Fatalf("SignInWithGoogle: %v", err)
 	}
 	_, err := f.service.Register(f.ctx, "person@example.org", goodPassword, client)
-	if !errors.Is(err, ErrEmailTaken) {
-		t.Errorf("error = %v, want ErrEmailTaken", err)
+	if !errors.Is(err, ErrRegistrationClosed) {
+		t.Errorf("error = %v, want ErrRegistrationClosed", err)
 	}
 }
 
@@ -589,32 +614,6 @@ func testLinkGoogleSameAgain(t *testing.T, f *fixture) {
 	}
 }
 
-func testSetRole(t *testing.T, f *fixture) {
-	f.register(t, "first@example.org")
-	f.register(t, "person@example.org")
-	if err := f.service.SetRole(f.ctx, "Person@Example.org", RoleAdmin); err != nil {
-		t.Fatalf("SetRole: %v", err)
-	}
-	if got := f.count(t, `SELECT count(*) FROM users WHERE email = 'person@example.org' AND role = 'admin'`); got != 1 {
-		t.Error("role was not changed")
-	}
-	got := f.count(t, `SELECT count(*) FROM audit_events WHERE action = 'user.role_changed'
-		AND metadata->>'email' = 'person@example.org' AND metadata->>'role' = 'admin'`)
-	if got != 1 {
-		t.Errorf("audit events = %d, want 1", got)
-	}
-}
-
-func testSetRoleValidates(t *testing.T, f *fixture) {
-	f.register(t, "first@example.org")
-	if err := f.service.SetRole(f.ctx, "first@example.org", "owner"); !errors.Is(err, ErrInvalidRole) {
-		t.Errorf("bad role: error = %v", err)
-	}
-	if err := f.service.SetRole(f.ctx, "nobody@example.org", RoleAdmin); !errors.Is(err, ErrUserNotFound) {
-		t.Errorf("unknown user: error = %v", err)
-	}
-}
-
 func testRegistrationOpen(t *testing.T, f *fixture) {
 	check := func(want bool) {
 		t.Helper()
@@ -626,8 +625,7 @@ func testRegistrationOpen(t *testing.T, f *fixture) {
 			t.Errorf("RegistrationOpen = %v, want %v", got, want)
 		}
 	}
-	f.closeRegistration(t)
-	check(true) // An empty instance can always create its first account.
+	check(true)
 	f.register(t, "first@example.org")
 	check(false)
 }

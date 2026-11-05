@@ -152,6 +152,30 @@ func TestEveryAdminRouteRefusesNonAdmins(t *testing.T) {
 	}
 }
 
+// Someone holding a password the admin chose can only replace it. This walks the
+// real router, so a new route is held back without anyone remembering to list it.
+func TestEveryRouteWaitsForAPasswordChange(t *testing.T) {
+	sessions := defaultSessions()
+	sessions.sessions["held"] = Principal{UserID: uuid.New(), SessionID: uuid.New(), MustChangePassword: true}
+	h := newAccessRouter(t, sessions)
+	allowed := map[string]bool{
+		"GET /api/v1/auth/config":    true,
+		"GET /api/v1/auth/me":        true,
+		"POST /api/v1/auth/logout":   true,
+		"POST /api/v1/auth/password": true,
+	}
+	for _, rt := range allRoutes(t, h) {
+		if rt.path == "/health" || !strings.HasPrefix(rt.path, "/api/") {
+			continue
+		}
+		rec := request(h, rt.method, rt.path, "held")
+		held := rec.Code == http.StatusForbidden && decodeError(t, rec).Error.Code == CodePasswordChangeRequired
+		if want := !allowed[rt.method+" "+rt.path]; held != want {
+			t.Errorf("%s %s: held = %v, want %v (status %d)", rt.method, rt.path, held, want, rec.Code)
+		}
+	}
+}
+
 func TestSignedInUsersReachOrdinaryRoutes(t *testing.T) {
 	h := newAccessRouter(t, defaultSessions())
 	if rec := request(h, http.MethodGet, "/api/v1/auth/me", "user"); rec.Code != http.StatusNotImplemented {

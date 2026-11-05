@@ -165,9 +165,14 @@ export function AccountPage({
           Sign out
         </Button>
         {user.role === "admin" && (
-          <Button asChild variant="outline">
-            <Link to="/admin/settings">Server settings</Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link to="/admin/users">Users</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/admin/settings">Server settings</Link>
+            </Button>
+          </>
         )}
       </div>
       <FormError message={redirectMessage(redirectError)} />

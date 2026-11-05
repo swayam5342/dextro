@@ -44,6 +44,8 @@ const (
 	codeEmailTaken         = "email_taken"
 	codeRegistrationClosed = "registration_closed"
 	codePasswordNotSet     = "password_not_set"
+	codePasswordUnchanged  = "password_unchanged"
+	codeOwnAccount         = "own_account"
 )
 
 // Codes sent to the UI in the error query parameter after a Google redirect.
@@ -359,15 +361,19 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, ErrWeakPassword):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeWeakPassword,
 			"Use a password between "+strconv.Itoa(minPasswordLength)+" and "+strconv.Itoa(maxPasswordLength)+" characters.")
+	case errors.Is(err, ErrPasswordUnchanged):
+		httpx.WriteError(w, r, http.StatusBadRequest, codePasswordUnchanged, "Choose a new password, different from this one.")
+	case errors.Is(err, ErrOwnAccount):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeOwnAccount, "You can't do that to your own account here.")
 	case errors.Is(err, ErrEmailTaken):
 		httpx.WriteError(w, r, http.StatusConflict, codeEmailTaken, "An account with this email already exists.")
 	case errors.Is(err, ErrRegistrationClosed):
-		httpx.WriteError(w, r, http.StatusForbidden, codeRegistrationClosed, "Registration is closed on this server.")
+		httpx.WriteError(w, r, http.StatusForbidden, codeRegistrationClosed, "This server doesn't take sign-ups. Ask its admin for an account.")
 	case errors.Is(err, ErrInvalidAPIKey):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidAPIKey, "Give the key a name and at least one permission.")
 	case errors.Is(err, ErrNoPassword):
 		httpx.WriteError(w, r, http.StatusBadRequest, codePasswordNotSet, "This account signs in with Google and has no password.")
-	case errors.Is(err, ErrSessionNotFound), errors.Is(err, ErrAPIKeyNotFound):
+	case errors.Is(err, ErrSessionNotFound), errors.Is(err, ErrAPIKeyNotFound), errors.Is(err, ErrUserNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
 	default:
 		h.logger.ErrorContext(r.Context(), "auth request failed",
@@ -423,12 +429,13 @@ func clearCookie(w http.ResponseWriter, name, path string) {
 
 func toAPIUser(u User) apigen.User {
 	return apigen.User{
-		Id:           u.ID,
-		Email:        u.Email,
-		Role:         apigen.UserRole(u.Role),
-		HasPassword:  u.HasPassword,
-		GoogleLinked: u.GoogleLinked,
-		CreatedAt:    u.CreatedAt,
+		Id:                 u.ID,
+		Email:              u.Email,
+		Role:               apigen.UserRole(u.Role),
+		HasPassword:        u.HasPassword,
+		GoogleLinked:       u.GoogleLinked,
+		CreatedAt:          u.CreatedAt,
+		MustChangePassword: u.MustChangePassword,
 	}
 }
 

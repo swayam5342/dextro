@@ -36,9 +36,9 @@ export function SignInPage({ redirectError }: { redirectError: string | undefine
       )}
       {config?.registration_open && (
         <p className="text-sm text-muted-foreground">
-          New here?{" "}
+          New server?{" "}
           <Link to="/register" className="text-foreground underline underline-offset-4">
-            Create an account
+            Create the admin account
           </Link>
         </p>
       )}

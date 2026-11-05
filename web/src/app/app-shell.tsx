@@ -10,6 +10,7 @@ import {
   Trash2,
   Upload,
   UserRound,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
@@ -31,7 +32,7 @@ import { connectionsQuery, poolQuery } from "@/features/storage/queries";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/storage" | "/admin/settings"; icon: LucideIcon; label: string }) {
+function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/storage" | "/admin/settings" | "/admin/users"; icon: LucideIcon; label: string }) {
   return (
     <Link
       to={to}
@@ -135,6 +136,7 @@ function Sidebar() {
         <>
           <p className="mx-2.5 mt-5 mb-1.5 text-xs text-faint">Admin</p>
           <nav aria-label="Admin" className="flex flex-col gap-0.5">
+            <NavLink to="/admin/users" icon={Users} label="Users" />
             <NavLink to="/admin/settings" icon={Settings} label="Server settings" />
           </nav>
         </>

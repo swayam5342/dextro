@@ -101,7 +101,12 @@ export function useChangePassword() {
         throw toApiError(error);
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: sessionsQuery.queryKey }),
+    // The user is refetched because that's what lets someone past the forced change.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionsQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: meQuery.queryKey }),
+      ]),
   });
 }
 

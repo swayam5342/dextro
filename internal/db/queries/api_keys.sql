@@ -14,9 +14,10 @@ DELETE FROM api_keys WHERE user_id = $1 AND id = $2;
 
 -- The key is the credential, so this goes by hashed token.
 -- name: GetAPIKeyByTokenHash :one
-SELECT id, user_id, scopes, last_used_at
-FROM api_keys
-WHERE token_hash = $1;
+SELECT k.id, k.user_id, k.scopes, k.last_used_at, u.must_change_password
+FROM api_keys k
+JOIN users u ON u.id = k.user_id
+WHERE k.token_hash = $1;
 
 -- name: TouchAPIKey :exec
 UPDATE api_keys SET last_used_at = now() WHERE id = $1;

@@ -28,6 +28,10 @@ type AuthHandlers interface {
 	ListAPIKeys(w http.ResponseWriter, r *http.Request)
 	CreateAPIKey(w http.ResponseWriter, r *http.Request)
 	RevokeAPIKey(w http.ResponseWriter, r *http.Request, id types.UUID)
+	ListUsers(w http.ResponseWriter, r *http.Request)
+	CreateUser(w http.ResponseWriter, r *http.Request)
+	DeleteUser(w http.ResponseWriter, r *http.Request, id types.UUID)
+	ResetUserPassword(w http.ResponseWriter, r *http.Request, id types.UUID)
 }
 
 // FilesHandlers is the part of the API the files feature implements.
@@ -109,6 +113,7 @@ func NewRouter(d Deps) http.Handler {
 		// These wrap each generated route, and the last one listed runs first.
 		Middlewares: []apigen.MiddlewareFunc{
 			requireAdmin,
+			requirePasswordChange,
 			requireKeyScope,
 			requireSession,
 			loadSession(d.Sessions, d.APIKeys, d.Logger),

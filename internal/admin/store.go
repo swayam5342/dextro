@@ -17,9 +17,8 @@ import (
 var ErrSettingNotFound = errors.New("setting not found")
 
 const (
-	settingAllowRegistration = "allow_registration"
-	settingMaxUploadBytes    = "max_upload_bytes"
-	defaultMaxUploadBytes    = 10 << 30
+	settingMaxUploadBytes = "max_upload_bytes"
+	defaultMaxUploadBytes = 10 << 30
 )
 
 // database is a pool or a transaction.
@@ -72,23 +71,6 @@ func (s *Store) SetSetting(ctx context.Context, key string, value json.RawMessag
 		return fmt.Errorf("set setting %q: %w", key, err)
 	}
 	return nil
-}
-
-// AllowRegistration reports whether new accounts may be created. Registration
-// stays open until an admin closes it.
-func (s *Store) AllowRegistration(ctx context.Context) (bool, error) {
-	raw, err := s.GetSetting(ctx, settingAllowRegistration)
-	if errors.Is(err, ErrSettingNotFound) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var allowed bool
-	if err := json.Unmarshal(raw, &allowed); err != nil {
-		return false, fmt.Errorf("decode setting %q: %w", settingAllowRegistration, err)
-	}
-	return allowed, nil
 }
 
 // MaxUploadBytes returns the largest file anyone can upload.

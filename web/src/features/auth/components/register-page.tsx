@@ -16,9 +16,9 @@ export function RegisterPage() {
     return (
       <CenteredPage>
         <div className="space-y-2">
-          <h1 className="text-xl font-semibold tracking-tight">Registration is closed</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Ask your admin for an account</h1>
           <p className="text-muted-foreground">
-            This server isn't accepting new accounts. Ask its admin to open registration, or{" "}
+            This server doesn't take sign-ups. Its admin creates accounts, or you can{" "}
             <Link to="/sign-in" className="text-foreground underline underline-offset-4">
               sign in
             </Link>{" "}
@@ -31,9 +31,12 @@ export function RegisterPage() {
 
   return (
     <CenteredPage>
-      <h1 className="text-xl font-semibold tracking-tight">Create your account</h1>
+      <div className="space-y-2">
+        <h1 className="text-xl font-semibold tracking-tight">Set up this server</h1>
+        <p className="text-muted-foreground">The first account becomes the admin. Everyone else gets an account from you.</p>
+      </div>
       <CredentialsForm
-        submitLabel="Create account"
+        submitLabel="Create admin account"
         pendingLabel="Creating account…"
         passwordAutoComplete="new-password"
         passwordHint="At least 12 characters."

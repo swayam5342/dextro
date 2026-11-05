@@ -14,6 +14,9 @@ import (
 // Actions recorded in audit_events. Stored values, so don't rename them.
 const (
 	ActionUserRegistered   = "user.registered"
+	ActionUserCreated      = "user.created"
+	ActionUserDeleted      = "user.deleted"
+	ActionPasswordReset    = "user.password_reset"
 	ActionRoleChanged      = "user.role_changed"
 	ActionLogin            = "auth.login"
 	ActionLoginFailed      = "auth.login_failed"

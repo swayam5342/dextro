@@ -66,16 +66,18 @@ func (q *Queries) DeleteAPIKeyForUser(ctx context.Context, arg DeleteAPIKeyForUs
 }
 
 const getAPIKeyByTokenHash = `-- name: GetAPIKeyByTokenHash :one
-SELECT id, user_id, scopes, last_used_at
-FROM api_keys
-WHERE token_hash = $1
+SELECT k.id, k.user_id, k.scopes, k.last_used_at, u.must_change_password
+FROM api_keys k
+JOIN users u ON u.id = k.user_id
+WHERE k.token_hash = $1
 `
 
 type GetAPIKeyByTokenHashRow struct {
-	ID         uuid.UUID
-	UserID     uuid.UUID
-	Scopes     []string
-	LastUsedAt *time.Time
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Scopes             []string
+	LastUsedAt         *time.Time
+	MustChangePassword bool
 }
 
 // The key is the credential, so this goes by hashed token.
@@ -87,6 +89,7 @@ func (q *Queries) GetAPIKeyByTokenHash(ctx context.Context, tokenHash []byte) (G
 		&i.UserID,
 		&i.Scopes,
 		&i.LastUsedAt,
+		&i.MustChangePassword,
 	)
 	return i, err
 }

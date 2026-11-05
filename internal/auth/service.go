@@ -35,13 +35,13 @@ const (
 var (
 	ErrInvalidEmail          = errors.New("invalid email")
 	ErrWeakPassword          = errors.New("weak password")
+	ErrPasswordUnchanged     = errors.New("new password is the old password")
 	ErrEmailTaken            = errors.New("email taken")
 	ErrRegistrationClosed    = errors.New("registration closed")
 	ErrInvalidCredentials    = errors.New("invalid credentials")
 	ErrNoPassword            = errors.New("account has no password")
 	ErrSessionNotFound       = errors.New("session not found")
 	ErrUserNotFound          = errors.New("user not found")
-	ErrInvalidRole           = errors.New("invalid role")
 	ErrAccountExists         = errors.New("a password account uses this email")
 	ErrGoogleEmailUnverified = errors.New("google email not verified")
 	ErrGoogleAlreadyLinked   = errors.New("google account already linked")
@@ -54,7 +54,9 @@ type User struct {
 	Role         string
 	HasPassword  bool
 	GoogleLinked bool
-	CreatedAt    time.Time
+	// MustChangePassword is set when someone else chose the password.
+	MustChangePassword bool
+	CreatedAt          time.Time
 }
 
 // Session is one signed-in device, as shown to the user who owns it.
@@ -110,16 +112,14 @@ func NewService(store *Store) *Service {
 	}
 }
 
-// RegistrationOpen reports whether a new account can be created right now.
+// RegistrationOpen reports whether anyone can sign up. Only the first account can,
+// and it becomes the admin. After that the admin creates accounts.
 func (s *Service) RegistrationOpen(ctx context.Context) (bool, error) {
 	exists, err := s.store.AnyUsers(ctx)
 	if err != nil {
 		return false, err
 	}
-	if !exists {
-		return true, nil
-	}
-	return s.store.Settings().AllowRegistration(ctx)
+	return !exists, nil
 }
 
 // Register creates a password account and signs it in.
@@ -151,10 +151,10 @@ func (s *Service) Register(ctx context.Context, rawEmail, password string, c Cli
 	return issued, nil
 }
 
-// createAccount applies the rules every new account goes through, whichever way
-// it signed up. It must run in a transaction: the lock makes the "is this the
-// first account" check safe under concurrent sign-ups. The first account is
-// always allowed and always becomes admin.
+// createAccount is how the first account comes to exist, whichever way it signs
+// up. It must run in a transaction: the lock makes the "is this the first account"
+// check safe under concurrent sign-ups. Everyone after that is refused here before
+// the email is looked at, so sign-up can't show which addresses have accounts.
 func createAccount(ctx context.Context, tx *Store, email, passwordHash, method string, c Client) (uuid.UUID, error) {
 	if err := tx.LockUserCreation(ctx); err != nil {
 		return uuid.Nil, err
@@ -163,18 +163,10 @@ func createAccount(ctx context.Context, tx *Store, email, passwordHash, method s
 	if err != nil {
 		return uuid.Nil, err
 	}
-	role := RoleAdmin
 	if exists {
-		role = RoleUser
-		allowed, err := tx.Settings().AllowRegistration(ctx)
-		if err != nil {
-			return uuid.Nil, err
-		}
-		if !allowed {
-			return uuid.Nil, ErrRegistrationClosed
-		}
+		return uuid.Nil, ErrRegistrationClosed
 	}
-	userID, err := tx.CreateUser(ctx, email, passwordHash, role)
+	userID, err := tx.CreateUser(ctx, email, passwordHash, RoleAdmin, false)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -182,7 +174,7 @@ func createAccount(ctx context.Context, tx *Store, email, passwordHash, method s
 		ActorID:  userID,
 		Action:   audit.ActionUserRegistered,
 		IP:       c.IP,
-		Metadata: map[string]any{"method": method, "role": role},
+		Metadata: map[string]any{"method": method, "role": RoleAdmin},
 	})
 	if err != nil {
 		return uuid.Nil, err
@@ -305,9 +297,10 @@ func (s *Service) ResolveSession(ctx context.Context, token string) (httpx.Princ
 		}
 	}
 	return httpx.Principal{
-		UserID:    session.userID,
-		SessionID: session.id,
-		IsAdmin:   session.role == RoleAdmin,
+		UserID:             session.userID,
+		SessionID:          session.id,
+		IsAdmin:            session.role == RoleAdmin,
+		MustChangePassword: session.mustChangePassword,
 	}, nil
 }
 
@@ -346,7 +339,8 @@ func (s *Service) RevokeSession(ctx context.Context, userID, sessionID uuid.UUID
 }
 
 // ChangePassword replaces the password and ends the user's other sessions, so a
-// change made because of a stolen password locks the thief out.
+// change made because of a stolen password locks the thief out. It's also how a
+// password the admin chose gets replaced, which is why the two can't match.
 func (s *Service) ChangePassword(ctx context.Context, p httpx.Principal, current, next string, c Client) error {
 	found, err := s.store.Account(ctx, p.UserID)
 	if err != nil {
@@ -361,6 +355,9 @@ func (s *Service) ChangePassword(ctx context.Context, p httpx.Principal, current
 	}
 	if !matches {
 		return ErrInvalidCredentials
+	}
+	if next == current {
+		return ErrPasswordUnchanged
 	}
 	if err := validatePassword(next); err != nil {
 		return err
@@ -425,6 +422,14 @@ func createGoogleAccount(ctx context.Context, tx *Store, id GoogleIdentity, c Cl
 	if !ok {
 		return Issued{}, ErrGoogleEmailUnverified
 	}
+	// Google has shown this person owns the address, so telling them it has an
+	// account reveals nothing, and it points them at linking from the account page.
+	switch _, err := tx.AccountForLogin(ctx, email); {
+	case err == nil:
+		return Issued{}, ErrAccountExists
+	case !errors.Is(err, ErrUserNotFound):
+		return Issued{}, err
+	}
 	userID, err := createAccount(ctx, tx, email, "", "google", c)
 	if errors.Is(err, ErrEmailTaken) {
 		return Issued{}, ErrAccountExists
@@ -459,27 +464,5 @@ func (s *Service) LinkGoogle(ctx context.Context, userID uuid.UUID, id GoogleIde
 			return err
 		}
 		return tx.Audit().Record(ctx, audit.Event{ActorID: userID, Action: audit.ActionGoogleLinked, IP: c.IP})
-	})
-}
-
-// SetRole changes a user's role. It is the only way a role changes after sign-up
-// and is reachable only from the command line.
-func (s *Service) SetRole(ctx context.Context, rawEmail, role string) error {
-	if role != RoleUser && role != RoleAdmin {
-		return ErrInvalidRole
-	}
-	email, ok := normalizeEmail(rawEmail)
-	if !ok {
-		return ErrUserNotFound
-	}
-	return s.store.InTx(ctx, func(tx *Store) error {
-		if err := tx.SetRoleByEmail(ctx, email, role); err != nil {
-			return err
-		}
-		return tx.Audit().Record(ctx, audit.Event{
-			Action:   audit.ActionRoleChanged,
-			IP:       "cli",
-			Metadata: map[string]any{"email": email, "role": role},
-		})
 	})
 }

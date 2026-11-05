@@ -107,6 +107,24 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for ManagedUserRole.
+const (
+	ManagedUserRoleAdmin ManagedUserRole = "admin"
+	ManagedUserRoleUser  ManagedUserRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the ManagedUserRole enum.
+func (e ManagedUserRole) Valid() bool {
+	switch e {
+	case ManagedUserRoleAdmin:
+		return true
+	case ManagedUserRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserRole.
 const (
 	UserRoleAdmin UserRole = "admin"
@@ -179,7 +197,7 @@ type APIKeyInputScopes string
 type AuthConfig struct {
 	GoogleEnabled bool `json:"google_enabled"`
 
-	// RegistrationOpen Whether a new account can be created right now.
+	// RegistrationOpen True only on an empty server, where the first account becomes the admin.
 	RegistrationOpen bool `json:"registration_open"`
 }
 
@@ -280,6 +298,23 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// ManagedUser An account as the admin sees it. It says nothing about the person's files.
+type ManagedUser struct {
+	CreatedAt    time.Time          `json:"created_at"`
+	Email        string             `json:"email"`
+	GoogleLinked bool               `json:"google_linked"`
+	HasPassword  bool               `json:"has_password"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// LinkedAccounts How many storage accounts this person has linked.
+	LinkedAccounts     int             `json:"linked_accounts"`
+	MustChangePassword bool            `json:"must_change_password"`
+	Role               ManagedUserRole `json:"role"`
+}
+
+// ManagedUserRole defines model for ManagedUser.Role.
+type ManagedUserRole string
+
 // MoveFileInput defines model for MoveFileInput.
 type MoveFileInput struct {
 	// FolderId Null moves it to the top level.
@@ -295,6 +330,11 @@ type MoveFolderInput struct {
 // NameInput defines model for NameInput.
 type NameInput struct {
 	Name string `json:"name"`
+}
+
+// NewPassword defines model for NewPassword.
+type NewPassword struct {
+	Password string `json:"password"`
 }
 
 // Pool defines model for Pool.
@@ -343,17 +383,13 @@ type Session struct {
 
 // Settings defines model for Settings.
 type Settings struct {
-	// AllowRegistration When false, nobody can create an account, by password or through a first-time Google sign-in. The first account on an empty instance can always be created.
-	AllowRegistration bool `json:"allow_registration"`
-
 	// MaxUploadBytes The largest file anyone can upload.
 	MaxUploadBytes int64 `json:"max_upload_bytes"`
 }
 
 // SettingsUpdate Only the fields present are changed.
 type SettingsUpdate struct {
-	AllowRegistration *bool  `json:"allow_registration,omitempty"`
-	MaxUploadBytes    *int64 `json:"max_upload_bytes,omitempty"`
+	MaxUploadBytes *int64 `json:"max_upload_bytes,omitempty"`
 }
 
 // Trash defines model for Trash.
@@ -371,7 +407,10 @@ type User struct {
 	// HasPassword False for accounts created through Google.
 	HasPassword bool               `json:"has_password"`
 	Id          openapi_types.UUID `json:"id"`
-	Role        UserRole           `json:"role"`
+
+	// MustChangePassword The admin chose this password, so nothing else works until the user replaces it.
+	MustChangePassword bool     `json:"must_change_password"`
+	Role               UserRole `json:"role"`
 }
 
 // UserRole defines model for User.Role.
@@ -424,6 +463,12 @@ type GoogleDriveCallbackParams struct {
 // UpdateSettingsJSONRequestBody defines body for UpdateSettings for application/json ContentType.
 type UpdateSettingsJSONRequestBody = SettingsUpdate
 
+// CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
+type CreateUserJSONRequestBody = Credentials
+
+// ResetUserPasswordJSONRequestBody defines body for ResetUserPassword for application/json ContentType.
+type ResetUserPasswordJSONRequestBody = NewPassword
+
 // CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
 type CreateAPIKeyJSONRequestBody = APIKeyInput
 
@@ -459,6 +504,18 @@ type ServerInterface interface {
 	// UpdateSettings Change instance-wide settings
 	// (PATCH /api/v1/admin/settings)
 	UpdateSettings(w http.ResponseWriter, r *http.Request)
+	// ListUsers List every account on the server
+	// (GET /api/v1/admin/users)
+	ListUsers(w http.ResponseWriter, r *http.Request)
+	// CreateUser Create an account with a password the user must replace
+	// (POST /api/v1/admin/users)
+	CreateUser(w http.ResponseWriter, r *http.Request)
+	// DeleteUser Delete an account and dextro's records of its files
+	// (DELETE /api/v1/admin/users/{id})
+	DeleteUser(w http.ResponseWriter, r *http.Request, id Id)
+	// ResetUserPassword Set a password the user must replace, and sign them out everywhere
+	// (POST /api/v1/admin/users/{id}/password)
+	ResetUserPassword(w http.ResponseWriter, r *http.Request, id Id)
 	// ListAPIKeys List the signed-in user's API keys
 	// (GET /api/v1/auth/api-keys)
 	ListAPIKeys(w http.ResponseWriter, r *http.Request)
@@ -594,6 +651,30 @@ func (_ Unimplemented) GetSettings(w http.ResponseWriter, r *http.Request) {
 // UpdateSettings Change instance-wide settings
 // (PATCH /api/v1/admin/settings)
 func (_ Unimplemented) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListUsers List every account on the server
+// (GET /api/v1/admin/users)
+func (_ Unimplemented) ListUsers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateUser Create an account with a password the user must replace
+// (POST /api/v1/admin/users)
+func (_ Unimplemented) CreateUser(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteUser Delete an account and dextro's records of its files
+// (DELETE /api/v1/admin/users/{id})
+func (_ Unimplemented) DeleteUser(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResetUserPassword Set a password the user must replace, and sign them out everywhere
+// (POST /api/v1/admin/users/{id}/password)
+func (_ Unimplemented) ResetUserPassword(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -865,6 +946,86 @@ func (siw *ServerInterfaceWrapper) UpdateSettings(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateUser operation middleware
+func (siw *ServerInterfaceWrapper) CreateUser(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteUser operation middleware
+func (siw *ServerInterfaceWrapper) DeleteUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetUserPassword operation middleware
+func (siw *ServerInterfaceWrapper) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetUserPassword(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2024,6 +2185,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/admin/settings", wrapper.UpdateSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/admin/users", wrapper.ListUsers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/admin/users", wrapper.CreateUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/admin/users/{id}", wrapper.DeleteUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/admin/users/{id}/password", wrapper.ResetUserPassword)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/storage/connections", wrapper.ListConnections)

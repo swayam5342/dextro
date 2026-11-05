@@ -4,7 +4,6 @@ import { useState, type FormEvent } from "react";
 
 import { Field, FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 
 import { settingsQuery, useUpdateSettings } from "../queries";
 
@@ -43,37 +42,13 @@ function UploadLimit({ current }: { current: number }) {
 
 export function SettingsPage() {
   const { data: settings, isPending, isError } = useQuery(settingsQuery);
-  const update = useUpdateSettings();
 
   return (
     <div className="max-w-xl space-y-4">
       <h1 className="text-xl font-semibold tracking-tight">Server settings</h1>
       {isPending && <p className="text-sm text-muted-foreground">Loading settings…</p>}
       {isError && <FormError message="Settings couldn't be loaded. Reload the page to try again." />}
-      {settings && (
-        <>
-          <div className="flex items-start gap-3 rounded-2xl bg-card p-4">
-            <input
-              id="allow-registration"
-              type="checkbox"
-              className="mt-0.5 size-4 accent-white"
-              aria-describedby="allow-registration-hint"
-              checked={settings.allow_registration}
-              disabled={update.isPending}
-              onChange={(event) => update.mutate({ allow_registration: event.target.checked })}
-            />
-            <div className="space-y-1">
-              <Label htmlFor="allow-registration">Allow new accounts</Label>
-              <p id="allow-registration-hint" className="text-sm text-muted-foreground">
-                When this is off, nobody can create an account, with a password or with Google. People
-                who already have an account can still sign in.
-              </p>
-              <FormError message={update.error?.message} />
-            </div>
-          </div>
-          <UploadLimit current={settings.max_upload_bytes} />
-        </>
-      )}
+      {settings && <UploadLimit current={settings.max_upload_bytes} />}
       <p className="text-sm">
         <Link to="/status" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
           Server status

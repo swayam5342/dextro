@@ -21,14 +21,12 @@ var ErrInvalidSettings = errors.New("invalid settings")
 
 // Settings are the instance-wide options an admin can change.
 type Settings struct {
-	AllowRegistration bool
-	MaxUploadBytes    int64
+	MaxUploadBytes int64
 }
 
 // Update is a change to Settings. Fields left nil stay as they are.
 type Update struct {
-	AllowRegistration *bool
-	MaxUploadBytes    *int64
+	MaxUploadBytes *int64
 }
 
 // Service holds the rules for instance-wide settings. Only the admin route
@@ -48,15 +46,11 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 }
 
 func readSettings(ctx context.Context, store *Store) (Settings, error) {
-	allowed, err := store.AllowRegistration(ctx)
-	if err != nil {
-		return Settings{}, err
-	}
 	limit, err := store.MaxUploadBytes(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{AllowRegistration: allowed, MaxUploadBytes: limit}, nil
+	return Settings{MaxUploadBytes: limit}, nil
 }
 
 // UpdateSettings saves new settings and records who changed them.
@@ -65,9 +59,6 @@ func (s *Service) UpdateSettings(ctx context.Context, actor uuid.UUID, ip string
 		return Settings{}, ErrInvalidSettings
 	}
 	changes := map[string]any{}
-	if next.AllowRegistration != nil {
-		changes[settingAllowRegistration] = *next.AllowRegistration
-	}
 	if next.MaxUploadBytes != nil {
 		changes[settingMaxUploadBytes] = *next.MaxUploadBytes
 	}

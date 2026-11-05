@@ -8,7 +8,7 @@ export interface components {
       status: "ok" | "unavailable";
     };
     AuthConfig: {
-      /** Whether a new account can be created right now. */
+      /** True only on an empty server, where the first account becomes the admin. */
       registration_open: boolean;
       google_enabled: boolean;
     };
@@ -27,6 +27,8 @@ export interface components {
       /** False for accounts created through Google. */
       has_password: boolean;
       google_linked: boolean;
+      /** The admin chose this password, so nothing else works until it's replaced. */
+      must_change_password: boolean;
       created_at: string;
     };
     Session: {
@@ -66,23 +68,31 @@ export interface components {
       /** Null if any working account has no limit. */
       free_bytes: number | null;
     };
+    /** An account as the admin sees it. It says nothing about the person's files. */
+    ManagedUser: {
+      id: string;
+      email: string;
+      role: "user" | "admin";
+      has_password: boolean;
+      google_linked: boolean;
+      must_change_password: boolean;
+      /** How many storage accounts this person has linked. */
+      linked_accounts: number;
+      created_at: string;
+    };
+    NewPassword: {
+      password: string;
+    };
     SearchResults: {
       folders: components["schemas"]["Folder"][];
       files: components["schemas"]["File"][];
     };
     Settings: {
-      /**
-       * When false, nobody can create an account, by password or through a
-       * first-time Google sign-in. The first account on an empty instance can
-       * always be created.
-       */
-      allow_registration: boolean;
       /** The largest file anyone can upload. */
       max_upload_bytes: number;
     };
     /** Only the fields present are changed. */
     SettingsUpdate: {
-      allow_registration?: boolean;
       max_upload_bytes?: number;
     };
     File: {
@@ -367,5 +377,15 @@ export interface paths {
   "/api/v1/admin/settings": {
     get: Operation<{ 200: JsonBody<Schemas["Settings"]> }>;
     patch: JsonOperation<Schemas["SettingsUpdate"], { 200: JsonBody<Schemas["Settings"]> }>;
+  };
+  "/api/v1/admin/users": {
+    get: Operation<{ 200: JsonBody<Schemas["ManagedUser"][]> }>;
+    post: JsonOperation<Schemas["Credentials"], { 201: JsonBody<Schemas["ManagedUser"]> }>;
+  };
+  "/api/v1/admin/users/{id}": {
+    delete: PathOperation;
+  };
+  "/api/v1/admin/users/{id}/password": {
+    post: IdJsonOperation<Schemas["NewPassword"], { 204: NoContent }>;
   };
 }

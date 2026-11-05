@@ -658,6 +658,72 @@ paths:
                 $ref: "#/components/schemas/Settings"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/admin/users:
+    get:
+      operationId: listUsers
+      summary: List every account on the server
+      tags: [admin]
+      responses:
+        "200":
+          description: Every account, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ManagedUser"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createUser
+      summary: Create an account with a password the user must replace
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        "201":
+          description: The new account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedUser"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/users/{id}:
+    delete:
+      operationId: deleteUser
+      summary: Delete an account and dextro's records of its files
+      description: The files themselves stay in that person's Google Drive.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The account is gone.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/admin/users/{id}/password:
+    post:
+      operationId: resetUserPassword
+      summary: Set a password the user must replace, and sign them out everywhere
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPassword"
+      responses:
+        "204":
+          description: The password was set.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/storage/connections:
     get:
       operationId: listConnections
@@ -785,7 +851,7 @@ components:
       properties:
         registration_open:
           type: boolean
-          description: Whether a new account can be created right now.
+          description: True only on an empty server, where the first account becomes the admin.
         google_enabled:
           type: boolean
     Credentials:
@@ -806,7 +872,7 @@ components:
           type: string
     User:
       type: object
-      required: [id, email, role, has_password, google_linked, created_at]
+      required: [id, email, role, has_password, google_linked, must_change_password, created_at]
       properties:
         id:
           type: string
@@ -821,6 +887,11 @@ components:
           description: False for accounts created through Google.
         google_linked:
           type: boolean
+        must_change_password:
+          type: boolean
+          description: >
+            The admin chose this password, so nothing else works until the
+            user replaces it.
         created_at:
           type: string
           format: date-time
@@ -1089,14 +1160,8 @@ components:
             $ref: "#/components/schemas/File"
     Settings:
       type: object
-      required: [allow_registration, max_upload_bytes]
+      required: [max_upload_bytes]
       properties:
-        allow_registration:
-          type: boolean
-          description: >
-            When false, nobody can create an account, by password or through a
-            first-time Google sign-in. The first account on an empty instance
-            can always be created.
         max_upload_bytes:
           type: integer
           format: int64
@@ -1105,11 +1170,40 @@ components:
       type: object
       description: Only the fields present are changed.
       properties:
-        allow_registration:
-          type: boolean
         max_upload_bytes:
           type: integer
           format: int64
+    ManagedUser:
+      type: object
+      description: An account as the admin sees it. It says nothing about the person's files.
+      required: [id, email, role, has_password, google_linked, must_change_password, linked_accounts, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [user, admin]
+        has_password:
+          type: boolean
+        google_linked:
+          type: boolean
+        must_change_password:
+          type: boolean
+        linked_accounts:
+          type: integer
+          description: How many storage accounts this person has linked.
+        created_at:
+          type: string
+          format: date-time
+    NewPassword:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
     Error:
       type: object
       description: Body of every error response.

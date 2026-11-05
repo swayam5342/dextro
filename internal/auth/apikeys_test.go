@@ -228,7 +228,7 @@ func testKeyAudit(t *testing.T, f *fixture) {
 func testKeyHandlers(t *testing.T, pool *pgxpool.Pool) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewService(NewStore(pool))
-	s := &server{t: t, pool: pool}
+	s := &server{t: t, pool: pool, service: service}
 	s.handler = httpx.NewRouter(httpx.Deps{
 		Logger:       logger,
 		DB:           pool,

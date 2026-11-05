@@ -5,7 +5,7 @@ RETURNING *;
 
 -- The session cookie is the credential, so this goes by hashed token.
 -- name: GetSessionByTokenHash :one
-SELECT s.id, s.user_id, s.last_seen_at, u.role
+SELECT s.id, s.user_id, s.last_seen_at, u.role, u.must_change_password
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.token_hash = $1 AND s.expires_at > now();
@@ -27,3 +27,6 @@ DELETE FROM sessions WHERE user_id = $1 AND id <> $2;
 
 -- name: DeleteExpiredSessionsForUser :exec
 DELETE FROM sessions WHERE user_id = $1 AND expires_at <= now();
+
+-- name: DeleteAllSessionsForUser :exec
+DELETE FROM sessions WHERE user_id = $1;

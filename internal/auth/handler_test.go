@@ -20,7 +20,6 @@ import (
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/db/dbtest"
 	"github.com/swayam5342/dextro/internal/httpx"
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
 )
 
 const testOrigin = "https://files.example.org"
@@ -52,6 +51,7 @@ type server struct {
 	pool    *pgxpool.Pool
 	handler http.Handler
 	google  *fakeGoogle
+	service *Service
 }
 
 // browser keeps cookies between requests. It behaves like a browser on the right
@@ -101,10 +101,19 @@ func credentials(email string) map[string]string {
 	return map[string]string{"email": email, "password": goodPassword}
 }
 
-// signUp returns a browser signed in to a new account.
+// signUp returns a browser signed in to a new account. The first one registers,
+// and the rest are added the way the admin would, minus the forced password change.
 func (s *server) signUp(email string) *browser {
 	s.t.Helper()
 	b := s.browser()
+	exists, err := s.service.store.AnyUsers(context.Background())
+	if err != nil {
+		s.t.Fatalf("AnyUsers: %v", err)
+	}
+	if exists {
+		b.cookies[httpx.SessionCookieName] = addUser(s.t, context.Background(), s.service, email).Token
+		return b
+	}
 	// Each account gets its own address so tests aren't throttled by sign-up limits.
 	b.ip = "198.51.100." + string(rune('1'+len(email)%9))
 	if rec := b.do(http.MethodPost, "/api/v1/auth/register", credentials(email)); rec.Code != http.StatusCreated {
@@ -174,7 +183,9 @@ func TestHandlers(t *testing.T) {
 		{"changing a password", testChangePasswordHandler},
 		{"sessions list marks the current one", testSessionsList},
 		{"users can't reach each other's sessions", testSessionsAreIsolated},
-		{"admins can close registration", testAdminClosesRegistration},
+		{"sign-up closes after the first account", testSignUpClosesAfterTheFirstAccount},
+		{"the admin manages users", testAdminManagesUsers},
+		{"the admin can't remove themselves", testAdminCannotRemoveThemselves},
 		{"settings changes must name the setting", testSettingsNeedTheField},
 		{"auth config reports google", testAuthConfig},
 		{"google routes are off without credentials", testGoogleDisabled},
@@ -205,7 +216,7 @@ func newServer(t *testing.T, pool *pgxpool.Pool, google GoogleClient) *server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewService(NewStore(pool))
-	s := &server{t: t, pool: pool}
+	s := &server{t: t, pool: pool, service: service}
 	if fake, ok := google.(*fakeGoogle); ok {
 		s.google = fake
 	}
@@ -309,11 +320,6 @@ func testRegisterErrors(t *testing.T, s *server) {
 	}
 	wantError(t, register("nope", goodPassword), http.StatusBadRequest, "invalid_email")
 	wantError(t, register("new@example.org", "short"), http.StatusBadRequest, "weak_password")
-	wantError(t, register("person@example.org", goodPassword), http.StatusConflict, "email_taken")
-
-	if err := admin.NewStore(s.pool).SetSetting(context.Background(), "allow_registration", []byte("false")); err != nil {
-		t.Fatalf("close registration: %v", err)
-	}
 	wantError(t, register("new@example.org", goodPassword), http.StatusForbidden, "registration_closed")
 }
 
@@ -438,36 +444,11 @@ func testSessionsAreIsolated(t *testing.T, s *server) {
 	}
 }
 
-func testAdminClosesRegistration(t *testing.T, s *server) {
-	adminBrowser := s.signUp("admin@example.org")
-	user := s.signUp("user-account@example.org")
-
-	wantError(t, user.do(http.MethodPatch, "/api/v1/admin/settings", map[string]bool{"allow_registration": false}),
-		http.StatusForbidden, "forbidden")
-
-	rec := adminBrowser.do(http.MethodPatch, "/api/v1/admin/settings", map[string]bool{"allow_registration": false})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
-	}
-	if got := decode[apigen.Settings](t, adminBrowser.do(http.MethodGet, "/api/v1/admin/settings", nil)); got.AllowRegistration {
-		t.Errorf("settings = %v", got)
-	}
-	config := decode[map[string]bool](t, s.browser().do(http.MethodGet, "/api/v1/auth/config", nil))
-	if config["registration_open"] {
-		t.Errorf("config = %v", config)
-	}
-	wantError(t, s.browser().do(http.MethodPost, "/api/v1/auth/register", credentials("late@example.org")),
-		http.StatusForbidden, "registration_closed")
-}
-
 func testSettingsNeedTheField(t *testing.T, s *server) {
 	b := s.signUp("admin@example.org")
 	wantError(t, b.do(http.MethodPatch, "/api/v1/admin/settings", map[string]int64{"max_upload_bytes": 5}),
 		http.StatusBadRequest, "invalid_settings")
 	wantError(t, b.do(http.MethodPatch, "/api/v1/admin/settings", "{}"), http.StatusBadRequest, "bad_request")
-	if got := decode[apigen.Settings](t, b.do(http.MethodGet, "/api/v1/admin/settings", nil)); !got.AllowRegistration {
-		t.Errorf("an empty body changed the settings: %v", got)
-	}
 }
 
 func testAuthConfig(t *testing.T, s *server) {

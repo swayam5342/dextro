@@ -47,19 +47,25 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, password_hash, role)
-VALUES ($1, $2, $3)
-RETURNING id, email, password_hash, role, created_at, updated_at
+INSERT INTO users (email, password_hash, role, must_change_password)
+VALUES ($1, $2, $3, $4)
+RETURNING id, email, password_hash, role, created_at, updated_at, must_change_password
 `
 
 type CreateUserParams struct {
-	Email        string
-	PasswordHash pgtype.Text
-	Role         string
+	Email              string
+	PasswordHash       pgtype.Text
+	Role               string
+	MustChangePassword bool
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PasswordHash, arg.Role)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Email,
+		arg.PasswordHash,
+		arg.Role,
+		arg.MustChangePassword,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -68,8 +74,31 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MustChangePassword,
 	)
 	return i, err
+}
+
+const deleteUserForAdmin = `-- name: DeleteUserForAdmin :execrows
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUserForAdmin(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserForAdmin, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const demoteAdmin = `-- name: DemoteAdmin :exec
+UPDATE users SET role = 'user', updated_at = now() WHERE role = 'admin'
+`
+
+// Demote and promote run in one transaction, because only one admin can exist.
+func (q *Queries) DemoteAdmin(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, demoteAdmin)
+	return err
 }
 
 const getIdentityUserID = `-- name: GetIdentityUserID :one
@@ -91,7 +120,7 @@ func (q *Queries) GetIdentityUserID(ctx context.Context, arg GetIdentityUserIDPa
 }
 
 const getUser = `-- name: GetUser :one
-SELECT u.id, u.email, u.password_hash, u.role, u.created_at, u.updated_at,
+SELECT u.id, u.email, u.password_hash, u.role, u.created_at, u.updated_at, u.must_change_password,
        EXISTS (
            SELECT 1 FROM user_identities i
            WHERE i.user_id = u.id AND i.provider = 'google'
@@ -101,13 +130,14 @@ WHERE u.id = $1
 `
 
 type GetUserRow struct {
-	ID           uuid.UUID
-	Email        string
-	PasswordHash pgtype.Text
-	Role         string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	GoogleLinked bool
+	ID                 uuid.UUID
+	Email              string
+	PasswordHash       pgtype.Text
+	Role               string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	MustChangePassword bool
+	GoogleLinked       bool
 }
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error) {
@@ -120,13 +150,14 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MustChangePassword,
 		&i.GoogleLinked,
 	)
 	return i, err
 }
 
 const getUserForLogin = `-- name: GetUserForLogin :one
-SELECT id, email, password_hash, role, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, password_hash, role, created_at, updated_at, must_change_password FROM users WHERE email = $1
 `
 
 // Sign-in is the one place a user is found by what they typed.
@@ -140,8 +171,72 @@ func (q *Queries) GetUserForLogin(ctx context.Context, email string) (User, erro
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MustChangePassword,
 	)
 	return i, err
+}
+
+const getUserIDByEmail = `-- name: GetUserIDByEmail :one
+SELECT id FROM users WHERE email = $1
+`
+
+func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getUserIDByEmail, email)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const listUsersForAdmin = `-- name: ListUsersForAdmin :many
+SELECT u.id, u.email, u.role, u.password_hash, u.must_change_password, u.created_at,
+       EXISTS (
+           SELECT 1 FROM user_identities i
+           WHERE i.user_id = u.id AND i.provider = 'google'
+       ) AS google_linked,
+       (SELECT count(*) FROM storage_connections c WHERE c.user_id = u.id) AS linked_accounts
+FROM users u
+ORDER BY u.created_at, u.id
+`
+
+type ListUsersForAdminRow struct {
+	ID                 uuid.UUID
+	Email              string
+	Role               string
+	PasswordHash       pgtype.Text
+	MustChangePassword bool
+	CreatedAt          time.Time
+	GoogleLinked       bool
+	LinkedAccounts     int64
+}
+
+// Instance-wide on purpose: only the admin's user list calls this.
+func (q *Queries) ListUsersForAdmin(ctx context.Context) ([]ListUsersForAdminRow, error) {
+	rows, err := q.db.Query(ctx, listUsersForAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersForAdminRow{}
+	for rows.Next() {
+		var i ListUsersForAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Role,
+			&i.PasswordHash,
+			&i.MustChangePassword,
+			&i.CreatedAt,
+			&i.GoogleLinked,
+			&i.LinkedAccounts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockUserCreation = `-- name: LockUserCreation :exec
@@ -154,9 +249,44 @@ func (q *Queries) LockUserCreation(ctx context.Context) error {
 	return err
 }
 
+const promoteUserByEmail = `-- name: PromoteUserByEmail :execrows
+UPDATE users SET role = 'admin', updated_at = now() WHERE email = $1
+`
+
+func (q *Queries) PromoteUserByEmail(ctx context.Context, email string) (int64, error) {
+	result, err := q.db.Exec(ctx, promoteUserByEmail, email)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setTemporaryPassword = `-- name: SetTemporaryPassword :execrows
+UPDATE users
+SET password_hash = $2,
+    must_change_password = true,
+    updated_at = now()
+WHERE id = $1
+`
+
+type SetTemporaryPasswordParams struct {
+	ID           uuid.UUID
+	PasswordHash pgtype.Text
+}
+
+// The admin chose this one, so the user has to replace it.
+func (q *Queries) SetTemporaryPassword(ctx context.Context, arg SetTemporaryPasswordParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setTemporaryPassword, arg.ID, arg.PasswordHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateUserPassword = `-- name: UpdateUserPassword :execrows
 UPDATE users
 SET password_hash = $2,
+    must_change_password = false,
     updated_at = now()
 WHERE id = $1
 `
@@ -172,31 +302,4 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const updateUserRoleByEmail = `-- name: UpdateUserRoleByEmail :one
-UPDATE users
-SET role = $2,
-    updated_at = now()
-WHERE email = $1
-RETURNING id, email, password_hash, role, created_at, updated_at
-`
-
-type UpdateUserRoleByEmailParams struct {
-	Email string
-	Role  string
-}
-
-func (q *Queries) UpdateUserRoleByEmail(ctx context.Context, arg UpdateUserRoleByEmailParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUserRoleByEmail, arg.Email, arg.Role)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.PasswordHash,
-		&i.Role,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }

@@ -4,6 +4,7 @@ import { AppShell } from "@/app/app-shell";
 import { rootRoute } from "@/app/root-route";
 
 import { AccountPage } from "./components/account-page";
+import { ChangePasswordPage } from "./components/change-password-page";
 import { RegisterPage } from "./components/register-page";
 import { SignInPage } from "./components/sign-in-page";
 import { meQuery } from "./queries";
@@ -21,6 +22,9 @@ export const authedRoute = createRoute({
     const user = await context.queryClient.fetchQuery(meQuery);
     if (!user) {
       throw redirect({ to: "/sign-in" });
+    }
+    if (user.must_change_password) {
+      throw redirect({ to: "/change-password" });
     }
     return { user };
   },
@@ -49,6 +53,22 @@ export const registerRoute = createRoute({
     }
   },
   component: RegisterPage,
+});
+
+// Outside the frame, because the server refuses everything else until it's done.
+export const changePasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/change-password",
+  beforeLoad: async ({ context }) => {
+    const user = await context.queryClient.fetchQuery(meQuery);
+    if (!user) {
+      throw redirect({ to: "/sign-in" });
+    }
+    if (!user.must_change_password) {
+      throw redirect({ to: "/" });
+    }
+  },
+  component: ChangePasswordPage,
 });
 
 export const accountRoute = createRoute({

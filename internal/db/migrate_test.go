@@ -120,3 +120,51 @@ func TestDriveOnlyMigration(t *testing.T) {
 		t.Error("a new S3 connection was accepted")
 	}
 }
+
+// An instance from before there could only be one admin keeps its oldest.
+func TestOneAdminMigration(t *testing.T) {
+	pool := dbtest.Start(t)
+	ctx := context.Background()
+	provider, err := newProvider(pool)
+	if err != nil {
+		t.Fatalf("newProvider: %v", err)
+	}
+	defer func() { _ = provider.Close() }()
+	if _, err := provider.UpTo(ctx, 5); err != nil {
+		t.Fatalf("migrate to version 5: %v", err)
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO users (email, role, created_at) VALUES
+			('second@example.org', 'admin', '2026-02-01'),
+			('first@example.org', 'admin', '2026-01-01'),
+			('person@example.org', 'user', '2025-01-01');
+		INSERT INTO settings (key, value) VALUES
+			('allow_registration', 'false'),
+			('max_upload_bytes', '5242880');`)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	var admin string
+	if err := pool.QueryRow(ctx, `SELECT email FROM users WHERE role = 'admin'`).Scan(&admin); err != nil {
+		t.Fatalf("find the admin: %v", err)
+	}
+	if admin != "first@example.org" {
+		t.Errorf("admin = %s, want the oldest", admin)
+	}
+	var demoted, closed, limit int
+	err = pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM audit_events WHERE action = 'user.role_changed' AND ip = 'migration' AND metadata->>'email' = 'second@example.org'),
+		(SELECT count(*) FROM settings WHERE key = 'allow_registration'),
+		(SELECT count(*) FROM settings WHERE key = 'max_upload_bytes')`).Scan(&demoted, &closed, &limit)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if demoted != 1 || closed != 0 || limit != 1 {
+		t.Errorf("demotions recorded = %d, registration settings = %d, upload limits = %d", demoted, closed, limit)
+	}
+}

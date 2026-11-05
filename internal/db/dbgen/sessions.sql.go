@@ -48,6 +48,15 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const deleteAllSessionsForUser = `-- name: DeleteAllSessionsForUser :exec
+DELETE FROM sessions WHERE user_id = $1
+`
+
+func (q *Queries) DeleteAllSessionsForUser(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAllSessionsForUser, userID)
+	return err
+}
+
 const deleteExpiredSessionsForUser = `-- name: DeleteExpiredSessionsForUser :exec
 DELETE FROM sessions WHERE user_id = $1 AND expires_at <= now()
 `
@@ -89,17 +98,18 @@ func (q *Queries) DeleteSessionForUser(ctx context.Context, arg DeleteSessionFor
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT s.id, s.user_id, s.last_seen_at, u.role
+SELECT s.id, s.user_id, s.last_seen_at, u.role, u.must_change_password
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 WHERE s.token_hash = $1 AND s.expires_at > now()
 `
 
 type GetSessionByTokenHashRow struct {
-	ID         uuid.UUID
-	UserID     uuid.UUID
-	LastSeenAt time.Time
-	Role       string
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	LastSeenAt         time.Time
+	Role               string
+	MustChangePassword bool
 }
 
 // The session cookie is the credential, so this goes by hashed token.
@@ -111,6 +121,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 		&i.UserID,
 		&i.LastSeenAt,
 		&i.Role,
+		&i.MustChangePassword,
 	)
 	return i, err
 }

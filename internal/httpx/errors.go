@@ -9,14 +9,15 @@ import (
 
 // Stable error codes. Clients may depend on these, so don't rename them.
 const (
-	CodeBadRequest       = "bad_request"
-	CodeNotFound         = "not_found"
-	CodeMethodNotAllowed = "method_not_allowed"
-	CodeInternal         = "internal_error"
-	CodeUnauthorized     = "unauthorized"
-	CodeForbidden        = "forbidden"
-	CodeOriginNotAllowed = "origin_not_allowed"
-	CodeRateLimited      = "rate_limited"
+	CodeBadRequest             = "bad_request"
+	CodeNotFound               = "not_found"
+	CodeMethodNotAllowed       = "method_not_allowed"
+	CodeInternal               = "internal_error"
+	CodeUnauthorized           = "unauthorized"
+	CodeForbidden              = "forbidden"
+	CodeOriginNotAllowed       = "origin_not_allowed"
+	CodeRateLimited            = "rate_limited"
+	CodePasswordChangeRequired = "password_change_required"
 )
 
 // WriteError sends the standard error body. The message reaches the client, so

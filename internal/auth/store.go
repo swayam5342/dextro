@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/swayam5342/dextro/internal/admin"
 	"github.com/swayam5342/dextro/internal/audit"
 	"github.com/swayam5342/dextro/internal/db/dbgen"
 )
@@ -55,11 +54,6 @@ func (s *Store) Audit() *audit.Store {
 	return audit.NewStore(s.db)
 }
 
-// Settings returns the instance settings on the same connection as this store.
-func (s *Store) Settings() *admin.Store {
-	return admin.NewStore(s.db)
-}
-
 // LockUserCreation holds until the current transaction ends, so that two
 // sign-ups can't both see an empty instance.
 func (s *Store) LockUserCreation(ctx context.Context) error {
@@ -80,11 +74,12 @@ func (s *Store) AnyUsers(ctx context.Context) (bool, error) {
 
 // CreateUser adds an account. passwordHash is empty for accounts with no
 // password. It returns ErrEmailTaken if the address is in use.
-func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string) (uuid.UUID, error) {
+func (s *Store) CreateUser(ctx context.Context, email, passwordHash, role string, mustChangePassword bool) (uuid.UUID, error) {
 	row, err := s.queries.CreateUser(ctx, dbgen.CreateUserParams{
-		Email:        email,
-		PasswordHash: pgtype.Text{String: passwordHash, Valid: passwordHash != ""},
-		Role:         role,
+		Email:              email,
+		PasswordHash:       pgtype.Text{String: passwordHash, Valid: passwordHash != ""},
+		Role:               role,
+		MustChangePassword: mustChangePassword,
 	})
 	if isUniqueViolation(err) {
 		return uuid.Nil, ErrEmailTaken
@@ -112,12 +107,13 @@ func (s *Store) Account(ctx context.Context, userID uuid.UUID) (account, error) 
 	}
 	return account{
 		User: User{
-			ID:           row.ID,
-			Email:        row.Email,
-			Role:         row.Role,
-			HasPassword:  row.PasswordHash.Valid,
-			GoogleLinked: row.GoogleLinked,
-			CreatedAt:    row.CreatedAt,
+			ID:                 row.ID,
+			Email:              row.Email,
+			Role:               row.Role,
+			HasPassword:        row.PasswordHash.Valid,
+			GoogleLinked:       row.GoogleLinked,
+			MustChangePassword: row.MustChangePassword,
+			CreatedAt:          row.CreatedAt,
 		},
 		passwordHash: row.PasswordHash.String,
 	}, nil
@@ -150,14 +146,71 @@ func (s *Store) UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHa
 	return nil
 }
 
-// SetRoleByEmail changes a user's role. Only the role CLI calls this.
-func (s *Store) SetRoleByEmail(ctx context.Context, email, role string) error {
-	_, err := s.queries.UpdateUserRoleByEmail(ctx, dbgen.UpdateUserRoleByEmailParams{Email: email, Role: role})
-	if errors.Is(err, pgx.ErrNoRows) {
+// SetTemporaryPassword replaces a user's password with one they must change.
+func (s *Store) SetTemporaryPassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	rows, err := s.queries.SetTemporaryPassword(ctx, dbgen.SetTemporaryPasswordParams{
+		ID:           userID,
+		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("set temporary password: %w", err)
+	}
+	if rows == 0 {
 		return ErrUserNotFound
 	}
+	return nil
+}
+
+// MakeAdmin moves the admin role to the account with this email. The database
+// allows one admin, so it must run in a transaction: the old one steps down first.
+func (s *Store) MakeAdmin(ctx context.Context, email string) error {
+	if err := s.queries.DemoteAdmin(ctx); err != nil {
+		return fmt.Errorf("demote admin: %w", err)
+	}
+	rows, err := s.queries.PromoteUserByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("set role: %w", err)
+		return fmt.Errorf("promote user: %w", err)
+	}
+	if rows == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// ListUsersForAdmin returns every account. It is unscoped on purpose and is for
+// the admin's user list only.
+func (s *Store) ListUsersForAdmin(ctx context.Context) ([]ManagedUser, error) {
+	rows, err := s.queries.ListUsersForAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	users := make([]ManagedUser, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, ManagedUser{
+			User: User{
+				ID:                 row.ID,
+				Email:              row.Email,
+				Role:               row.Role,
+				HasPassword:        row.PasswordHash.Valid,
+				GoogleLinked:       row.GoogleLinked,
+				MustChangePassword: row.MustChangePassword,
+				CreatedAt:          row.CreatedAt,
+			},
+			LinkedAccounts: row.LinkedAccounts,
+		})
+	}
+	return users, nil
+}
+
+// DeleteUser removes an account and, through foreign keys, everything it owns
+// here. Only the admin's user list calls this.
+func (s *Store) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	rows, err := s.queries.DeleteUserForAdmin(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	if rows == 0 {
+		return ErrUserNotFound
 	}
 	return nil
 }
@@ -216,10 +269,11 @@ func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, tokenHash [
 
 // liveSession is what a session token resolves to.
 type liveSession struct {
-	id         uuid.UUID
-	userID     uuid.UUID
-	role       string
-	lastSeenAt time.Time
+	id                 uuid.UUID
+	userID             uuid.UUID
+	role               string
+	lastSeenAt         time.Time
+	mustChangePassword bool
 }
 
 // SessionByTokenHash finds an unexpired session from its hashed token.
@@ -231,7 +285,13 @@ func (s *Store) SessionByTokenHash(ctx context.Context, tokenHash []byte) (liveS
 	if err != nil {
 		return liveSession{}, fmt.Errorf("find session: %w", err)
 	}
-	return liveSession{id: row.ID, userID: row.UserID, role: row.Role, lastSeenAt: row.LastSeenAt}, nil
+	return liveSession{
+		id:                 row.ID,
+		userID:             row.UserID,
+		role:               row.Role,
+		lastSeenAt:         row.LastSeenAt,
+		mustChangePassword: row.MustChangePassword,
+	}, nil
 }
 
 // TouchSession records that a session was just used.
@@ -271,6 +331,14 @@ func (s *Store) DeleteSessionForUser(ctx context.Context, userID, sessionID uuid
 	}
 	if rows == 0 {
 		return ErrSessionNotFound
+	}
+	return nil
+}
+
+// DeleteAllSessionsForUser signs a user out everywhere.
+func (s *Store) DeleteAllSessionsForUser(ctx context.Context, userID uuid.UUID) error {
+	if err := s.queries.DeleteAllSessionsForUser(ctx, userID); err != nil {
+		return fmt.Errorf("delete sessions: %w", err)
 	}
 	return nil
 }

@@ -127,8 +127,9 @@ func (s *Service) ResolveAPIKey(ctx context.Context, token string) (httpx.Princi
 		}
 	}
 	return httpx.Principal{
-		UserID: key.UserID,
-		Key:    &httpx.KeyAccess{ID: key.ID, Scopes: key.Scopes},
+		UserID:             key.UserID,
+		Key:                &httpx.KeyAccess{ID: key.ID, Scopes: key.Scopes},
+		MustChangePassword: key.MustChangePassword,
 	}, nil
 }
 
@@ -174,10 +175,11 @@ func (s *Store) DeleteAPIKeyForUser(ctx context.Context, userID, keyID uuid.UUID
 
 // liveKey is what an API key resolves to.
 type liveKey struct {
-	ID         uuid.UUID
-	UserID     uuid.UUID
-	Scopes     []string
-	LastUsedAt *time.Time
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Scopes             []string
+	LastUsedAt         *time.Time
+	MustChangePassword bool
 }
 
 // APIKeyByTokenHash finds a key from its hashed secret.
@@ -189,7 +191,13 @@ func (s *Store) APIKeyByTokenHash(ctx context.Context, tokenHash []byte) (liveKe
 	if err != nil {
 		return liveKey{}, fmt.Errorf("find api key: %w", err)
 	}
-	return liveKey{ID: row.ID, UserID: row.UserID, Scopes: row.Scopes, LastUsedAt: row.LastUsedAt}, nil
+	return liveKey{
+		ID:                 row.ID,
+		UserID:             row.UserID,
+		Scopes:             row.Scopes,
+		LastUsedAt:         row.LastUsedAt,
+		MustChangePassword: row.MustChangePassword,
+	}, nil
 }
 
 // TouchAPIKey records that a key was just used.

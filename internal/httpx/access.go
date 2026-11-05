@@ -60,6 +60,15 @@ var keyRoutes = map[string]string{
 	"GET /api/v1/search":                ScopeFilesRead,
 }
 
+// passwordChangeRoutes are all that's left while someone has to replace a password
+// the admin chose. Everything else is refused, so a new route is covered by default.
+var passwordChangeRoutes = map[string]bool{
+	"GET /api/v1/auth/config":    true,
+	"GET /api/v1/auth/me":        true,
+	"POST /api/v1/auth/logout":   true,
+	"POST /api/v1/auth/password": true,
+}
+
 // KeyAccess describes the API key behind a request.
 type KeyAccess struct {
 	ID     uuid.UUID
@@ -73,6 +82,8 @@ type Principal struct {
 	SessionID uuid.UUID
 	IsAdmin   bool
 	Key       *KeyAccess
+	// MustChangePassword limits the user to passwordChangeRoutes.
+	MustChangePassword bool
 }
 
 // ErrNoSession means a token doesn't match a live session or API key.
@@ -192,6 +203,18 @@ func requireKeyScope(next http.Handler) http.Handler {
 				WriteError(w, r, http.StatusForbidden, CodeForbidden, "This API key can't do that.")
 				return
 			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requirePasswordChange holds someone at the password change until they've done
+// it, so a password the admin knows can't be used for anything else.
+func requirePasswordChange(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p, ok := PrincipalFrom(r.Context()); ok && p.MustChangePassword && !passwordChangeRoutes[routeKey(r)] {
+			WriteError(w, r, http.StatusForbidden, CodePasswordChangeRequired, "Choose a new password to continue.")
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
