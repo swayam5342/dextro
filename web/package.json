@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint --deny-warnings src"
+    "lint": "oxlint --deny-warnings src server",
+    "start": "node server/main.mjs",
+    "test": "node --test server/app.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "5.106.1",
