@@ -5,11 +5,51 @@
 package dbgen
 
 import (
+	"time"
+
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type AuditEvent struct {
+	ID        int64
+	ActorID   uuid.NullUUID
+	Action    string
+	Ip        string
+	Metadata  []byte
+	CreatedAt time.Time
+}
+
+type Session struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	TokenHash  []byte
+	UserAgent  string
+	Ip         string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	ExpiresAt  time.Time
+}
 
 type Setting struct {
 	Key       string
 	Value     []byte
-	UpdatedAt pgtype.Timestamptz
+	UpdatedAt time.Time
+}
+
+type User struct {
+	ID           uuid.UUID
+	Email        string
+	PasswordHash pgtype.Text
+	Role         string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type UserIdentity struct {
+	Provider  string
+	Subject   string
+	UserID    uuid.UUID
+	Email     string
+	CreatedAt time.Time
 }
