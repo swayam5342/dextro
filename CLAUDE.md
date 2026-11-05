@@ -22,7 +22,13 @@ On Windows, use `make up` rather than plain `docker compose up`. If the terminal
 
 The app is at <http://127.0.0.1:3000>. The Go API is also directly on <http://127.0.0.1:8080>. S3 (SeaweedFS) is at <http://127.0.0.1:8333>.
 
-Go server environment: `DEXTRO_DATABASE_URL` (required), `DEXTRO_LISTEN_ADDR` (default `:8080`), `DEXTRO_LOG_LEVEL` (default `info`).
+Go server environment: `DEXTRO_DATABASE_URL` (required), `DEXTRO_PUBLIC_URL` (required; the address browsers use, and the only `Origin` allowed to change data, so opening the app on `localhost` when this says `127.0.0.1` fails), `DEXTRO_LISTEN_ADDR` (default `:8080`), `DEXTRO_LOG_LEVEL` (default `info`), `DEXTRO_TRUSTED_PROXIES` (addresses or CIDR ranges whose `X-Forwarded-For` is believed; default none), `DEXTRO_GOOGLE_CLIENT_ID` and `DEXTRO_GOOGLE_CLIENT_SECRET` (set both or neither; without them Google sign-in is off). With `make dev-web`, set `DEXTRO_PUBLIC_URL` to the Vite address.
+
+Compose reads `PUBLIC_URL`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from `.env`. It pins the `web` service to `172.30.0.250` so that only it is a trusted proxy. If an old `dextro_default` network exists, run `make down` first so Compose can recreate it.
+
+Roles change only from the command line: `docker compose exec api /dextro set-role <email> <user|admin>`. In Git Bash, prefix it with `MSYS_NO_PATHCONV=1`, or `/dextro` gets rewritten into a Windows path.
+
+Session cookies are always `Secure`. Chrome accepts them on `http://127.0.0.1`, but anywhere else, such as a LAN address, needs HTTPS or login won't stick.
 
 Node web server environment: `DEXTRO_API_URL` (default `http://localhost:8080`), `PORT` (default `3000`).
 
@@ -31,7 +37,10 @@ Node web server environment: `DEXTRO_API_URL` (default `http://localhost:8080`),
 - Organized by feature. Each backend feature has `handler.go` (HTTP only), `service.go` (business rules and access checks) and `store.go` (database access). Handlers never touch the database directly.
 - `cmd/server/main.go` is wiring only.
 - `api/openapi.yaml` is the contract. Change it first, run `make generate`, then implement. Paths are written in full, including `/api/v1`.
-- The Go server code is generated into `internal/httpx/apigen`. `httpx.api` implements its `ServerInterface`.
+- The Go server code is generated into `internal/httpx/apigen`. `httpx.api` implements its `ServerInterface` by embedding each feature's handler. Features import `httpx`, so `httpx` names them by interface (`AuthHandlers`, `AdminHandlers`) and `main.go` passes them in.
+- Access rules live in `internal/httpx/access.go` and wrap every generated route. Everything needs a session unless it's in `publicRoutes`, and everything under `/api/v1/admin/` goes through `requireAdmin`. oapi-codegen ignores `security` in `openapi.yaml`, so that block is documentation only. `access_test.go` walks the real router, so new routes are covered automatically.
+- To write to two tables atomically, use a store's `InTx`. Its `Audit()` and `Settings()` run on the same transaction.
+- Google sign-in never links to an existing account, even with a verified, matching email: password accounts never prove they own their address. Linking happens only from the account page, by a signed-in user. Don't "improve" this into auto-linking.
 - **The TypeScript API types are hand-written.** `web/src/api/schema.ts` mirrors `openapi.yaml` in the shape `openapi-fetch` expects. Update it in the same commit as the contract. Nothing checks that they match. `openapi-typescript` isn't used because it requires TypeScript 5 and this project is on TypeScript 7.
 - Frontend linting uses `oxlint`, because `typescript-eslint` doesn't support TypeScript 7.
 - SQL lives in `internal/db/queries`, generating into `internal/db/dbgen`. Migrations live in `internal/db/migrations` and run automatically at startup under an advisory lock.
