@@ -36,7 +36,8 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 }
 
 const listAuditEvents = `-- name: ListAuditEvents :many
-SELECT e.id, e.action, e.ip, e.metadata, e.created_at, u.email AS actor_email
+SELECT e.id, e.action, e.ip, e.metadata, e.created_at,
+       u.email AS current_email, e.actor_email AS deleted_email
 FROM audit_events e
 LEFT JOIN users u ON u.id = e.actor_id
 WHERE ($1::text IS NULL OR e.action = $1)
@@ -52,12 +53,13 @@ type ListAuditEventsParams struct {
 }
 
 type ListAuditEventsRow struct {
-	ID         int64
-	Action     string
-	Ip         string
-	Metadata   []byte
-	CreatedAt  time.Time
-	ActorEmail pgtype.Text
+	ID           int64
+	Action       string
+	Ip           string
+	Metadata     []byte
+	CreatedAt    time.Time
+	CurrentEmail pgtype.Text
+	DeletedEmail pgtype.Text
 }
 
 // Instance-wide on purpose: only the admin's audit log calls this.
@@ -76,7 +78,8 @@ func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams
 			&i.Ip,
 			&i.Metadata,
 			&i.CreatedAt,
-			&i.ActorEmail,
+			&i.CurrentEmail,
+			&i.DeletedEmail,
 		); err != nil {
 			return nil, err
 		}
@@ -86,4 +89,18 @@ func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const setAuditActorEmail = `-- name: SetAuditActorEmail :exec
+UPDATE audit_events SET actor_email = $2 WHERE actor_id = $1
+`
+
+type SetAuditActorEmailParams struct {
+	ActorID    uuid.NullUUID
+	ActorEmail pgtype.Text
+}
+
+func (q *Queries) SetAuditActorEmail(ctx context.Context, arg SetAuditActorEmailParams) error {
+	_, err := q.db.Exec(ctx, setAuditActorEmail, arg.ActorID, arg.ActorEmail)
+	return err
 }

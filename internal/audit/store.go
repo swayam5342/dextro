@@ -78,6 +78,19 @@ func (s *Store) Record(ctx context.Context, e Event) error {
 	return nil
 }
 
+// RememberActor writes a user's email onto their events. Call it before deleting
+// the account, which blanks actor_id, so the log still says who did what.
+func (s *Store) RememberActor(ctx context.Context, userID uuid.UUID, email string) error {
+	err := s.queries.SetAuditActorEmail(ctx, dbgen.SetAuditActorEmailParams{
+		ActorID:    uuid.NullUUID{UUID: userID, Valid: true},
+		ActorEmail: pgtype.Text{String: email, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("remember audit actor: %w", err)
+	}
+	return nil
+}
+
 // Filter narrows a listing. Zero values mean no filter.
 type Filter struct {
 	Action string
@@ -88,8 +101,7 @@ type Filter struct {
 // Entry is a recorded event, as the admin reads it.
 type Entry struct {
 	ID int64
-	// ActorEmail is nil for the command line, or if nobody could be identified or
-	// the account has since been deleted.
+	// ActorEmail is nil for the command line, or if nobody could be identified.
 	ActorEmail *string
 	Action     string
 	IP         string
@@ -111,8 +123,11 @@ func (s *Store) List(ctx context.Context, filter Filter, limit int32) ([]Entry, 
 	entries := make([]Entry, 0, len(rows))
 	for _, row := range rows {
 		entry := Entry{ID: row.ID, Action: row.Action, IP: row.Ip, CreatedAt: row.CreatedAt}
-		if row.ActorEmail.Valid {
-			entry.ActorEmail = &row.ActorEmail.String
+		switch {
+		case row.CurrentEmail.Valid:
+			entry.ActorEmail = &row.CurrentEmail.String
+		case row.DeletedEmail.Valid:
+			entry.ActorEmail = &row.DeletedEmail.String
 		}
 		if err := json.Unmarshal(row.Metadata, &entry.Metadata); err != nil {
 			return nil, fmt.Errorf("decode audit metadata: %w", err)

@@ -47,10 +47,8 @@ func (s *Service) SyncQuotas(ctx context.Context) (SyncResult, error) {
 	var result SyncResult
 	for batch := range slices.Chunk(records, syncBatch) {
 		for _, checked := range s.probeAll(ctx, batch) {
-			// A shutdown cuts the calls off, which says nothing about the accounts.
-			if err := ctx.Err(); err != nil {
-				return result, err
-			}
+			// A shutdown cuts these calls off, which says nothing about the accounts. It
+			// cancels ctx, so this write fails too and nothing false is saved.
 			reached := checked.err == nil
 			if err := s.store.RecordConnectionCheck(ctx, checked.record.ID, reached, checked.quota.Used); err != nil {
 				return result, err

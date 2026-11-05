@@ -132,6 +132,7 @@ func TestService(t *testing.T) {
 		{"resetting a password refuses bad input", testResetUserPasswordValidates},
 		{"replacing a temporary password lifts the block", testChangingPasswordLiftsTheBlock},
 		{"deleting a user", testDeleteUser},
+		{"deleted users stay in the audit log", testDeletedUsersStayInTheAuditLog},
 		{"deleting a user refuses bad input", testDeleteUserValidates},
 		{"transferring the admin role", testTransferAdmin},
 		{"a failed transfer keeps the admin", testTransferAdminToNobodyKeepsTheAdmin},

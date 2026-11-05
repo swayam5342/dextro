@@ -118,6 +118,9 @@ func (s *Service) DeleteUser(ctx context.Context, actor, target uuid.UUID, c Cli
 		if err != nil {
 			return err
 		}
+		if err := tx.Audit().RememberActor(ctx, target, found.Email); err != nil {
+			return err
+		}
 		if err := tx.DeleteUser(ctx, target); err != nil {
 			return err
 		}

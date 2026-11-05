@@ -197,7 +197,7 @@ type APIKeyInputScopes string
 type AuditEvent struct {
 	Action string `json:"action"`
 
-	// ActorEmail Null for the command line, or if nobody could be identified or the account is gone.
+	// ActorEmail Null for the command line, or if nobody could be identified.
 	ActorEmail *string                `json:"actor_email"`
 	CreatedAt  time.Time              `json:"created_at"`
 	Id         int64                  `json:"id"`

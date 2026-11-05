@@ -1301,7 +1301,7 @@ components:
         actor_email:
           type: string
           nullable: true
-          description: Null for the command line, or if nobody could be identified or the account is gone.
+          description: Null for the command line, or if nobody could be identified.
         ip:
           type: string
         metadata:

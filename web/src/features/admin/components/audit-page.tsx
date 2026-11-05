@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { components } from "@/api/schema";
 import { FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
-import { formatDateTime } from "@/lib/format";
+import { formatBytes, formatDateTime } from "@/lib/format";
 
 import { auditQuery } from "../queries";
 
@@ -34,7 +34,11 @@ const ACTIONS: Record<string, string> = {
 
 function details(event: AuditEvent): string {
   return Object.entries(event.metadata)
-    .map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`)
+    .map(([key, value]) =>
+      key.endsWith("_bytes") && typeof value === "number"
+        ? `${key.replace("_bytes", "").replaceAll("_", " ")}: ${formatBytes(value)}`
+        : `${key.replaceAll("_", " ")}: ${String(value)}`,
+    )
     .join(", ");
 }
 

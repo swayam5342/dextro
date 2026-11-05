@@ -14,7 +14,11 @@ CREATE TABLE job_runs (
     succeeded   boolean NOT NULL
 );
 
+-- Keeps who did something once their account is gone, which blanks actor_id.
+ALTER TABLE audit_events ADD COLUMN actor_email text;
+
 -- +goose Down
+ALTER TABLE audit_events DROP COLUMN actor_email;
 DROP TABLE job_runs;
 ALTER TABLE storage_connections
     DROP COLUMN used_bytes,

@@ -106,7 +106,7 @@ export interface components {
     AuditEvent: {
       id: number;
       action: string;
-      /** Null for the command line, or if nobody could be identified or the account is gone. */
+      /** Null for the command line, or if nobody could be identified. */
       actor_email: string | null;
       ip: string;
       metadata: Record<string, unknown>;

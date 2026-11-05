@@ -23,12 +23,13 @@ type ApiKey struct {
 }
 
 type AuditEvent struct {
-	ID        int64
-	ActorID   uuid.NullUUID
-	Action    string
-	Ip        string
-	Metadata  []byte
-	CreatedAt time.Time
+	ID         int64
+	ActorID    uuid.NullUUID
+	Action     string
+	Ip         string
+	Metadata   []byte
+	CreatedAt  time.Time
+	ActorEmail pgtype.Text
 }
 
 type File struct {

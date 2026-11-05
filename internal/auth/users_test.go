@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/swayam5342/dextro/internal/audit"
 	"github.com/swayam5342/dextro/internal/httpx/apigen"
 )
 
@@ -176,6 +177,25 @@ func testDeleteUser(t *testing.T, f *fixture) {
 		AND actor_id = $1 AND metadata->>'email' = 'person@example.org'`, admin.User.ID)
 	if got != 1 {
 		t.Errorf("audit events = %d, want 1", got)
+	}
+}
+
+// The log has to say who did what, even after the person's account has gone.
+func testDeletedUsersStayInTheAuditLog(t *testing.T, f *fixture) {
+	admin := f.register(t, "admin@example.org")
+	person := f.register(t, "person@example.org")
+	if _, err := f.service.Login(f.ctx, "person@example.org", goodPassword, client); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if err := f.service.DeleteUser(f.ctx, admin.User.ID, person.User.ID, client); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+	entries, err := audit.NewStore(f.pool).List(f.ctx, audit.Filter{Action: audit.ActionLogin}, 10)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ActorEmail == nil || *entries[0].ActorEmail != "person@example.org" {
+		t.Errorf("entries = %+v", entries)
 	}
 }
 
