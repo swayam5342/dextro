@@ -98,8 +98,9 @@ const validPublicURL = "https://files.example.org"
 // valid returns the smallest environment that loads, plus any overrides.
 func valid(overrides ...string) map[string]string {
 	values := map[string]string{
-		"DEXTRO_DATABASE_URL": validURL,
-		"DEXTRO_PUBLIC_URL":   validPublicURL,
+		"DEXTRO_DATABASE_URL":    validURL,
+		"DEXTRO_PUBLIC_URL":      validPublicURL,
+		"DEXTRO_ENCRYPTION_KEYS": "k1:" + testKeyA,
 	}
 	for i := 0; i+1 < len(overrides); i += 2 {
 		values[overrides[i]] = overrides[i+1]
@@ -208,5 +209,91 @@ func TestLoadRejectsPartialOrPlaceholderGoogleCredentials(t *testing.T) {
 				t.Errorf("error = %v, want it to contain %q", err, tt.wantInMessage)
 			}
 		})
+	}
+}
+
+// base64 of 32 distinct bytes, so it isn't mistaken for a blank key.
+const (
+	testKeyA = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+	testKeyB = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+)
+
+func TestLoadReadsOneEncryptionKey(t *testing.T) {
+	cfg, err := Load(env(valid("DEXTRO_ENCRYPTION_KEYS", "k1:"+testKeyA)))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ActiveKeyID != "k1" || len(cfg.EncryptionKeys["k1"]) != 32 {
+		t.Errorf("active = %q, keys = %d", cfg.ActiveKeyID, len(cfg.EncryptionKeys))
+	}
+}
+
+func TestLoadNeedsAnActiveKeyWhenThereAreSeveral(t *testing.T) {
+	keys := "k1:" + testKeyA + ",k2:" + testKeyB
+	if _, err := Load(env(valid("DEXTRO_ENCRYPTION_KEYS", keys))); err == nil || !strings.Contains(err.Error(), "DEXTRO_ENCRYPTION_KEY_ID") {
+		t.Errorf("error = %v, want one naming DEXTRO_ENCRYPTION_KEY_ID", err)
+	}
+	cfg, err := Load(env(valid("DEXTRO_ENCRYPTION_KEYS", keys, "DEXTRO_ENCRYPTION_KEY_ID", "k2")))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ActiveKeyID != "k2" || len(cfg.EncryptionKeys) != 2 {
+		t.Errorf("active = %q, keys = %d", cfg.ActiveKeyID, len(cfg.EncryptionKeys))
+	}
+}
+
+func TestLoadRejectsBadEncryptionKeys(t *testing.T) {
+	blank := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	tests := []struct {
+		name, keys, activeID string
+	}{
+		{"missing", "", ""},
+		{"placeholder", "changeme", ""},
+		{"placeholder value", "k1:changeme", ""},
+		{"no id", ":" + testKeyA, ""},
+		{"not base64", "k1:!!!!", ""},
+		{"too short", "k1:AAEC", ""},
+		{"all zeros", "k1:" + blank, ""},
+		{"duplicate id", "k1:" + testKeyA + ",k1:" + testKeyB, "k1"},
+		{"unknown active key", "k1:" + testKeyA, "k2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			values := valid("DEXTRO_ENCRYPTION_KEYS", tt.keys, "DEXTRO_ENCRYPTION_KEY_ID", tt.activeID)
+			_, err := Load(env(values))
+			if err == nil || !strings.Contains(err.Error(), "DEXTRO_ENCRYPTION_KEY") {
+				t.Fatalf("error = %v, want one naming the setting", err)
+			}
+		})
+	}
+}
+
+func TestLoadErrorsNeverContainTheEncryptionKey(t *testing.T) {
+	_, err := Load(env(valid("DEXTRO_ENCRYPTION_KEYS", "k1:"+testKeyA[:20])))
+	if err == nil {
+		t.Fatal("Load succeeded, want error")
+	}
+	if strings.Contains(err.Error(), testKeyA[:20]) {
+		t.Errorf("error leaks the key: %q", err)
+	}
+}
+
+func TestLoadReadsS3AllowedHosts(t *testing.T) {
+	cfg, err := Load(env(valid("DEXTRO_S3_ALLOWED_HOSTS", " seaweedfs , NAS.local:9000,")))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.S3AllowedHosts) != 2 || cfg.S3AllowedHosts[0] != "seaweedfs" || cfg.S3AllowedHosts[1] != "nas.local:9000" {
+		t.Errorf("S3AllowedHosts = %v", cfg.S3AllowedHosts)
+	}
+}
+
+func TestLoadAllowsNoPrivateS3HostsByDefault(t *testing.T) {
+	cfg, err := Load(env(valid()))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.S3AllowedHosts) != 0 {
+		t.Errorf("S3AllowedHosts = %v, want none", cfg.S3AllowedHosts)
 	}
 }

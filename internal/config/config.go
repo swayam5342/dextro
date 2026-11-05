@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,6 +23,14 @@ type Config struct {
 	TrustedProxies     []netip.Prefix
 	GoogleClientID     string
 	GoogleClientSecret string
+	// EncryptionKeys maps key IDs to 32-byte keys for stored credentials. Old keys
+	// stay listed so existing values can still be read.
+	EncryptionKeys map[string][]byte
+	// ActiveKeyID names the key new values are encrypted with.
+	ActiveKeyID string
+	// S3AllowedHosts are the only S3 endpoints allowed to be on a private address.
+	// An entry is a host, or host:port to allow just that port.
+	S3AllowedHosts []string
 }
 
 // GoogleEnabled reports whether Google sign-in is configured.
@@ -67,6 +76,10 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := validateGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret); err != nil {
 		errs = append(errs, err)
 	}
+	if cfg.EncryptionKeys, cfg.ActiveKeyID, err = parseEncryptionKeys(getenv("DEXTRO_ENCRYPTION_KEYS"), getenv("DEXTRO_ENCRYPTION_KEY_ID")); err != nil {
+		errs = append(errs, err)
+	}
+	cfg.S3AllowedHosts = parseHosts(getenv("DEXTRO_S3_ALLOWED_HOSTS"))
 
 	if err := errors.Join(errs...); err != nil {
 		return Config{}, err
@@ -172,4 +185,66 @@ func isPlaceholder(secret string) bool {
 		return true
 	}
 	return false
+}
+
+const encryptionKeyBytes = 32
+
+// parseEncryptionKeys reads a comma-separated list of id:base64key entries. Its
+// errors never quote a value, because the values are secrets.
+func parseEncryptionKeys(raw, activeID string) (map[string][]byte, string, error) {
+	if raw == "" {
+		return nil, "", errors.New("DEXTRO_ENCRYPTION_KEYS is required; run make env")
+	}
+	keys := map[string][]byte{}
+	var lastID string
+	for entry := range strings.SplitSeq(raw, ",") {
+		id, encoded, found := strings.Cut(strings.TrimSpace(entry), ":")
+		if !found || id == "" {
+			return nil, "", errors.New("DEXTRO_ENCRYPTION_KEYS must be a list of id:base64key entries")
+		}
+		if isPlaceholder(encoded) {
+			return nil, "", errors.New("DEXTRO_ENCRYPTION_KEYS has a placeholder key; set a real one")
+		}
+		key, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil || len(key) != encryptionKeyBytes {
+			return nil, "", fmt.Errorf("DEXTRO_ENCRYPTION_KEYS key %q must be %d bytes of base64", id, encryptionKeyBytes)
+		}
+		if isBlank(key) {
+			return nil, "", fmt.Errorf("DEXTRO_ENCRYPTION_KEYS key %q is all zeros", id)
+		}
+		if _, duplicate := keys[id]; duplicate {
+			return nil, "", fmt.Errorf("DEXTRO_ENCRYPTION_KEYS lists key %q twice", id)
+		}
+		keys[id] = key
+		lastID = id
+	}
+	if activeID == "" {
+		if len(keys) > 1 {
+			return nil, "", errors.New("DEXTRO_ENCRYPTION_KEY_ID is required when there are several keys")
+		}
+		return keys, lastID, nil
+	}
+	if _, ok := keys[activeID]; !ok {
+		return nil, "", errors.New("DEXTRO_ENCRYPTION_KEY_ID names a key that isn't in DEXTRO_ENCRYPTION_KEYS")
+	}
+	return keys, activeID, nil
+}
+
+func isBlank(key []byte) bool {
+	for _, b := range key {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func parseHosts(raw string) []string {
+	var hosts []string
+	for entry := range strings.SplitSeq(raw, ",") {
+		if host := strings.ToLower(strings.TrimSpace(entry)); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
 }
