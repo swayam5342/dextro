@@ -68,6 +68,8 @@ func Run(t *testing.T, p provider.Provider) {
 		return nil
 	}
 
+	runResumable(t, p, read)
+
 	t.Run("quota reports usage", func(t *testing.T) {
 		quota, err := p.Quota(ctx)
 		if err != nil {
@@ -267,3 +269,100 @@ func (pattern) Read(p []byte) (int, error) {
 type failing struct{ err error }
 
 func (f failing) Read([]byte) (int, error) { return 0, f.err }
+
+func runResumable(t *testing.T, p provider.Provider, read func(*testing.T, string) string) {
+	t.Helper()
+	ctx := context.Background()
+	const align = provider.ChunkAlignment
+	body := strings.Repeat("a", align) + strings.Repeat("b", align) + "tail"
+	total := int64(len(body))
+
+	begin := func(t *testing.T) string {
+		t.Helper()
+		session, err := p.BeginResumable(ctx, provider.Resumable{Name: "chunks.bin", ContentType: "text/plain", Size: total})
+		if err != nil {
+			t.Fatalf("BeginResumable: %v", err)
+		}
+		return session
+	}
+	send := func(t *testing.T, session string, from, to int64) provider.ResumeState {
+		t.Helper()
+		state, err := p.PutChunk(ctx, session, provider.Chunk{
+			Offset: from,
+			Length: to - from,
+			Total:  total,
+			Body:   strings.NewReader(body[from:to]),
+		})
+		if err != nil {
+			t.Fatalf("PutChunk(%d-%d): %v", from, to, err)
+		}
+		return state
+	}
+
+	t.Run("chunks join up into one object", func(t *testing.T) {
+		session := begin(t)
+		if state := send(t, session, 0, align); state.Received != align || state.Object != nil {
+			t.Fatalf("after one chunk: %+v", state)
+		}
+		send(t, session, align, 2*align)
+		state := send(t, session, 2*align, total)
+		if state.Object == nil {
+			t.Fatalf("the last chunk finished nothing: %+v", state)
+		}
+		t.Cleanup(func() { _ = p.Delete(ctx, state.Object.ID) })
+		if state.Object.Size != total || state.Object.Name != "chunks.bin" {
+			t.Errorf("object = %+v", state.Object)
+		}
+		if got := read(t, state.Object.ID); got != body {
+			t.Errorf("body differs: %d bytes, want %d", len(got), len(body))
+		}
+	})
+
+	t.Run("status says how far an upload has got", func(t *testing.T) {
+		session := begin(t)
+		t.Cleanup(func() { _ = p.CancelResumable(ctx, session) })
+		state, err := p.ResumableStatus(ctx, session, total)
+		if err != nil {
+			t.Fatalf("ResumableStatus: %v", err)
+		}
+		if state.Received != 0 {
+			t.Errorf("before any chunk: %+v", state)
+		}
+		send(t, session, 0, align)
+		if state, err = p.ResumableStatus(ctx, session, total); err != nil {
+			t.Fatalf("ResumableStatus: %v", err)
+		}
+		if state.Received != align || state.Object != nil {
+			t.Errorf("after one chunk: %+v", state)
+		}
+	})
+
+	t.Run("status finds a finished upload", func(t *testing.T) {
+		session := begin(t)
+		send(t, session, 0, align)
+		send(t, session, align, 2*align)
+		finished := send(t, session, 2*align, total)
+		t.Cleanup(func() { _ = p.Delete(ctx, finished.Object.ID) })
+		state, err := p.ResumableStatus(ctx, session, total)
+		if err != nil {
+			t.Fatalf("ResumableStatus: %v", err)
+		}
+		if state.Object == nil || state.Object.ID != finished.Object.ID {
+			t.Errorf("state = %+v, want the finished object", state)
+		}
+	})
+
+	t.Run("a cancelled upload is gone, and cancelling again is fine", func(t *testing.T) {
+		session := begin(t)
+		send(t, session, 0, align)
+		if err := p.CancelResumable(ctx, session); err != nil {
+			t.Fatalf("CancelResumable: %v", err)
+		}
+		if _, err := p.ResumableStatus(ctx, session, total); !errors.Is(err, provider.ErrSessionExpired) {
+			t.Errorf("error = %v, want ErrSessionExpired", err)
+		}
+		if err := p.CancelResumable(ctx, session); err != nil {
+			t.Errorf("cancelling twice: %v", err)
+		}
+	})
+}

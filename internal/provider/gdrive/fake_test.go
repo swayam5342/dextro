@@ -42,6 +42,26 @@ type fakeDrive struct {
 	// thumbnails holds the image Google has made for a file, by file ID.
 	thumbnails   map[string][]byte
 	gotThumbPath string
+	// What Google's resumable protocol needs, for uploads the adapter drives itself.
+	sessions   map[string]*fakeSession
+	lastBegin  fakeBegin
+	real308    bool
+	dropBytes  int64
+	failChunks bool
+}
+
+// fakeBegin is what the adapter said when it started an upload.
+type fakeBegin struct {
+	length, contentType, parent, fields string
+}
+
+// fakeSession is a strict resumable upload, as the real service runs them.
+type fakeSession struct {
+	file     *fakeFile
+	total    int64
+	received int64
+	finished *fakeFile
+	fields   string
 }
 
 type fakeFile struct {
@@ -62,6 +82,7 @@ func newFakeDrive(t *testing.T) *fakeDrive {
 		t:          t,
 		files:      map[string]*fakeFile{},
 		uploads:    map[string]*fakeFile{},
+		sessions:   map[string]*fakeSession{},
 		wantCode:   "the-code",
 		thumbnails: map[string][]byte{},
 	}
@@ -270,6 +291,10 @@ func (f *fakeDrive) upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if length := r.Header.Get("X-Upload-Content-Length"); length != "" {
+			f.beginSession(w, r, &file, length)
+			return
+		}
 		session := fmt.Sprintf("s%d", len(f.uploads)+1)
 		f.uploads[session] = &file
 		w.Header().Set("Location", f.server.URL+"/upload/session/"+session)
@@ -312,6 +337,18 @@ func (f *fakeDrive) uploadMultipart(w http.ResponseWriter, r *http.Request) {
 // chunk takes one piece of a resumable upload. The last chunk states the total.
 func (f *fakeDrive) chunk(w http.ResponseWriter, r *http.Request) {
 	session := r.PathValue("id")
+	if s, ok := f.sessions[session]; ok {
+		f.sessionChunk(w, r, session, s)
+		return
+	}
+	if strings.HasPrefix(session, "r") {
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		notFound(w)
+		return
+	}
 	file, ok := f.uploads[session]
 	if !ok {
 		notFound(w)
@@ -337,6 +374,107 @@ func (f *fakeDrive) chunk(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(f.uploads, session)
 	writeJSON(w, http.StatusOK, f.store(file, file.body))
+}
+
+func (f *fakeDrive) beginSession(w http.ResponseWriter, r *http.Request, file *fakeFile, length string) {
+	total, err := strconv.ParseInt(length, 10, 64)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var parent string
+	if len(file.Parents) > 0 {
+		parent = file.Parents[0]
+	}
+	fields := r.URL.Query().Get("fields")
+	f.lastBegin = fakeBegin{length: length, contentType: r.Header.Get("X-Upload-Content-Type"), parent: parent, fields: fields}
+	session := fmt.Sprintf("r%d", len(f.sessions)+1)
+	f.sessions[session] = &fakeSession{file: file, total: total, fields: fields}
+	w.Header().Set("Location", f.server.URL+"/upload/session/"+session)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (f *fakeDrive) expireSessions() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sessions = map[string]*fakeSession{}
+}
+
+// answerProgress sends Google's answer to an unfinished upload: a 308, or a 200
+// that says so when the client asked for one and real308 isn't set.
+func (f *fakeDrive) answerProgress(w http.ResponseWriter, r *http.Request, s *fakeSession) {
+	if s.received > 0 {
+		w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", s.received-1))
+	}
+	if !f.real308 && r.Header.Get("X-GUploader-No-308") == "yes" {
+		w.Header().Set("X-Http-Status-Code-Override", "308")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	w.WriteHeader(http.StatusPermanentRedirect)
+}
+
+// sessionChunk is as fussy as Google: the range has to be exact, and every chunk
+// but the last has to be a multiple of 256 KiB.
+func (f *fakeDrive) sessionChunk(w http.ResponseWriter, r *http.Request, id string, s *fakeSession) {
+	if r.Method == http.MethodDelete {
+		delete(f.sessions, id)
+		w.WriteHeader(499)
+		return
+	}
+	header := r.Header.Get("Content-Range")
+	if header == fmt.Sprintf("bytes */%d", s.total) {
+		if s.finished != nil {
+			writeJSON(w, http.StatusOK, s.finished)
+			return
+		}
+		f.answerProgress(w, r, s)
+		return
+	}
+	var start, end, total int64
+	if _, err := fmt.Sscanf(header, "bytes %d-%d/%d", &start, &end, &total); err != nil || total != s.total || start != s.received {
+		http.Error(w, "bad Content-Range: "+header, http.StatusBadRequest)
+		return
+	}
+	length := end - start + 1
+	if r.ContentLength != length {
+		http.Error(w, "Content-Length doesn't match the range", http.StatusBadRequest)
+		return
+	}
+	last := end+1 == total
+	if !last && length%(256<<10) != 0 {
+		http.Error(w, "a chunk must be a multiple of 256 KiB", http.StatusBadRequest)
+		return
+	}
+	var body []byte
+	var err error
+	if f.discardBodies {
+		var read int64
+		read, err = io.Copy(io.Discard, r.Body)
+		s.file.discarded += read
+	} else {
+		body, err = io.ReadAll(r.Body)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if f.failChunks {
+		http.Error(w, "backend error", http.StatusServiceUnavailable)
+		return
+	}
+	s.file.body = append(s.file.body, body...)
+	s.received += length
+	if last {
+		s.finished = f.store(s.file, s.file.body)
+		writeJSON(w, http.StatusOK, s.finished)
+		return
+	}
+	if f.dropBytes > 0 {
+		s.received -= f.dropBytes
+		s.file.body = s.file.body[:s.received]
+	}
+	f.answerProgress(w, r, s)
 }
 
 func (f *fakeDrive) countFolders() int {

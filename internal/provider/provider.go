@@ -65,6 +65,35 @@ type Upload struct {
 	Body        io.Reader
 }
 
+// ChunkAlignment is what every chunk but the last must be a multiple of.
+const ChunkAlignment = 256 << 10
+
+// ErrSessionExpired means a resumable upload is gone, so what it held is lost.
+var ErrSessionExpired = errors.New("upload session expired")
+
+// Resumable describes a file about to be sent in chunks.
+type Resumable struct {
+	Name        string
+	ContentType string
+	Size        int64
+}
+
+// Chunk is one piece of a resumable upload.
+type Chunk struct {
+	Offset int64
+	Length int64
+	Total  int64
+	Body   io.Reader
+}
+
+// ResumeState is how far a resumable upload has got. Object is set once it's
+// finished. Received can be less than what was sent: the account decides what it
+// keeps, and the next chunk has to start from there.
+type ResumeState struct {
+	Received int64
+	Object   *Object
+}
+
 // Provider is a storage account. Implementations see only the area dextro owns
 // in that account, never set public permissions on anything, and keep no state
 // between calls that would tie them to one request.
@@ -86,4 +115,13 @@ type Provider interface {
 	Delete(ctx context.Context, id string) error
 	// List returns one page of objects. An empty token starts from the beginning.
 	List(ctx context.Context, pageToken string) (ObjectPage, error)
+	// BeginResumable starts an upload sent in chunks. The result is the session's
+	// address, which grants access to the upload and must be kept secret.
+	BeginResumable(ctx context.Context, upload Resumable) (string, error)
+	// PutChunk sends the next piece, which must start at what was last received.
+	PutChunk(ctx context.Context, session string, chunk Chunk) (ResumeState, error)
+	// ResumableStatus asks how far an upload has really got.
+	ResumableStatus(ctx context.Context, session string, total int64) (ResumeState, error)
+	// CancelResumable abandons an upload. One that's already gone is no error.
+	CancelResumable(ctx context.Context, session string) error
 }

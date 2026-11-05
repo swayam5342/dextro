@@ -30,6 +30,18 @@ type Fake struct {
 	objects       map[string]fakeObject
 	thumbnailType string
 	thumbnail     []byte
+	nextSession   int
+	sessions      map[string]*fakeSession
+	// DropBytes is how much a chunk loses, the way Drive can keep less than it's sent.
+	DropBytes int64
+	// ChunkErr, if set, is what PutChunk returns once the body is read.
+	ChunkErr error
+}
+
+type fakeSession struct {
+	upload   provider.Resumable
+	body     []byte
+	finished *provider.Object
 }
 
 type fakeObject struct {
@@ -41,7 +53,7 @@ var _ provider.Provider = (*Fake)(nil)
 
 // NewFake returns an empty provider that lists pageSize objects at a time.
 func NewFake(pageSize int) *Fake {
-	return &Fake{pageSize: pageSize, objects: map[string]fakeObject{}}
+	return &Fake{pageSize: pageSize, objects: map[string]fakeObject{}, sessions: map[string]*fakeSession{}}
 }
 
 // Check implements provider.Provider.
@@ -159,4 +171,86 @@ func (f *Fake) List(_ context.Context, pageToken string) (provider.ObjectPage, e
 		page.NextPageToken = strconv.Itoa(next)
 	}
 	return page, nil
+}
+
+// BeginResumable implements provider.Provider.
+func (f *Fake) BeginResumable(_ context.Context, upload provider.Resumable) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextSession++
+	session := "session-" + strconv.Itoa(f.nextSession)
+	f.sessions[session] = &fakeSession{upload: upload}
+	return session, nil
+}
+
+// PutChunk implements provider.Provider. It's as strict as Drive about where a
+// chunk starts and how long it is.
+func (f *Fake) PutChunk(_ context.Context, session string, chunk provider.Chunk) (provider.ResumeState, error) {
+	body, err := io.ReadAll(chunk.Body)
+	if err != nil {
+		return provider.ResumeState{}, fmt.Errorf("read chunk: %w", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ChunkErr != nil {
+		return provider.ResumeState{}, f.ChunkErr
+	}
+	s, ok := f.sessions[session]
+	if !ok {
+		return provider.ResumeState{}, provider.ErrSessionExpired
+	}
+	if s.finished != nil {
+		return provider.ResumeState{Received: s.finished.Size, Object: s.finished}, nil
+	}
+	last := chunk.Offset+chunk.Length == chunk.Total
+	if chunk.Offset != int64(len(s.body)) || int64(len(body)) != chunk.Length || chunk.Total != s.upload.Size ||
+		(!last && chunk.Length%provider.ChunkAlignment != 0) {
+		return provider.ResumeState{}, fmt.Errorf("bad chunk: offset %d, length %d, have %d", chunk.Offset, chunk.Length, len(s.body))
+	}
+	s.body = append(s.body, body...)
+	if last {
+		f.nextID++
+		object := provider.Object{ID: strconv.Itoa(f.nextID), Name: s.upload.Name, Size: int64(len(s.body)), ModifiedAt: time.Now()}
+		f.objects[object.ID] = fakeObject{Object: object, body: s.body}
+		s.finished = &object
+		return provider.ResumeState{Received: object.Size, Object: &object}, nil
+	}
+	s.body = s.body[:max(int64(len(s.body))-f.DropBytes, 0)]
+	return provider.ResumeState{Received: int64(len(s.body))}, nil
+}
+
+// ResumableStatus implements provider.Provider.
+func (f *Fake) ResumableStatus(_ context.Context, session string, _ int64) (provider.ResumeState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.sessions[session]
+	if !ok {
+		return provider.ResumeState{}, provider.ErrSessionExpired
+	}
+	if s.finished != nil {
+		return provider.ResumeState{Received: s.finished.Size, Object: s.finished}, nil
+	}
+	return provider.ResumeState{Received: int64(len(s.body))}, nil
+}
+
+// CancelResumable implements provider.Provider.
+func (f *Fake) CancelResumable(_ context.Context, session string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.sessions, session)
+	return nil
+}
+
+// OpenSessions counts uploads that were started and not cancelled.
+func (f *Fake) OpenSessions() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.sessions)
+}
+
+// ExpireSessions forgets every upload, as Drive does after a week.
+func (f *Fake) ExpireSessions() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sessions = map[string]*fakeSession{}
 }
