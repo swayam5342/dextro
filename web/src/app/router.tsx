@@ -1,6 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 
+import { adminSettingsRoute } from "@/features/admin/routes";
+import { accountRoute, authedRoute, registerRoute, signInRoute } from "@/features/auth/routes";
 import { statusRoute } from "@/features/status/routes";
 
 import { rootRoute } from "./root-route";
@@ -8,7 +10,11 @@ import { rootRoute } from "./root-route";
 export const queryClient = new QueryClient();
 
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([statusRoute]),
+  routeTree: rootRoute.addChildren([
+    signInRoute,
+    registerRoute,
+    authedRoute.addChildren([statusRoute, accountRoute, adminSettingsRoute]),
+  ]),
   context: { queryClient },
 });
 

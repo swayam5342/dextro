@@ -1,11 +1,11 @@
 import { createRoute } from "@tanstack/react-router";
 
-import { rootRoute } from "@/app/root-route";
+import { authedRoute } from "@/features/auth/routes";
 
 import { StatusPage } from "./components/status-page";
 
 export const statusRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authedRoute,
   path: "/",
   component: StatusPage,
 });
