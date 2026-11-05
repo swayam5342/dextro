@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
 
 import { redirectMessage } from "../messages";
 import { authConfigQuery, useLogin } from "../queries";
 import { CredentialsForm } from "./credentials-form";
-import { FormError } from "@/components/field";
 
 export function SignInPage({ redirectError }: { redirectError: string | undefined }) {
   const navigate = useNavigate();
