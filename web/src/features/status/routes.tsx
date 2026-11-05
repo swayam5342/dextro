@@ -6,6 +6,6 @@ import { StatusPage } from "./components/status-page";
 
 export const statusRoute = createRoute({
   getParentRoute: () => authedRoute,
-  path: "/",
+  path: "/status",
   component: StatusPage,
 });

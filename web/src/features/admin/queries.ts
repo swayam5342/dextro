@@ -5,7 +5,7 @@ import { toApiError } from "@/api/errors";
 import type { components } from "@/api/schema";
 import { authConfigQuery } from "@/features/auth/queries";
 
-type Settings = components["schemas"]["Settings"];
+type SettingsUpdate = components["schemas"]["SettingsUpdate"];
 
 export const settingsQuery = queryOptions({
   queryKey: ["settings"],
@@ -21,7 +21,7 @@ export const settingsQuery = queryOptions({
 export function useUpdateSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (body: Settings) => {
+    mutationFn: async (body: SettingsUpdate) => {
       const { data, error } = await api.PATCH("/api/v1/admin/settings", { body });
       if (!data) {
         throw toApiError(error);

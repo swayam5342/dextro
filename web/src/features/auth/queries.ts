@@ -120,6 +120,46 @@ export function useRevokeSession() {
   });
 }
 
+export const apiKeysQuery = queryOptions({
+  queryKey: ["api-keys"],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/auth/api-keys");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
+export function useCreateAPIKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: components["schemas"]["APIKeyInput"]) => {
+      const { data, error } = await api.POST("/api/v1/auth/api-keys", { body });
+      if (!data) {
+        throw toApiError(error);
+      }
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: apiKeysQuery.queryKey }),
+  });
+}
+
+export function useRevokeAPIKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error, response } = await api.DELETE("/api/v1/auth/api-keys/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) {
+        throw toApiError(error);
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: apiKeysQuery.queryKey }),
+  });
+}
+
 export function useLinkGoogle() {
   return useMutation({
     mutationFn: async () => {

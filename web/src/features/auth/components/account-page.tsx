@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 
+import { Field, FormError } from "@/components/field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -14,7 +15,7 @@ import {
   useLinkGoogle,
   useRevokeSession,
 } from "../queries";
-import { Field, FormError } from "@/components/field";
+import { APIKeysSection } from "./api-keys-section";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -168,6 +169,9 @@ export function AccountPage({
         )}
         <Section title="Devices">
           <Sessions />
+        </Section>
+        <Section title="API keys">
+          <APIKeysSection />
         </Section>
       </div>
     </div>

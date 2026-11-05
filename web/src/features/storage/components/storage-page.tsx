@@ -27,7 +27,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
 
   function handleRemove() {
     const confirmed = window.confirm(
-      `Remove ${connection.name}? Its files stay in the account, and dextro forgets its credentials.`,
+      `Remove ${connection.name}? dextro will forget its credentials and stop showing its files. The files stay in the account.`,
     );
     if (confirmed) {
       remove.mutate();

@@ -16,6 +16,11 @@ export function UserNav() {
   return (
     <nav className="flex flex-wrap items-center gap-1">
       <Button asChild variant="ghost" size="sm">
+        <Link to="/" search={{}}>
+          Files
+        </Link>
+      </Button>
+      <Button asChild variant="ghost" size="sm">
         <Link to="/storage">Storage</Link>
       </Button>
       {user.role === "admin" && (
