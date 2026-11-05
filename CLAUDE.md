@@ -32,7 +32,7 @@ Google's redirect URIs are `<PUBLIC_URL>/api/v1/auth/google/callback` (sign-in) 
 
 To test against a throwaway stack while the dev stack is up, use a Compose override with its own ports and subnet, and check it's really running before sending it anything. Registering on the dev stack by accident creates a real account there.
 
-Roles change only from the command line: `docker compose exec api /dextro set-role <email> <user|admin>`. In Git Bash, prefix it with `MSYS_NO_PATHCONV=1`, or `/dextro` gets rewritten into a Windows path.
+There is one admin. Move the role with `docker compose exec api /dextro transfer-admin <email>`. If someone is locked out, the admin included, `docker compose exec api /dextro reset-password <email>` prints a temporary password. In Git Bash, prefix either with `MSYS_NO_PATHCONV=1`, or `/dextro` gets rewritten into a Windows path.
 
 Session cookies are always `Secure`. Chrome accepts them on `http://127.0.0.1`, but anywhere else, such as a LAN address, needs HTTPS or login won't stick.
 
@@ -56,6 +56,13 @@ Node web server environment: `DEXTRO_API_URL` (default `http://localhost:8080`),
 - oapi-codegen checks required query parameters before the access middleware runs, so an upload's parameters aren't marked required in `openapi.yaml`: that would answer anonymous requests with 400 instead of 401. The handler checks them.
 - To write to two tables atomically, use a store's `InTx`. Its `Audit()` and `Settings()` run on the same transaction.
 - Google sign-in never links to an existing account, even with a verified, matching email: password accounts never prove they own their address. Linking happens only from the account page, by a signed-in user. Don't "improve" this into auto-linking.
+- The admin manages accounts through `internal/auth/users.go`, whose routes sit under `/api/v1/admin/users`. They live in `auth` because they need its password hashing and sessions. The admin sees each account's email and how many accounts it has linked, never its files, and can't delete or reset their own account there.
+- A password the admin chose must be replaced. `must_change_password` is set when the admin creates a user or sets a password, and when `reset-password` runs. `requirePasswordChange` in `access.go` then refuses everything except `passwordChangeRoutes`, for API keys too, so it's closed by default like the other route lists. Only changing the password clears it, and the new one can't match the old.
+- Deleting a user removes their sessions, keys, linked accounts and file records through foreign keys. The files stay in their Google Drive. Their email is written onto their audit events first, because the delete blanks `actor_id`.
+- `internal/jobs` runs background work on `river`, inside the Go server, which also applies river's own migrations at startup. The quota sync runs hourly and session cleanup daily, and both run at startup. Each finish is saved in `job_runs`, because river clears finished jobs on its own schedule. A job stopped by shutdown isn't recorded.
+- The quota sync saves `checked_at`, `check_ok` and `used_bytes` on each connection for the admin's status page. Uploads and the Storage page still ask Google directly, so don't point them at the saved values. A shutdown cuts Google calls off, so `SyncQuotas` stops rather than recording accounts as broken.
+- `internal/admin` imports `storage` for the status page, and `auth` no longer imports `admin`.
+- The audit log's `before` parameter is a string in `openapi.yaml`, because the generated code rejects a bad number before the access checks run.
 - **The TypeScript API types are hand-written.** `web/src/api/schema.ts` mirrors `openapi.yaml` in the shape `openapi-fetch` expects. Update it in the same commit as the contract. Nothing checks that they match. `openapi-typescript` isn't used because it requires TypeScript 5 and this project is on TypeScript 7.
 - Frontend linting uses `oxlint`, because `typescript-eslint` doesn't support TypeScript 7.
 - SQL lives in `internal/db/queries`, generating into `internal/db/dbgen`. Migrations live in `internal/db/migrations` and run automatically at startup under an advisory lock.
@@ -82,8 +89,8 @@ Node web server environment: `DEXTRO_API_URL` (default `http://localhost:8080`),
 
 1. Store functions that load user data take the user ID, e.g. `GetFileForOwner(ctx, userID, fileID)`. Never write an unscoped `GetFile(id)`. A public share-link lookup is a separate, clearly named function that goes by hashed token.
 2. Instance-wide settings and maintenance routes sit in one route group behind `requireAdmin`. A logged-in user is not automatically an admin.
-3. The first account on an empty instance becomes admin, safely under concurrent sign-ups (use a transaction). No other account is ever promoted automatically. A CLI command changes roles.
-4. Registration can be turned off through an `allow_registration` setting that an admin can change. It must also block first-time Google sign-ins. The first account can always be created.
+3. The first account on an empty instance becomes admin, safely under concurrent sign-ups (use a transaction). There is exactly one admin, enforced by a unique index. No other account is ever promoted automatically, and `transfer-admin` on the command line is the only way the role moves.
+4. Only the first account can sign up, by password or through Google. After that the admin creates accounts. Sign-up is refused before the email is looked at, so it can't show which addresses have accounts.
 5. Google sign-in may link to an existing account only when Google reports the email as verified. Email/password sign-up must not let someone pre-claim an address and capture that person's Google sign-in later.
 6. Never set public or "anyone with the link" permissions on a provider. Sharing happens only through this app's own share links: random token, stored hashed, optional expiry, view-only by default, revocable.
 7. Uploads stream end to end through `io.Reader`, with memory use that doesn't grow with file size. Never buffer a whole file. Enforce size limits while streaming.
