@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 )
@@ -15,6 +16,17 @@ type Config struct {
 	ListenAddr  string
 	DatabaseURL string
 	LogLevel    slog.Level
+	// PublicURL is the origin browsers use, such as https://files.example.org.
+	PublicURL string
+	// TrustedProxies lists the peers whose X-Forwarded-For header is believed.
+	TrustedProxies     []netip.Prefix
+	GoogleClientID     string
+	GoogleClientSecret string
+}
+
+// GoogleEnabled reports whether Google sign-in is configured.
+func (c Config) GoogleEnabled() bool {
+	return c.GoogleClientID != ""
 }
 
 const defaultListenAddr = ":8080"
@@ -23,7 +35,12 @@ const defaultListenAddr = ":8080"
 // every problem at once so a bad deployment can be fixed in one pass. Errors
 // never contain secret values.
 func Load(getenv func(string) string) (Config, error) {
-	cfg := Config{ListenAddr: getenv("DEXTRO_LISTEN_ADDR"), DatabaseURL: getenv("DEXTRO_DATABASE_URL")}
+	cfg := Config{
+		ListenAddr:         getenv("DEXTRO_LISTEN_ADDR"),
+		DatabaseURL:        getenv("DEXTRO_DATABASE_URL"),
+		GoogleClientID:     getenv("DEXTRO_GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: getenv("DEXTRO_GOOGLE_CLIENT_SECRET"),
+	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = defaultListenAddr
 	}
@@ -39,6 +56,16 @@ func Load(getenv func(string) string) (Config, error) {
 		if err := cfg.LogLevel.UnmarshalText([]byte(level)); err != nil {
 			errs = append(errs, fmt.Errorf("DEXTRO_LOG_LEVEL is not a valid level: %q", level))
 		}
+	}
+	var err error
+	if cfg.PublicURL, err = parsePublicURL(getenv("DEXTRO_PUBLIC_URL")); err != nil {
+		errs = append(errs, fmt.Errorf("DEXTRO_PUBLIC_URL %w", err))
+	}
+	if cfg.TrustedProxies, err = parseTrustedProxies(getenv("DEXTRO_TRUSTED_PROXIES")); err != nil {
+		errs = append(errs, fmt.Errorf("DEXTRO_TRUSTED_PROXIES %w", err))
+	}
+	if err := validateGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret); err != nil {
+		errs = append(errs, err)
 	}
 
 	if err := errors.Join(errs...); err != nil {
@@ -69,6 +96,60 @@ func validateDatabaseURL(raw string) error {
 	}
 	if isPlaceholder(password) {
 		return errors.New("uses a placeholder password; set a real one")
+	}
+	return nil
+}
+
+// parsePublicURL reduces raw to the scheme and host browsers will send as their
+// Origin, which has no trailing slash and is always lowercase.
+func parsePublicURL(raw string) (string, error) {
+	if raw == "" {
+		return "", errors.New("is required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", errors.New("is not a valid URL")
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", errors.New("must use http or https")
+	}
+	if u.Hostname() == "" {
+		return "", errors.New("must include a host")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return "", errors.New("must be only a scheme and host, with no path")
+	}
+	return scheme + "://" + strings.ToLower(u.Host), nil
+}
+
+// parseTrustedProxies reads a comma-separated list of addresses and CIDR ranges.
+func parseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	var prefixes []netip.Prefix
+	for entry := range strings.SplitSeq(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if addr, err := netip.ParseAddr(entry); err == nil {
+			prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+			continue
+		}
+		prefix, err := netip.ParsePrefix(entry)
+		if err != nil {
+			return nil, fmt.Errorf("has an entry that is not an address or CIDR range: %q", entry)
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, nil
+}
+
+func validateGoogle(clientID, clientSecret string) error {
+	if (clientID == "") != (clientSecret == "") {
+		return errors.New("DEXTRO_GOOGLE_CLIENT_ID and DEXTRO_GOOGLE_CLIENT_SECRET must be set together")
+	}
+	if clientSecret != "" && isPlaceholder(clientSecret) {
+		return errors.New("DEXTRO_GOOGLE_CLIENT_SECRET is a placeholder; set a real one")
 	}
 	return nil
 }
