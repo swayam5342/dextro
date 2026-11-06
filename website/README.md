@@ -1,6 +1,8 @@
 # Tributary website
 
-The public site: the home page, the API guide, the self-hosting guide and a demo. It's a Next.js app, separate from the [privacy and terms pages](https://swayamcyber.in/dextro-site/) that Google's consent screen links to.
+The public site: the home page, the API guide, the self-hosting guide, a demo, and the privacy policy and terms. It's a Next.js app.
+
+The [older site](https://swayamcyber.in/dextro-site/) stays up, because Google's consent screen links to its pages. Until those links change, a change to the privacy policy or terms needs making in both places.
 
 ## Deploying to Vercel
 

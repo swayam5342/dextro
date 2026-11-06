@@ -2,7 +2,6 @@ import Link from "next/link";
 
 export const GITHUB = "https://github.com/swayam5342/tributary";
 export const DOCKER_HUB = "https://hub.docker.com/r/swayam5342/tributary-api";
-export const PRIVACY = "https://swayamcyber.in/dextro-site/privacy.html";
 
 function Mark() {
   return (
@@ -66,8 +65,9 @@ export function SiteFooter() {
           <Link href="/api-guide">API guide</Link>
           <a href={GITHUB}>GitHub</a>
           <a href={DOCKER_HUB}>Docker Hub</a>
-          <a href={PRIVACY}>Privacy</a>
           <a href={`${GITHUB}/blob/main/LICENSE`}>MIT licence</a>
+          <Link href="/privacy">Privacy policy</Link>
+          <Link href="/terms">Terms of service</Link>
         </div>
       </div>
       <p className="footer-credit">

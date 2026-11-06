@@ -6,7 +6,15 @@ import { useEffect, useState } from "react";
 import type { DocGroup } from "@/components/docs-shell";
 
 /** The sidebar. It marks the section being read, and folds away on a phone. */
-export function DocsMenu({ guides, current, groups }: { guides: { href: string; label: string }[]; current: string; groups: DocGroup[] }) {
+export function DocsMenu({
+  pages,
+  current,
+  groups,
+}: {
+  pages: { title: string; links: { href: string; label: string }[] }[];
+  current: string;
+  groups: DocGroup[];
+}) {
   const [active, setActive] = useState(groups[0].items[0][0]);
   const [open, setOpen] = useState(true);
 
@@ -37,16 +45,20 @@ export function DocsMenu({ guides, current, groups }: { guides: { href: string; 
     <details className="docs-menu" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>On this page</summary>
       <nav aria-label="Documentation">
-        <h2>Guides</h2>
-        <ul>
-          {guides.map(({ href, label }) => (
-            <li key={href}>
-              <Link href={href} aria-current={href === current ? "page" : undefined}>
-                {label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {pages.map(({ title, links }) => (
+          <div key={title}>
+            <h2>{title}</h2>
+            <ul>
+              {links.map(({ href, label }) => (
+                <li key={href}>
+                  <Link href={href} aria-current={href === current ? "page" : undefined}>
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
         {groups.map(({ title, items }) => (
           <div key={title}>
             <h2>{title}</h2>
