@@ -32,6 +32,7 @@ type fakeDrive struct {
 	gotVerifier     string
 	omitRefresh     bool
 	refreshRevoked  bool
+	refreshes       int
 	permissionCalls int
 	// limit and used are what the account reports. A limit of 0 means none.
 	limit int64
@@ -128,6 +129,7 @@ func (f *fakeDrive) token(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, body)
 	case "refresh_token":
+		f.refreshes++
 		if f.refreshRevoked || r.PostFormValue("refresh_token") != "the-refresh-token" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
 			return

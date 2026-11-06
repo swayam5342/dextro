@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -52,6 +53,11 @@ type Client struct {
 	config     oauth2.Config
 	apiBase    string
 	httpClient *http.Client
+
+	mu sync.Mutex
+	// tokens holds one source per refresh token, in memory only. Every request opens
+	// its account afresh, and a source keeps its access token until it expires.
+	tokens map[string]oauth2.TokenSource
 }
 
 // NewClient returns a Client for Google's real endpoints.
@@ -72,7 +78,26 @@ func newClient(clientID, clientSecret, redirectURL, authURL, tokenURL, apiBase s
 		},
 		apiBase:    apiBase,
 		httpClient: &http.Client{Timeout: tokenTimeout},
+		tokens:     map[string]oauth2.TokenSource{},
 	}
+}
+
+// tokenContext is what tokens are fetched with. It outlives any one request, because
+// a token source does, and a download can continue after the call that started it.
+func (c *Client) tokenContext() context.Context {
+	return context.WithValue(context.Background(), oauth2.HTTPClient, c.httpClient)
+}
+
+// tokenSource returns the account's source, so that requests share an access token.
+func (c *Client) tokenSource(refreshToken string) oauth2.TokenSource {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	source, ok := c.tokens[refreshToken]
+	if !ok {
+		source = c.config.TokenSource(c.tokenContext(), &oauth2.Token{RefreshToken: refreshToken})
+		c.tokens[refreshToken] = source
+	}
+	return source
 }
 
 // AuthCodeURL returns the address to send the browser to.
@@ -97,7 +122,7 @@ func (c *Client) Connect(ctx context.Context, code, verifier string) (Settings, 
 	if token.RefreshToken == "" {
 		return Settings{}, Credentials{}, errors.New("google sent no refresh token")
 	}
-	service, _, err := c.service(ctx, token)
+	service, _, err := c.service(c.config.TokenSource(c.tokenContext(), token))
 	if err != nil {
 		return Settings{}, Credentials{}, err
 	}
@@ -131,13 +156,12 @@ func ensureFolder(ctx context.Context, service *drive.Service) (string, error) {
 	return created.Id, nil
 }
 
-// service builds an API client. The token source outlives the request that
-// happens to create it, because a download can continue after the call returns.
-func (c *Client) service(ctx context.Context, token *oauth2.Token) (*drive.Service, *http.Client, error) {
-	longLived := context.WithValue(context.WithoutCancel(ctx), oauth2.HTTPClient, c.httpClient)
+// service builds an API client.
+func (c *Client) service(source oauth2.TokenSource) (*drive.Service, *http.Client, error) {
+	longLived := c.tokenContext()
 	// oauth2 takes only the transport from httpClient, so the timeout applies
 	// to fetching tokens and not to transfers, which can take hours.
-	httpClient := oauth2.NewClient(longLived, c.config.TokenSource(longLived, token))
+	httpClient := oauth2.NewClient(longLived, source)
 	options := []option.ClientOption{option.WithHTTPClient(httpClient)}
 	if c.apiBase != "" {
 		options = append(options, option.WithEndpoint(c.apiBase))
@@ -150,8 +174,8 @@ func (c *Client) service(ctx context.Context, token *oauth2.Token) (*drive.Servi
 }
 
 // Open returns a Provider for one connected account.
-func (c *Client) Open(ctx context.Context, s Settings, cr Credentials) (*Provider, error) {
-	service, httpClient, err := c.service(ctx, &oauth2.Token{RefreshToken: cr.RefreshToken})
+func (c *Client) Open(_ context.Context, s Settings, cr Credentials) (*Provider, error) {
+	service, httpClient, err := c.service(c.tokenSource(cr.RefreshToken))
 	if err != nil {
 		return nil, err
 	}

@@ -334,3 +334,38 @@ func TestExistsReportsFailures(t *testing.T) {
 		t.Errorf("exists = %v, error = %v, a failure must not read as gone", exists, err)
 	}
 }
+
+// Each request opens the account afresh, and fetching a new access token every time
+// would add a trip to Google to every file and thumbnail.
+func TestOpeningAnAccountReusesItsToken(t *testing.T) {
+	f := newFakeDrive(t)
+	c := newTestClient(f)
+	settings, credentials := connect(t, c)
+	ctx := context.Background()
+	for range 5 {
+		p, err := c.Open(ctx, settings, credentials)
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		if err := p.Check(ctx); err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.refreshes != 1 {
+		t.Errorf("token requests = %d, want 1", f.refreshes)
+	}
+}
+
+func TestEachAccountHasItsOwnToken(t *testing.T) {
+	f := newFakeDrive(t)
+	c := newTestClient(f)
+	first := c.tokenSource("first-refresh-token")
+	if second := c.tokenSource("second-refresh-token"); first == second {
+		t.Error("two accounts share a token source")
+	}
+	if again := c.tokenSource("first-refresh-token"); first != again {
+		t.Error("the same account got a second token source")
+	}
+}
