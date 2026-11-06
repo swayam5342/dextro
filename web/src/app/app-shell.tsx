@@ -33,7 +33,7 @@ import { ToastProvider } from "@/components/toast";
 import { DropZone, UploadPanel } from "@/features/files/components/upload-panel";
 import { treeFromPicked } from "@/features/files/folder-tree";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
-import { connectionsQuery, poolQuery } from "@/features/storage/queries";
+import { useFollowTransfers, connectionsQuery, poolQuery } from "@/features/storage/queries";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -200,8 +200,10 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
   const { data: pool } = useQuery(poolQuery);
   const picker = useRef<HTMLInputElement>(null);
   const folderPicker = useRef<HTMLInputElement | null>(null);
-  const hasAccounts = (connections?.length ?? 0) > 0;
-  const chosen = connections?.find((c) => c.id === target);
+  // An account being emptied takes nothing new.
+  const usable = connections?.filter((c) => !c.draining) ?? [];
+  const hasAccounts = usable.length > 0;
+  const chosen = usable.find((c) => c.id === target);
 
   function handlePick(event: ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(event.target.files ?? []);
@@ -274,7 +276,7 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
             {!chosen && <Check className="text-water" />}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          {connections?.map((connection) => (
+          {usable.map((connection) => (
             <DropdownMenuItem key={connection.id} onSelect={() => setTarget(connection.id)}>
               <span className="min-w-0 flex-1 truncate">{connection.summary}</span>
               <span className="shrink-0 text-xs text-muted-foreground">{freeSpace(connection.id)}</span>
@@ -318,7 +320,8 @@ function Frame() {
   const folderId = pathname === "/" ? folder : undefined;
   const chosen = connections?.find((c) => c.id === target);
   const hint = chosen ? `Goes to ${chosen.summary}` : "Goes to the account with the most free space";
-  const canDrop = (connections?.length ?? 0) > 0;
+  const canDrop = connections?.some((c) => !c.draining) ?? false;
+  useFollowTransfers();
 
   return (
     <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_58px] md:grid-cols-[224px_minmax(0,1fr)] md:grid-rows-[64px_minmax(0,1fr)]">

@@ -12,6 +12,8 @@ interface ConfirmDialogProps {
   title: string;
   text: string;
   action: string;
+  /** Plain, for something that doesn't destroy anything. */
+  safe?: boolean;
   pending?: boolean;
   error?: string;
   onConfirm: () => void;
@@ -19,7 +21,7 @@ interface ConfirmDialogProps {
 }
 
 /** Asks before something that can't be undone, naming what's about to happen. */
-export function ConfirmDialog({ title, text, action, pending, error, onConfirm, onClose }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, text, action, safe, pending, error, onConfirm, onClose }: ConfirmDialogProps) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -34,7 +36,7 @@ export function ConfirmDialog({ title, text, action, pending, error, onConfirm, 
               Cancel
             </Button>
           </DialogClose>
-          <Button variant="destructive" disabled={pending} onClick={onConfirm}>
+          <Button variant={safe ? "default" : "destructive"} disabled={pending} onClick={onConfirm}>
             {action}
           </Button>
         </div>

@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { components } from "@/api/schema";
@@ -13,15 +14,23 @@ import { cn } from "@/lib/utils";
 import {
   connectionsQuery,
   poolQuery,
+  transfersQuery,
+  useCancelTransfer,
   useConnectGoogleDrive,
+  useEmptyConnection,
   useRemoveConnection,
+  useRetryTransfers,
+  useStopEmptying,
   useSyncConnection,
   useTestConnection,
 } from "../queries";
 
+type AccountFiles = components["schemas"]["AccountFiles"];
 type Connection = components["schemas"]["Connection"];
 type Pool = components["schemas"]["Pool"];
 type PoolAccount = components["schemas"]["PoolAccount"];
+type Transfer = components["schemas"]["Transfer"];
+type TransferQueue = components["schemas"]["TransferQueue"];
 
 const REDIRECT_MESSAGES: Record<string, string> = {
   google_cancelled: "Linking the account was cancelled.",
@@ -58,6 +67,32 @@ function addedText({ added, skipped }: { added: number; skipped: number }): stri
   return `${files} ${others}: Google Docs can't be added, and nor can files that are already here.`;
 }
 
+function filesText(count: number): string {
+  return count === 1 ? "1 file" : `${count} files`;
+}
+
+/** What an account being emptied has left to do. */
+function emptyingText(files: AccountFiles | undefined, idle: boolean): string {
+  const left = files?.files ?? 0;
+  if (left > 0) {
+    return idle ? `${filesText(left)} still here. Empty it again to move them.` : `Emptying: ${filesText(left)} left`;
+  }
+  const added = files?.external_files ?? 0;
+  if (added > 0) {
+    return `Emptied. ${added === 1 ? "1 file added from Drive stays" : `${added} files added from Drive stay`} here, and will leave dextro if you remove the account.`;
+  }
+  return "Empty. You can remove it now.";
+}
+
+/** Says what removing an account costs, which is everything dextro shows from it. */
+function removeText(files: AccountFiles | undefined): string {
+  const held = (files?.files ?? 0) + (files?.external_files ?? 0);
+  if (held === 0) {
+    return "dextro will forget its token. Nothing is stored in it.";
+  }
+  return `dextro will forget its token and stop showing the ${filesText(held)} stored in it, trash included. They stay in that Drive. To keep them in dextro, empty the account first.`;
+}
+
 /** How much room an account has. No limit is the most room there is. */
 function room(account: PoolAccount): number {
   if (account.limit_bytes === null) {
@@ -71,7 +106,7 @@ function nextAccount(pool: Pool, target: string): string | undefined {
   if (target) {
     return target;
   }
-  const working = pool.accounts.filter((account) => account.available);
+  const working = pool.accounts.filter((account) => account.available && !account.connection.draining);
   if (working.length < 2) {
     return undefined;
   }
@@ -113,16 +148,25 @@ function Tank({
   account,
   isNext,
   pickerEnabled,
+  files,
+  canEmpty,
+  idle,
 }: {
   connection: Connection;
   account: PoolAccount | undefined;
   isNext: boolean;
   pickerEnabled: boolean;
+  files: AccountFiles | undefined;
+  canEmpty: boolean;
+  /** Nothing is waiting to move, so files left here aren't on their way. */
+  idle: boolean;
 }) {
   const test = useTestConnection(connection.id);
   const remove = useRemoveConnection(connection.id);
   const sync = useSyncConnection(connection.id);
-  const [confirming, setConfirming] = useState(false);
+  const empty = useEmptyConnection(connection.id);
+  const stop = useStopEmptying(connection.id);
+  const [confirming, setConfirming] = useState<"remove" | "empty" | null>(null);
   const broken = account?.available === false;
   const limit = account?.limit_bytes;
   const fill = account?.available && limit ? Math.min((account.used_bytes / limit) * 100, 100) : 0;
@@ -146,11 +190,13 @@ function Tank({
         {connection.summary}
       </h2>
       {isNext && <p className="text-[13px] text-water">Next upload goes here</p>}
+      {connection.draining && <p className="text-[13px]">{emptyingText(files, idle)}</p>}
       {broken && <p className="text-[13px] text-destructive">Link it again to repair it.</p>}
       {test.isSuccess && <p className="text-[13px]">This account works.</p>}
       {sync.data && <p className="text-[13px]">{syncText(sync.data)}</p>}
       <FormError message={sync.error ? "This account couldn't be checked, so nothing changed." : undefined} />
       <FormError message={test.error ? "This account couldn't be reached. Link it again to repair it." : undefined} />
+      <FormError message={stop.error?.message} />
       <div className="mt-auto flex flex-wrap gap-2">
         {pickerEnabled && !broken && (
           <Button variant="outline" size="sm" className={SOFT_BUTTON} onClick={() => openPicker(connection.id)}>
@@ -163,25 +209,127 @@ function Tank({
         <Button variant="outline" size="sm" className={SOFT_BUTTON} disabled={test.isPending} onClick={() => test.mutate()}>
           {test.isPending ? "Testing…" : "Test"}
         </Button>
-        <Button variant="outline" size="sm" className={SOFT_BUTTON} onClick={() => setConfirming(true)}>
+        {connection.draining && (
+          <Button variant="outline" size="sm" className={SOFT_BUTTON} disabled={stop.isPending} onClick={() => stop.mutate()}>
+            Use this account again
+          </Button>
+        )}
+        {canEmpty && !broken && (!connection.draining || (idle && (files?.files ?? 0) > 0)) && (
+          <Button variant="outline" size="sm" className={SOFT_BUTTON} onClick={() => setConfirming("empty")}>
+            Empty
+          </Button>
+        )}
+        <Button variant="outline" size="sm" className={SOFT_BUTTON} onClick={() => setConfirming("remove")}>
           Remove
         </Button>
       </div>
-      {confirming && (
+      {confirming === "remove" && (
         <ConfirmDialog
           title={`Remove ${connection.summary}?`}
-          text="dextro will forget its token and stop showing the files stored in it. The files stay in that Drive."
+          text={removeText(files)}
           action="Remove account"
           pending={remove.isPending}
           error={remove.error?.message}
-          onConfirm={() => remove.mutate(undefined, { onSuccess: () => setConfirming(false) })}
+          onConfirm={() => remove.mutate(undefined, { onSuccess: () => setConfirming(null) })}
           onClose={() => {
-            setConfirming(false);
+            setConfirming(null);
             remove.reset();
           }}
         />
       )}
+      {confirming === "empty" && (
+        <ConfirmDialog
+          safe
+          title={`Empty ${connection.summary}?`}
+          text={`Its ${filesText(files?.files ?? 0)} will move to your other accounts in the background, one at a time, which can take hours for large files. Each is copied and checked, then deleted from this account for good. Nothing new goes in it until you say so. Files added from Drive stay.`}
+          action="Empty account"
+          pending={empty.isPending}
+          error={empty.error?.message}
+          onConfirm={() => empty.mutate(undefined, { onSuccess: () => setConfirming(null) })}
+          onClose={() => {
+            setConfirming(null);
+            empty.reset();
+          }}
+        />
+      )}
     </li>
+  );
+}
+
+function MoveRow({ transfer, active, emails }: { transfer: Transfer; active: boolean; emails: Map<string, string> }) {
+  const cancel = useCancelTransfer();
+  const failed = transfer.status === "failed";
+  const percent = transfer.size > 0 ? Math.round((transfer.copied / transfer.size) * 100) : 0;
+  const route = `${emails.get(transfer.source_connection_id) ?? "Unknown account"} to ${emails.get(transfer.target_connection_id) ?? "Unknown account"}`;
+  return (
+    <li className="space-y-1">
+      <div className="flex items-center justify-between gap-3 text-[13px]">
+        <span className="min-w-0 truncate">{transfer.name}</span>
+        <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+          {failed ? "Failed" : active ? `${percent}%` : "Waiting"}
+          <button
+            type="button"
+            className="grid size-6 place-items-center rounded-full hover:bg-raised hover:text-foreground"
+            aria-label={`${failed ? "Clear" : "Cancel"} moving ${transfer.name}`}
+            disabled={cancel.isPending}
+            onClick={() => cancel.mutate(transfer.id)}
+          >
+            <X className="size-3.5" />
+          </button>
+        </span>
+      </div>
+      {active && <progress className="level block" value={percent} max={100} aria-label={`Progress of ${transfer.name}`} />}
+      {failed ? (
+        <p role="alert" className="text-xs text-destructive">
+          {transfer.failure}
+        </p>
+      ) : (
+        <p className="truncate text-xs text-faint">{route}</p>
+      )}
+    </li>
+  );
+}
+
+/** Files on their way between accounts. Only shows when there's something to show. */
+function Moves({ queue, connections }: { queue: TransferQueue | undefined; connections: Connection[] | undefined }) {
+  const retry = useRetryTransfers();
+  if (!queue || (queue.transfers.length === 0 && queue.removing === 0)) {
+    return null;
+  }
+  const emails = new Map(connections?.map((c) => [c.id, c.summary]));
+  const active = queue.transfers.find((transfer) => transfer.status === "waiting");
+  const parts = [];
+  if (queue.waiting > 0) {
+    parts.push(`${filesText(queue.waiting)} to move, ${formatBytes(queue.waiting_bytes)}`);
+  }
+  if (queue.failed > 0) {
+    parts.push(`${queue.failed} failed`);
+  }
+  if (queue.removing > 0) {
+    parts.push(queue.removing === 1 ? "1 old copy to remove" : `${queue.removing} old copies to remove`);
+  }
+  return (
+    <section aria-label="Moving files" className="rounded-[14px] bg-card p-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="font-semibold">Moving files</h2>
+          <p className="text-[13px] text-muted-foreground">{parts.join(", ")}</p>
+        </div>
+        {queue.failed > 0 && (
+          <Button variant="outline" size="sm" className={SOFT_BUTTON} disabled={retry.isPending} onClick={() => retry.mutate()}>
+            Try failed moves again
+          </Button>
+        )}
+      </div>
+      <FormError message={retry.error?.message} />
+      {queue.transfers.length > 0 && (
+        <ul className="mt-3 grid max-h-72 gap-3 overflow-y-auto">
+          {queue.transfers.map((transfer) => (
+            <MoveRow key={transfer.id} transfer={transfer} active={transfer.id === active?.id} emails={emails} />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -195,7 +343,7 @@ function PoolSummary({ pool }: { pool: Pool }) {
   return <p className="text-muted-foreground">{text}</p>;
 }
 
-function Accounts({ pool }: { pool: Pool | undefined }) {
+function Accounts({ pool, queue }: { pool: Pool | undefined; queue: TransferQueue | undefined }) {
   const { data: connections, isPending, isError } = useQuery(connectionsQuery);
   const { target } = useUploads();
 
@@ -209,6 +357,7 @@ function Accounts({ pool }: { pool: Pool | undefined }) {
     return <p className="py-6 text-muted-foreground">No accounts are linked yet. Link a Google Drive account to start storing files.</p>;
   }
   const next = pool && nextAccount(pool, target);
+  const usable = connections.filter((connection) => !connection.draining).length;
   return (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] gap-3.5">
       {connections.map((connection) => (
@@ -218,6 +367,9 @@ function Accounts({ pool }: { pool: Pool | undefined }) {
           account={pool?.accounts.find((a) => a.connection.id === connection.id)}
           isNext={connection.id === next}
           pickerEnabled={pool?.picker_enabled ?? false}
+          files={queue?.accounts.find((a) => a.connection_id === connection.id)}
+          canEmpty={usable > (connection.draining ? 0 : 1)}
+          idle={(queue?.waiting ?? 0) === 0}
         />
       ))}
     </ul>
@@ -233,6 +385,8 @@ export function StoragePage({
 }) {
   const { data: config } = useQuery(authConfigQuery);
   const { data: pool } = useQuery(poolQuery);
+  const { data: queue } = useQuery(transfersQuery);
+  const { data: connections } = useQuery(connectionsQuery);
   const connect = useConnectGoogleDrive();
   const queryClient = useQueryClient();
   const [added, setAdded] = useState<string>();
@@ -269,7 +423,8 @@ export function StoragePage({
       <FormError message={message ?? connect.error?.message} />
       {connected === "google" && <p>Account linked.</p>}
       {added && <p role="status">{added}</p>}
-      <Accounts pool={pool} />
+      <Accounts pool={pool} queue={queue} />
+      <Moves queue={queue} connections={connections} />
       {config?.google_enabled ? (
         <p className="max-w-[60ch] text-xs text-faint">
           dextro keeps its files in a folder named dextro in each account, and can't see anything else in

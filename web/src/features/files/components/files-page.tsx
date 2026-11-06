@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
+  ArrowLeftRight,
   ArrowUp,
   ArrowUpDown,
   Check,
@@ -58,7 +59,7 @@ import {
   type Item,
 } from "../queries";
 import { loadSort, nextSort, saveSort, sorted, SORTS, type SortField, type SortId } from "../sort";
-import { MoveDialog, NameDialog } from "./dialogs";
+import { AccountDialog, MoveDialog, NameDialog } from "./dialogs";
 import { fileIcon } from "./file-icon";
 import { Viewer } from "./viewer";
 
@@ -69,6 +70,7 @@ type View = "grid" | "list";
 type Action =
   | { type: "rename"; item: Item; name: string }
   | { type: "move"; items: Item[]; name: string }
+  | { type: "account"; fileIds: string[]; name: string; from: string[] }
   | { type: "new-folder" };
 
 /** Something being dragged, and the folder to put it back in. */
@@ -583,6 +585,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   const viewed = files[viewIndex];
   const accounts = new Map(connections?.map((c) => [c.id, c.summary]));
   const accountName = (id: string) => accounts.get(id) ?? "Unknown account";
+  const canChangeAccount = (connections?.filter((connection) => !connection.draining).length ?? 0) > 1;
 
   useEffect(() => {
     if (!selecting) {
@@ -798,11 +801,18 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
 
   function fileEntries(file: File): MenuEntry[] {
     const item: Item = { kind: "file", id: file.id };
+    const toAccount: MenuEntry = {
+      label: "Move to another account",
+      icon: ArrowLeftRight,
+      run: () => setAction({ type: "account", fileIds: [file.id], name: file.name, from: [file.connection_id] }),
+    };
     return [
       { label: "Download", icon: Download, run: () => download(file) },
       { label: "Select", icon: CheckSquare, run: () => toggle(item) },
       { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: file.name }) },
       { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: file.name }) },
+      // An added file is the person's own, and stays in the account it came from.
+      ...(canChangeAccount && !file.external ? [toAccount] : []),
       { label: "Move to trash", icon: Trash2, run: () => void moveToTrash([item]) },
     ];
   }
@@ -822,6 +832,11 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   const empty = data && folders.length === 0 && files.length === 0;
   const noAccounts = connections?.length === 0;
   const path = data?.path ?? [];
+  const selectedFiles = selected.filter((item) => item.kind === "file");
+  const canMoveSelection =
+    canChangeAccount &&
+    selectedFiles.length === selected.length &&
+    !files.some((file) => file.external && chosen.has(itemKey({ kind: "file", id: file.id })));
   const countText = selected.length === 1 ? "1 selected" : `${selected.length} selected`;
 
   return (
@@ -849,6 +864,27 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
             <FolderInput />
             <span className="hidden sm:inline">Move</span>
           </Button>
+          {canMoveSelection && (
+            <Button
+              variant="ghost"
+              aria-label="Move selected files to another account"
+              onClick={() =>
+                setAction({
+                  type: "account",
+                  fileIds: selectedFiles.map(({ id }) => id),
+                  name: countText.replace("selected", selected.length === 1 ? "file" : "files"),
+                  from: [
+                    ...new Set(
+                      files.filter((file) => chosen.has(itemKey({ kind: "file", id: file.id }))).map((file) => file.connection_id),
+                    ),
+                  ],
+                })
+              }
+            >
+              <ArrowLeftRight />
+              <span className="hidden sm:inline">Account</span>
+            </Button>
+          )}
           <Button variant="ghost" aria-label="Move selected items to the trash" onClick={() => void moveToTrash(selected)}>
             <Trash2 />
             <span className="hidden sm:inline">Trash</span>
@@ -1054,6 +1090,24 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
           error={rename.error?.message}
           onClose={close}
           onSubmit={(name) => rename.mutate({ item: action.item, name }, { onSuccess: close })}
+        />
+      )}
+      {action?.type === "account" && (
+        <AccountDialog
+          fileIds={action.fileIds}
+          name={action.name}
+          from={action.from}
+          onClose={close}
+          onDone={(queued, account) => {
+            close();
+            setSelected([]);
+            toast({
+              message:
+                queued === 0
+                  ? `Already in ${account}`
+                  : `Moving ${queued === 1 ? "1 file" : `${queued} files`} to ${account}. Follow it on the Storage page.`,
+            });
+          }}
         />
       )}
       {action?.type === "move" && (

@@ -29,6 +29,8 @@ const ACTIONS: Record<string, string> = {
   "storage.synced": "Synced with Drive",
   "storage.picker_opened": "Opened Add from Drive",
   "storage.files_added": "Added files from Drive",
+  "storage.files_transferred": "Moved files to another account",
+  "storage.emptied": "Emptied a storage account",
   "api_key.created": "Created an API key",
   "api_key.revoked": "Revoked an API key",
   "file.deleted": "Deleted a file forever",

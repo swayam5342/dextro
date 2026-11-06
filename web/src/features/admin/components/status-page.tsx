@@ -12,6 +12,7 @@ type JobRun = components["schemas"]["JobRun"];
 
 const JOBS = [
   { name: "file_sync", label: "File sync", about: "Matches dextro to each account every 5 minutes." },
+  { name: "file_transfers", label: "File moves", about: "Moves files between accounts, checking every 30 seconds." },
   { name: "quota_sync", label: "Quota sync", about: "Checks every linked account each hour." },
   { name: "session_cleanup", label: "Session cleanup", about: "Clears expired sign-ins each day." },
   { name: "upload_cleanup", label: "Upload cleanup", about: "Clears uploads left idle for a day, each hour." },
