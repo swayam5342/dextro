@@ -6,7 +6,8 @@
    `public/theme.js` sets data-theme on <html> before the page paints.
 
    Colour goes on people's files and on storage levels, never on the chrome. Elevation is
-   a step in lightness: away from black in dark, away from white in light. */
+   a step in lightness: up from true black in dark, and in light, white cards on a soft
+   off-white, which is easier on the eyes than pure white and black. */
 
 :root,
 [data-theme="dark"] {
@@ -14,41 +15,41 @@
 
   /* Surfaces, from the ground up */
   --background: #000;
-  --card: #111;
-  --accent: #1b1b1b;
-  --raised: #2a2a2a;
-  --raised-hover: #3a3a3a;
-  --popover: #2a2a2a;
-  --row-hover: #0c0c0c;
-  --well: #0a0a0a;
+  --card: #1c1c1c;
+  --accent: #262626;
+  --raised: #333;
+  --raised-hover: #454545;
+  --popover: #2b2b2b;
+  --row-hover: #161616;
+  --well: #141414;
 
   /* Text */
   --foreground: #fff;
-  --muted-foreground: #b4b4b4;
-  --faint: #8f8f8f;
-  --nav: #bbb;
+  --muted-foreground: #cfcfcf;
+  --faint: #a8a8a8;
+  --nav: #d4d4d4;
 
   /* Main button */
   --primary: #fff;
   --primary-foreground: #000;
-  --primary-hover: #dcdcdc;
+  --primary-hover: #e2e2e2;
 
   /* Lines and focus */
-  --border: #1c1c1c;
-  --input: #2a2a2a;
+  --border: #333;
+  --input: #3a3a3a;
   --ring: #4cb3f0;
 
   /* Danger */
-  --destructive: #e5566f;
-  --destructive-soft: #2c1a20;
-  --destructive-hover: #3a2029;
+  --destructive: #f0657e;
+  --destructive-soft: #3d1f28;
+  --destructive-hover: #4d2732;
 
   /* Storage levels and the logo */
   --water: #4cb3f0;
-  --water-deep: #1c4a66;
+  --water-deep: #245f84;
   --water-ink: #0d3a55;
-  --hatch-light: #2a2a2a;
-  --hatch-dark: #161616;
+  --hatch-light: #333;
+  --hatch-dark: #1c1c1c;
 
   /* What's taking up the pool, by kind of file */
   --usage-photo: #7ed957;
@@ -58,7 +59,7 @@
   --usage-free: #ff8a3d;
 
   /* The round initial next to your email */
-  --avatar: #1d3a4d;
+  --avatar: #234a63;
   --avatar-foreground: #bfe6ff;
 
   /* What dims the page behind a dialog, and behind the drop-to-upload message */
@@ -73,37 +74,37 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --background: #fff;
-  --card: #f3f3f3;
-  --accent: #ececec;
-  --raised: #e6e6e6;
-  --raised-hover: #d6d6d6;
+  --background: #f2f2f2;
+  --card: #fff;
+  --accent: #ebebeb;
+  --raised: #e8e8e8;
+  --raised-hover: #dcdcdc;
   --popover: #fff;
-  --row-hover: #f7f7f7;
-  --well: #ececec;
+  --row-hover: #ebebeb;
+  --well: #efefef;
 
-  --foreground: #0a0a0a;
-  --muted-foreground: #525252;
-  --faint: #6b6b6b;
-  --nav: #404040;
+  --foreground: #262626;
+  --muted-foreground: #575757;
+  --faint: #6a6a6a;
+  --nav: #454545;
 
-  --primary: #0a0a0a;
+  --primary: #2b2b2b;
   --primary-foreground: #fff;
-  --primary-hover: #2e2e2e;
+  --primary-hover: #454545;
 
-  --border: #e4e4e4;
-  --input: #e6e6e6;
-  --ring: #0a6fb0;
+  --border: #dedede;
+  --input: #e8e8e8;
+  --ring: #1270ac;
 
-  --destructive: #b91c3c;
-  --destructive-soft: #fce8ec;
-  --destructive-hover: #f8d4dc;
+  --destructive: #b3263f;
+  --destructive-soft: #fbecef;
+  --destructive-hover: #f6dbe1;
 
-  --water: #0a6fb0;
-  --water-deep: #bfe0f5;
+  --water: #1270ac;
+  --water-deep: #cfe6f5;
   --water-ink: #0d3a55;
-  --hatch-light: #f2f2f2;
-  --hatch-dark: #e0e0e0;
+  --hatch-light: #f5f5f5;
+  --hatch-dark: #e6e6e6;
 
   --usage-photo: #3f9a22;
   --usage-video: #c29100;
@@ -111,14 +112,14 @@
   --usage-other: #7c5cd6;
   --usage-free: #d9661a;
 
-  --avatar: #d3e9f7;
-  --avatar-foreground: #0d3a55;
+  --avatar: #dcecf7;
+  --avatar-foreground: #1d4560;
 
-  --scrim: rgb(0 0 0 / 0.35);
-  --scrim-strong: rgb(255 255 255 / 0.85);
+  --scrim: rgb(0 0 0 / 0.3);
+  --scrim-strong: rgb(242 242 242 / 0.85);
 
-  --elevation-menu: 0 12px 32px rgb(0 0 0 / 0.14);
-  --elevation-float: 0 12px 32px rgb(0 0 0 / 0.18);
+  --elevation-menu: 0 12px 32px rgb(0 0 0 / 0.1);
+  --elevation-float: 0 12px 32px rgb(0 0 0 / 0.13);
 }
 
 /* The same in both themes */
