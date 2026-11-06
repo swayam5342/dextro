@@ -399,6 +399,13 @@ func (g gate) Quota(ctx context.Context) (provider.Quota, error) {
 	return g.Provider.Quota(ctx)
 }
 
+// CreateFolder takes a moment, as it does on a real account, which is the gap two
+// uploads could both slip through.
+func (g gate) CreateFolder(ctx context.Context, parent, name string) (string, error) {
+	time.Sleep(30 * time.Millisecond)
+	return g.Provider.CreateFolder(ctx, parent, name)
+}
+
 func testConcurrentReservations(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	f.link(t, user, "a@gmail.com", 100)

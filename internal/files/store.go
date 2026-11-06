@@ -346,15 +346,15 @@ func toFolder(row dbgen.Folder) Folder {
 	}
 }
 
-// ObjectsForConnection returns the IDs of a user's files in one account, by object ID.
-func (s *Store) ObjectsForConnection(ctx context.Context, userID, connectionID uuid.UUID) (map[string]uuid.UUID, error) {
+// ObjectsForConnection returns a user's files in one account, by object ID.
+func (s *Store) ObjectsForConnection(ctx context.Context, userID, connectionID uuid.UUID) (map[string]fileRecord, error) {
 	rows, err := s.queries.ListObjectsForConnection(ctx, dbgen.ListObjectsForConnectionParams{UserID: userID, ConnectionID: connectionID})
 	if err != nil {
 		return nil, fmt.Errorf("list objects: %w", err)
 	}
-	objects := make(map[string]uuid.UUID, len(rows))
+	objects := make(map[string]fileRecord, len(rows))
 	for _, row := range rows {
-		objects[row.ObjectID] = row.ID
+		objects[row.ObjectID] = toRecord(row)
 	}
 	return objects, nil
 }
@@ -366,6 +366,7 @@ func (s *Store) ImportFile(ctx context.Context, userID uuid.UUID, r fileRecord) 
 		ID:           uuid.New(),
 		UserID:       userID,
 		ConnectionID: r.ConnectionID,
+		FolderID:     nullable(r.FolderID),
 		ObjectID:     r.objectID,
 		Name:         r.Name,
 		Size:         r.Size,

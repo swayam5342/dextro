@@ -50,6 +50,7 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 		return string(body)
 	}
+	// listAll leaves folders out, because most of these tests are about files.
 	listAll := func(t *testing.T) []provider.Object {
 		t.Helper()
 		var all []provider.Object
@@ -59,7 +60,11 @@ func Run(t *testing.T, p provider.Provider) {
 			if err != nil {
 				t.Fatalf("List: %v", err)
 			}
-			all = append(all, page.Objects...)
+			for _, object := range page.Objects {
+				if !object.Folder {
+					all = append(all, object)
+				}
+			}
 			if token = page.NextPageToken; token == "" {
 				return all
 			}
@@ -69,6 +74,7 @@ func Run(t *testing.T, p provider.Provider) {
 	}
 
 	runResumable(t, p, read)
+	runFolders(t, p)
 
 	t.Run("quota reports usage", func(t *testing.T) {
 		quota, err := p.Quota(ctx)
@@ -409,6 +415,133 @@ func runResumable(t *testing.T, p provider.Provider, read func(*testing.T, strin
 		}
 		if err := p.CancelResumable(ctx, session); err != nil {
 			t.Errorf("cancelling twice: %v", err)
+		}
+	})
+}
+
+func runFolders(t *testing.T, p provider.Provider) {
+	t.Helper()
+	ctx := context.Background()
+
+	everything := func(t *testing.T) map[string]provider.Object {
+		t.Helper()
+		found := map[string]provider.Object{}
+		token := ""
+		for range 100 {
+			page, err := p.List(ctx, token)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			for _, object := range page.Objects {
+				found[object.ID] = object
+			}
+			if token = page.NextPageToken; token == "" {
+				return found
+			}
+		}
+		t.Fatal("List never reached the last page")
+		return nil
+	}
+	folder := func(t *testing.T, parent, name string) string {
+		t.Helper()
+		id, err := p.CreateFolder(ctx, parent, name)
+		if err != nil {
+			t.Fatalf("CreateFolder: %v", err)
+		}
+		t.Cleanup(func() { _ = p.Trash(ctx, id) })
+		return id
+	}
+
+	t.Run("a new folder is listed inside dextro's own", func(t *testing.T) {
+		id := folder(t, "", "Photos")
+		got, ok := everything(t)[id]
+		if !ok || !got.Folder || got.Name != "Photos" || got.Parent != p.RootID() {
+			t.Errorf("folder = %+v", got)
+		}
+	})
+
+	t.Run("dextro's own folder isn't listed", func(t *testing.T) {
+		if _, ok := everything(t)[p.RootID()]; ok {
+			t.Error("the listing includes dextro's own folder")
+		}
+	})
+
+	t.Run("folders nest, and files go in them", func(t *testing.T) {
+		outer := folder(t, "", "Outer")
+		inner := folder(t, outer, "Inner")
+		stored, err := p.Put(ctx, provider.Upload{Name: "in.txt", Parent: inner, Body: strings.NewReader("x")})
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		t.Cleanup(func() { _ = p.Delete(ctx, stored.ID) })
+		found := everything(t)
+		if found[inner].Parent != outer || found[stored.ID].Parent != inner || found[stored.ID].Folder {
+			t.Errorf("inner = %+v, file = %+v", found[inner], found[stored.ID])
+		}
+	})
+
+	t.Run("a resumable upload goes in its folder", func(t *testing.T) {
+		parent := folder(t, "", "Chunks")
+		session, err := p.BeginResumable(ctx, provider.Resumable{Name: "c.txt", Size: 1, Parent: parent})
+		if err != nil {
+			t.Fatalf("BeginResumable: %v", err)
+		}
+		state, err := p.PutChunk(ctx, session, provider.Chunk{Length: 1, Total: 1, Body: strings.NewReader("x")})
+		if err != nil || state.Object == nil {
+			t.Fatalf("PutChunk: %+v, %v", state, err)
+		}
+		t.Cleanup(func() { _ = p.Delete(ctx, state.Object.ID) })
+		if got := everything(t)[state.Object.ID]; got.Parent != parent {
+			t.Errorf("file = %+v", got)
+		}
+	})
+
+	t.Run("an object can be renamed", func(t *testing.T) {
+		id := folder(t, "", "Before")
+		if err := p.Rename(ctx, id, "After"); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+		if got := everything(t)[id]; got.Name != "After" {
+			t.Errorf("name = %q", got.Name)
+		}
+		if err := p.Rename(ctx, "no-such-object", "x"); !errors.Is(err, provider.ErrObjectNotFound) {
+			t.Errorf("error = %v, want ErrObjectNotFound", err)
+		}
+	})
+
+	t.Run("an object can be moved, and back to the top", func(t *testing.T) {
+		target := folder(t, "", "Target")
+		id := folder(t, "", "Moving")
+		if err := p.Move(ctx, id, target); err != nil {
+			t.Fatalf("Move: %v", err)
+		}
+		if got := everything(t)[id]; got.Parent != target {
+			t.Errorf("parent = %q, want %q", got.Parent, target)
+		}
+		if err := p.Move(ctx, id, ""); err != nil {
+			t.Fatalf("Move: %v", err)
+		}
+		if got := everything(t)[id]; got.Parent != p.RootID() {
+			t.Errorf("parent = %q, want the root", got.Parent)
+		}
+		if err := p.Move(ctx, "no-such-object", target); !errors.Is(err, provider.ErrObjectNotFound) {
+			t.Errorf("error = %v, want ErrObjectNotFound", err)
+		}
+	})
+
+	t.Run("a trashed folder is no longer listed", func(t *testing.T) {
+		id := folder(t, "", "Going")
+		if err := p.Trash(ctx, id); err != nil {
+			t.Fatalf("Trash: %v", err)
+		}
+		if _, ok := everything(t)[id]; ok {
+			t.Error("it's still listed")
+		}
+		if exists, err := p.Exists(ctx, id); err != nil || exists {
+			t.Errorf("exists = %v, error = %v", exists, err)
+		}
+		if err := p.Trash(ctx, "no-such-object"); !errors.Is(err, provider.ErrObjectNotFound) {
+			t.Errorf("error = %v, want ErrObjectNotFound", err)
 		}
 	})
 }

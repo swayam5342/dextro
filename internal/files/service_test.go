@@ -130,6 +130,23 @@ func (p *providers) OpenUploadSession(uuid.UUID, secrets.Sealed) (string, error)
 	return "", errors.New("not used by these tests")
 }
 
+func (p *providers) AccountsFor(ctx context.Context, userID uuid.UUID) ([]storage.Account, error) {
+	rows, err := p.pool.Query(ctx, `SELECT id FROM storage_connections WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var accounts []storage.Account
+	for rows.Next() {
+		account := storage.Account{UserID: userID}
+		if err := rows.Scan(&account.ID); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, rows.Err()
+}
+
 func (p *providers) AllAccounts(context.Context) ([]storage.Account, error) {
 	return nil, errors.New("not used by these tests")
 }
@@ -234,7 +251,18 @@ func (f *fixture) objects(t *testing.T, connection uuid.UUID) int {
 	if err != nil {
 		t.Fatalf("List objects: %v", err)
 	}
-	return len(page.Objects)
+	return files(page.Objects)
+}
+
+// files counts the files in a listing, which also holds folders.
+func files(objects []provider.Object) int {
+	n := 0
+	for _, object := range objects {
+		if !object.Folder {
+			n++
+		}
+	}
+	return n
 }
 
 func names[T any](items []T, name func(T) string) string {

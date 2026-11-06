@@ -94,6 +94,7 @@ func newFakeDrive(t *testing.T) *fakeDrive {
 	mux.HandleFunc("POST /drive/v3/files", f.authed(f.create))
 	mux.HandleFunc("GET /drive/v3/files/{id}", f.authed(f.get))
 	mux.HandleFunc("DELETE /drive/v3/files/{id}", f.authed(f.delete))
+	mux.HandleFunc("PATCH /drive/v3/files/{id}", f.authed(f.update))
 	mux.HandleFunc("/drive/v3/files/{id}/permissions", f.permissions)
 	mux.HandleFunc("POST /upload/drive/v3/files", f.authed(f.upload))
 	mux.HandleFunc("GET /thumb/{id}", f.authed(f.thumbnail))
@@ -171,6 +172,9 @@ func notFound(w http.ResponseWriter) {
 func matches(file *fakeFile, q string) bool {
 	if file.Trashed {
 		return false
+	}
+	if q == "trashed = false" {
+		return true
 	}
 	isFolder := file.MimeType == folderMime
 	if strings.Contains(q, "mimeType = '"+folderMime+"'") {
@@ -273,6 +277,36 @@ func (f *fakeDrive) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(f.files, id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (f *fakeDrive) update(w http.ResponseWriter, r *http.Request) {
+	file, ok := f.files[r.PathValue("id")]
+	if !ok {
+		notFound(w)
+		return
+	}
+	var change struct {
+		Name    string `json:"name"`
+		Trashed bool   `json:"trashed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&change); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if change.Name != "" {
+		file.Name = change.Name
+	}
+	if change.Trashed {
+		file.Trashed = true
+	}
+	query := r.URL.Query()
+	if remove := query.Get("removeParents"); remove != "" {
+		file.Parents = slices.DeleteFunc(file.Parents, func(p string) bool { return slices.Contains(strings.Split(remove, ","), p) })
+	}
+	if add := query.Get("addParents"); add != "" {
+		file.Parents = append(file.Parents, add)
+	}
+	writeJSON(w, http.StatusOK, file)
 }
 
 func (f *fakeDrive) permissions(w http.ResponseWriter, _ *http.Request) {

@@ -147,11 +147,11 @@ ORDER BY lower(folders.name), folders.id
 LIMIT 100;
 
 -- name: ListObjectsForConnection :many
-SELECT id, object_id
+SELECT *
 FROM files
 WHERE user_id = $1 AND connection_id = $2;
 
 -- name: ImportFile :execrows
-INSERT INTO files (id, user_id, connection_id, object_id, name, size, content_type, external)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (connection_id, object_id) DO NOTHING;

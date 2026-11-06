@@ -44,6 +44,8 @@ type Fake struct {
 	unlisted       map[string]bool
 	// ExistsErr, if set, is what Exists returns.
 	ExistsErr error
+	// FolderErr, if set, is what folder and move operations return.
+	FolderErr error
 }
 
 type fakeSession struct {
@@ -101,6 +103,7 @@ func (f *Fake) Put(_ context.Context, upload provider.Upload) (provider.Object, 
 		ModifiedAt: time.Now(),
 
 		ContentType: upload.ContentType,
+		Parent:      f.parent(upload.Parent),
 	}
 	f.objects[object.ID] = fakeObject{Object: object, body: body}
 	return object, nil
@@ -164,7 +167,7 @@ func (f *Fake) List(_ context.Context, pageToken string) (provider.ObjectPage, e
 	}
 	ids := make([]int, 0, len(f.objects))
 	for id := range f.objects {
-		if f.hidden[id] || f.unlisted[id] {
+		if f.isHidden(id) || f.unlisted[id] {
 			continue
 		}
 		n, err := strconv.Atoi(id)
@@ -234,6 +237,7 @@ func (f *Fake) PutChunk(_ context.Context, session string, chunk provider.Chunk)
 			Name:        s.upload.Name,
 			Size:        int64(len(s.body)),
 			ContentType: s.upload.ContentType,
+			Parent:      f.parent(s.upload.Parent),
 			ModifiedAt:  time.Now(),
 		}
 		f.objects[object.ID] = fakeObject{Object: object, body: s.body}
@@ -322,7 +326,7 @@ func (f *Fake) Exists(_ context.Context, id string) (bool, error) {
 		return false, f.ExistsErr
 	}
 	_, ok := f.objects[id]
-	return ok && !f.hidden[id], nil
+	return ok && !f.isHidden(id), nil
 }
 
 // Unlist keeps an object out of listings while it's still there, the way a listing
@@ -344,7 +348,7 @@ func (f *Fake) Describe(_ context.Context, id string) (provider.Object, error) {
 		return provider.Object{}, f.ExistsErr
 	}
 	object, ok := f.objects[id]
-	if !ok || f.hidden[id] {
+	if !ok || f.isHidden(id) {
 		return provider.Object{}, provider.ErrObjectNotFound
 	}
 	return object.Object, nil
@@ -353,4 +357,104 @@ func (f *Fake) Describe(_ context.Context, id string) (provider.Object, error) {
 // AccessToken implements provider.Provider.
 func (f *Fake) AccessToken(context.Context) (string, error) {
 	return "fake-access-token", f.CheckErr
+}
+
+// rootID stands in for dextro's own folder.
+const rootID = "root"
+
+func (f *Fake) parent(id string) string {
+	if id == "" {
+		return rootID
+	}
+	return id
+}
+
+// isHidden reports whether an object or any folder above it is in the trash, because
+// trashing a folder takes its contents with it.
+func (f *Fake) isHidden(id string) bool {
+	for id != "" && id != rootID {
+		if f.hidden[id] {
+			return true
+		}
+		id = f.objects[id].Parent
+	}
+	return false
+}
+
+// RootID implements provider.Provider.
+func (f *Fake) RootID() string {
+	return rootID
+}
+
+// CreateFolder implements provider.Provider.
+func (f *Fake) CreateFolder(_ context.Context, parent, name string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.FolderErr != nil {
+		return "", f.FolderErr
+	}
+	f.nextID++
+	object := provider.Object{ID: strconv.Itoa(f.nextID), Name: name, Folder: true, Parent: f.parent(parent), ModifiedAt: time.Now()}
+	f.objects[object.ID] = fakeObject{Object: object}
+	return object.ID, nil
+}
+
+// Rename implements provider.Provider.
+func (f *Fake) Rename(_ context.Context, id, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.FolderErr != nil {
+		return f.FolderErr
+	}
+	object, ok := f.objects[id]
+	if !ok {
+		return provider.ErrObjectNotFound
+	}
+	object.Name = name
+	f.objects[id] = object
+	return nil
+}
+
+// Move implements provider.Provider.
+func (f *Fake) Move(_ context.Context, id, parent string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.FolderErr != nil {
+		return f.FolderErr
+	}
+	object, ok := f.objects[id]
+	if !ok {
+		return provider.ErrObjectNotFound
+	}
+	object.Parent = f.parent(parent)
+	f.objects[id] = object
+	return nil
+}
+
+// Trash implements provider.Provider.
+func (f *Fake) Trash(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.FolderErr != nil {
+		return f.FolderErr
+	}
+	if _, ok := f.objects[id]; !ok {
+		return provider.ErrObjectNotFound
+	}
+	if f.hidden == nil {
+		f.hidden = map[string]bool{}
+	}
+	f.hidden[id] = true
+	return nil
+}
+
+// Snapshot returns what's stored, by ID, for tests to look at.
+func (f *Fake) Snapshot() map[string]provider.Object {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	objects := make(map[string]provider.Object, len(f.objects))
+	for id, object := range f.objects {
+		objects[id] = object.Object
+	}
+	return objects
 }

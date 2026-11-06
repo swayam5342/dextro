@@ -27,7 +27,7 @@ const (
 	chunkSize       = 8 << 20
 	defaultPageSize = 1000
 	tokenTimeout    = 30 * time.Second
-	fileFields      = "id,name,size,mimeType,modifiedTime"
+	fileFields      = "id,name,size,mimeType,modifiedTime,parents"
 	// thumbnailSize is the long edge to ask Google for, sharp at the size of a grid tile.
 	thumbnailSize = "=s480"
 )
@@ -228,7 +228,7 @@ func (p *Provider) Put(ctx context.Context, upload provider.Upload) (provider.Ob
 	if upload.ContentType != "" {
 		options = append(options, googleapi.ContentType(upload.ContentType))
 	}
-	file := &drive.File{Name: upload.Name, Parents: []string{p.folderID}}
+	file := &drive.File{Name: upload.Name, Parents: []string{p.parent(upload.Parent)}}
 	created, err := p.service.Files.Create(file).Media(upload.Body, options...).Fields(fileFields).Context(ctx).Do()
 	if err != nil {
 		return provider.Object{}, fmt.Errorf("upload file: %w", err)
@@ -320,6 +320,74 @@ func (p *Provider) AccessToken(context.Context) (string, error) {
 	return token.AccessToken, nil
 }
 
+// parent turns "dextro's own folder" into its ID.
+func (p *Provider) parent(id string) string {
+	if id == "" {
+		return p.folderID
+	}
+	return id
+}
+
+// RootID implements provider.Provider.
+func (p *Provider) RootID() string {
+	return p.folderID
+}
+
+// CreateFolder implements provider.Provider.
+func (p *Provider) CreateFolder(ctx context.Context, parent, name string) (string, error) {
+	file := &drive.File{Name: name, MimeType: folderMimeType, Parents: []string{p.parent(parent)}}
+	created, err := p.service.Files.Create(file).Fields("id").Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("create folder: %w", err)
+	}
+	return created.Id, nil
+}
+
+// Rename implements provider.Provider.
+func (p *Provider) Rename(ctx context.Context, id, name string) error {
+	_, err := p.service.Files.Update(id, &drive.File{Name: name}).Fields("id").Context(ctx).Do()
+	if isNotFound(err) {
+		return provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
+}
+
+// Move implements provider.Provider.
+func (p *Provider) Move(ctx context.Context, id, parent string) error {
+	file, err := p.service.Files.Get(id).Fields("parents").Context(ctx).Do()
+	if isNotFound(err) {
+		return provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("find parents: %w", err)
+	}
+	_, err = p.service.Files.Update(id, &drive.File{}).
+		AddParents(p.parent(parent)).RemoveParents(strings.Join(file.Parents, ",")).
+		Fields("id").Context(ctx).Do()
+	if isNotFound(err) {
+		return provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("move: %w", err)
+	}
+	return nil
+}
+
+// Trash implements provider.Provider.
+func (p *Provider) Trash(ctx context.Context, id string) error {
+	_, err := p.service.Files.Update(id, &drive.File{Trashed: true}).Fields("id").Context(ctx).Do()
+	if isNotFound(err) {
+		return provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("trash: %w", err)
+	}
+	return nil
+}
+
 // Exists implements provider.Provider.
 func (p *Provider) Exists(ctx context.Context, id string) (bool, error) {
 	file, err := p.service.Files.Get(id).Fields("id,trashed").Context(ctx).Do()
@@ -334,8 +402,8 @@ func (p *Provider) Exists(ctx context.Context, id string) (bool, error) {
 
 // List implements provider.Provider.
 func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectPage, error) {
-	query := fmt.Sprintf("'%s' in parents and mimeType != '%s' and trashed = false", escapeQuery(p.folderID), folderMimeType)
-	call := p.service.Files.List().Q(query).
+	// drive.file means this is only what dextro created or was given.
+	call := p.service.Files.List().Q("trashed = false").
 		Fields(googleapi.Field("nextPageToken,files(" + fileFields + ")")).
 		PageSize(p.pageSize).OrderBy("createdTime").Context(ctx)
 	if pageToken != "" {
@@ -347,7 +415,9 @@ func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectP
 	}
 	page := provider.ObjectPage{Objects: make([]provider.Object, 0, len(found.Files)), NextPageToken: found.NextPageToken}
 	for _, file := range found.Files {
-		page.Objects = append(page.Objects, toObject(file))
+		if file.Id != p.folderID {
+			page.Objects = append(page.Objects, toObject(file))
+		}
 	}
 	return page, nil
 }
@@ -355,11 +425,18 @@ func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectP
 func toObject(file *drive.File) provider.Object {
 	// A bad timestamp isn't worth failing over; the zero time just shows as unknown.
 	modified, _ := time.Parse(time.RFC3339, file.ModifiedTime)
-	return provider.Object{ID: file.Id, Name: file.Name, Size: file.Size, ContentType: file.MimeType, ModifiedAt: modified}
-}
-
-func escapeQuery(value string) string {
-	return strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(value)
+	object := provider.Object{
+		ID:          file.Id,
+		Name:        file.Name,
+		Size:        file.Size,
+		ContentType: file.MimeType,
+		Folder:      file.MimeType == folderMimeType,
+		ModifiedAt:  modified,
+	}
+	if len(file.Parents) > 0 {
+		object.Parent = file.Parents[0]
+	}
+	return object
 }
 
 func isNotFound(err error) bool {

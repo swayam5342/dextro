@@ -57,6 +57,13 @@ type Folder struct {
 	UpdatedAt time.Time
 }
 
+type FolderObject struct {
+	FolderID     uuid.UUID
+	ConnectionID uuid.UUID
+	ObjectID     pgtype.Text
+	Stale        bool
+}
+
 type JobRun struct {
 	Name       string
 	FinishedAt time.Time
@@ -93,6 +100,7 @@ type StorageConnection struct {
 	CheckedAt        *time.Time
 	CheckOk          pgtype.Bool
 	UsedBytes        pgtype.Int8
+	FoldersSyncedAt  *time.Time
 }
 
 type UploadSession struct {

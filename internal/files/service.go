@@ -9,6 +9,7 @@ import (
 	"mime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -98,12 +99,15 @@ type Providers interface {
 	SealUploadSession(id uuid.UUID, address string) secrets.Sealed
 	OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string, error)
 	AllAccounts(ctx context.Context) ([]storage.Account, error)
+	AccountsFor(ctx context.Context, userID uuid.UUID) ([]storage.Account, error)
 }
 
 // Service holds the rules for files and folders.
 type Service struct {
 	store     *Store
 	providers Providers
+	// locks holds a mutex per account, for making its folders one at a time.
+	locks sync.Map
 }
 
 // NewService returns a Service.
@@ -203,10 +207,14 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 		return File{}, err
 	}
 	stored := chosen.Provider
+	parent, err := s.driveFolder(ctx, userID, chosen.ConnectionID, stored, in.FolderID)
+	if err != nil {
+		return File{}, err
+	}
 
 	contentType := cleanContentType(in.ContentType)
 	body := &limitedReader{r: in.Body, limit: limit}
-	object, err := stored.Put(ctx, provider.Upload{Name: name, ContentType: contentType, Body: body})
+	object, err := stored.Put(ctx, provider.Upload{Name: name, ContentType: contentType, Parent: parent, Body: body})
 	if body.exceeded {
 		return File{}, ErrFileTooLarge
 	}
@@ -301,7 +309,14 @@ func (s *Service) RenameFile(ctx context.Context, userID, id uuid.UUID, rawName 
 	if err != nil {
 		return File{}, err
 	}
-	if _, err := liveFile(ctx, s.store, userID, id); err != nil {
+	record, err := liveFile(ctx, s.store, userID, id)
+	if err != nil {
+		return File{}, err
+	}
+	err = s.changeFileInDrive(ctx, userID, record, func(stored provider.Provider) error {
+		return stored.Rename(ctx, record.objectID, name)
+	})
+	if err != nil {
 		return File{}, err
 	}
 	return s.store.RenameFileForOwner(ctx, userID, id, name)
@@ -309,10 +324,21 @@ func (s *Service) RenameFile(ctx context.Context, userID, id uuid.UUID, rawName 
 
 // MoveFile puts a file in another folder, or at the top level if target is nil.
 func (s *Service) MoveFile(ctx context.Context, userID, id uuid.UUID, target *uuid.UUID) (File, error) {
-	if _, err := liveFile(ctx, s.store, userID, id); err != nil {
+	record, err := liveFile(ctx, s.store, userID, id)
+	if err != nil {
 		return File{}, err
 	}
 	if _, err := requireLiveFolder(ctx, s.store, userID, target); err != nil {
+		return File{}, err
+	}
+	err = s.changeFileInDrive(ctx, userID, record, func(stored provider.Provider) error {
+		parent, err := s.driveFolder(ctx, userID, record.ConnectionID, stored, target)
+		if err != nil {
+			return err
+		}
+		return stored.Move(ctx, record.objectID, parent)
+	})
+	if err != nil {
 		return File{}, err
 	}
 	return s.store.MoveFileForOwner(ctx, userID, id, target)
@@ -327,7 +353,8 @@ func (s *Service) TrashFile(ctx context.Context, userID, id uuid.UUID) error {
 // RestoreFile takes a file out of the trash. If its folder is gone or trashed,
 // the file goes to the top level rather than back out of sight.
 func (s *Service) RestoreFile(ctx context.Context, userID, id uuid.UUID) error {
-	return s.store.InTx(ctx, func(tx *Store) error {
+	var moved *fileRecord
+	err := s.store.InTx(ctx, func(tx *Store) error {
 		record, err := tx.FileForOwner(ctx, userID, id)
 		if err != nil {
 			return err
@@ -336,11 +363,20 @@ func (s *Service) RestoreFile(ctx context.Context, userID, id uuid.UUID) error {
 			if _, err := tx.MoveFileForOwner(ctx, userID, id, nil); err != nil {
 				return err
 			}
+			moved = &record
 		} else if err != nil {
 			return err
 		}
 		return tx.SetFileTrashedForOwner(ctx, userID, id, nil)
 	})
+	if err != nil || moved == nil {
+		return err
+	}
+	// The file is back either way, so a failure here isn't worth undoing that for.
+	_ = s.changeFileInDrive(ctx, userID, *moved, func(stored provider.Provider) error {
+		return stored.Move(ctx, moved.objectID, "")
+	})
+	return nil
 }
 
 // DeleteFile permanently deletes a file that's in the trash.
@@ -391,7 +427,11 @@ func (s *Service) CreateFolder(ctx context.Context, userID uuid.UUID, parent *uu
 	if _, err := requireLiveFolder(ctx, s.store, userID, parent); err != nil {
 		return Folder{}, err
 	}
-	return s.store.CreateFolder(ctx, userID, parent, name)
+	folder, err := s.store.CreateFolder(ctx, userID, parent, name)
+	if err != nil {
+		return Folder{}, err
+	}
+	return folder, s.mirrorNewFolder(ctx, userID, folder)
 }
 
 // RenameFolder changes a folder's name.
@@ -403,7 +443,13 @@ func (s *Service) RenameFolder(ctx context.Context, userID, id uuid.UUID, rawNam
 	if _, err := requireLiveFolder(ctx, s.store, userID, &id); err != nil {
 		return Folder{}, err
 	}
-	return s.store.RenameFolderForOwner(ctx, userID, id, name)
+	folder, err := s.store.RenameFolderForOwner(ctx, userID, id, name)
+	if err != nil {
+		return Folder{}, err
+	}
+	return folder, s.mirrorFolderChange(ctx, userID, id, func(stored provider.Provider, _ uuid.UUID, objectID string) error {
+		return stored.Rename(ctx, objectID, name)
+	})
 }
 
 // MoveFolder puts a folder inside another, or at the top level if target is nil.
@@ -431,7 +477,7 @@ func (s *Service) MoveFolder(ctx context.Context, userID, id uuid.UUID, target *
 	if err != nil {
 		return Folder{}, err
 	}
-	return moved, nil
+	return moved, s.mirrorFolderMove(ctx, userID, id, target)
 }
 
 // TrashFolder moves a folder to the trash. Only the folder is marked: what's
@@ -444,7 +490,8 @@ func (s *Service) TrashFolder(ctx context.Context, userID, id uuid.UUID) error {
 // RestoreFolder takes a folder out of the trash. If its parent is gone or trashed,
 // the folder goes to the top level rather than back out of sight.
 func (s *Service) RestoreFolder(ctx context.Context, userID, id uuid.UUID) error {
-	return s.store.InTx(ctx, func(tx *Store) error {
+	movedToTop := false
+	err := s.store.InTx(ctx, func(tx *Store) error {
 		if err := tx.LockFolderTreeForOwner(ctx, userID); err != nil {
 			return err
 		}
@@ -456,11 +503,16 @@ func (s *Service) RestoreFolder(ctx context.Context, userID, id uuid.UUID) error
 			if _, err := tx.MoveFolderForOwner(ctx, userID, id, nil); err != nil {
 				return err
 			}
+			movedToTop = true
 		} else if err != nil {
 			return err
 		}
 		return tx.SetFolderTrashedForOwner(ctx, userID, id, nil)
 	})
+	if err != nil || !movedToTop {
+		return err
+	}
+	return s.mirrorFolderMove(ctx, userID, id, nil)
 }
 
 // DeleteFolder permanently deletes a trashed folder and everything under it.
@@ -482,6 +534,9 @@ func (s *Service) DeleteFolder(ctx context.Context, userID, id uuid.UUID, ip str
 		if err := s.destroy(ctx, userID, record, ip); err != nil {
 			return err
 		}
+	}
+	if err := s.trashDriveFolders(ctx, userID, id); err != nil {
+		return err
 	}
 	return s.store.InTx(ctx, func(tx *Store) error {
 		if err := tx.DeleteFolderForOwner(ctx, userID, id); err != nil {

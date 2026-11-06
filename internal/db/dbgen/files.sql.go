@@ -173,8 +173,8 @@ func (q *Queries) GetFolderForOwner(ctx context.Context, arg GetFolderForOwnerPa
 }
 
 const importFile = `-- name: ImportFile :execrows
-INSERT INTO files (id, user_id, connection_id, object_id, name, size, content_type, external)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (connection_id, object_id) DO NOTHING
 `
 
@@ -182,6 +182,7 @@ type ImportFileParams struct {
 	ID           uuid.UUID
 	UserID       uuid.UUID
 	ConnectionID uuid.UUID
+	FolderID     uuid.NullUUID
 	ObjectID     string
 	Name         string
 	Size         int64
@@ -194,6 +195,7 @@ func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, 
 		arg.ID,
 		arg.UserID,
 		arg.ConnectionID,
+		arg.FolderID,
 		arg.ObjectID,
 		arg.Name,
 		arg.Size,
@@ -408,7 +410,7 @@ func (q *Queries) ListFoldersInFolderForOwner(ctx context.Context, arg ListFolde
 }
 
 const listObjectsForConnection = `-- name: ListObjectsForConnection :many
-SELECT id, object_id
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
 FROM files
 WHERE user_id = $1 AND connection_id = $2
 `
@@ -418,21 +420,29 @@ type ListObjectsForConnectionParams struct {
 	ConnectionID uuid.UUID
 }
 
-type ListObjectsForConnectionRow struct {
-	ID       uuid.UUID
-	ObjectID string
-}
-
-func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsForConnectionParams) ([]ListObjectsForConnectionRow, error) {
+func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsForConnectionParams) ([]File, error) {
 	rows, err := q.db.Query(ctx, listObjectsForConnection, arg.UserID, arg.ConnectionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListObjectsForConnectionRow{}
+	items := []File{}
 	for rows.Next() {
-		var i ListObjectsForConnectionRow
-		if err := rows.Scan(&i.ID, &i.ObjectID); err != nil {
+		var i File
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConnectionID,
+			&i.FolderID,
+			&i.ObjectID,
+			&i.Name,
+			&i.Size,
+			&i.ContentType,
+			&i.TrashedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.External,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

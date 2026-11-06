@@ -89,7 +89,11 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 	if err != nil {
 		return UploadSession{}, err
 	}
-	address, err := chosen.Provider.BeginResumable(ctx, provider.Resumable{Name: name, ContentType: contentType, Size: in.Size})
+	var address string
+	parent, err := s.driveFolder(ctx, userID, chosen.ConnectionID, chosen.Provider, in.FolderID)
+	if err == nil {
+		address, err = chosen.Provider.BeginResumable(ctx, provider.Resumable{Name: name, ContentType: contentType, Size: in.Size, Parent: parent})
+	}
 	if err == nil {
 		err = s.store.SetUploadSecretForOwner(ctx, userID, id, s.providers.SealUploadSession(id, address))
 	}

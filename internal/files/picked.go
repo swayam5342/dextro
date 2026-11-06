@@ -67,7 +67,7 @@ func (s *Service) importPicked(ctx context.Context, stored provider.Provider, us
 	if strings.HasPrefix(object.ContentType, nativeTypePrefix) {
 		return false, nil
 	}
-	return s.importObject(ctx, userID, connectionID, object, true)
+	return s.importObject(ctx, userID, connectionID, object, nil, true)
 }
 
 func (s *Service) recordPicked(ctx context.Context, userID, connectionID uuid.UUID, ip string, result ImportResult) error {

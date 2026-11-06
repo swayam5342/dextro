@@ -24,7 +24,11 @@ type Object struct {
 	// ContentType is what the object was stored as, which a listing needs to bring a
 	// file back. Empty if the account doesn't say.
 	ContentType string
-	ModifiedAt  time.Time
+	// Parent is the folder it's in, as the provider knows it.
+	Parent string
+	// Folder marks a folder rather than a file.
+	Folder     bool
+	ModifiedAt time.Time
 }
 
 // ObjectPage is one page of a listing. NextPageToken is empty on the last page.
@@ -65,7 +69,9 @@ type Thumbnail struct {
 type Upload struct {
 	Name        string
 	ContentType string
-	Body        io.Reader
+	// Parent is the folder to store it in. Empty means dextro's own folder.
+	Parent string
+	Body   io.Reader
 }
 
 // ChunkAlignment is what every chunk but the last must be a multiple of.
@@ -79,6 +85,8 @@ type Resumable struct {
 	Name        string
 	ContentType string
 	Size        int64
+	// Parent is the folder to store it in. Empty means dextro's own folder.
+	Parent string
 }
 
 // Chunk is one piece of a resumable upload.
@@ -125,7 +133,21 @@ type Provider interface {
 	// AccessToken returns a short-lived token for the account, for Google's picker to
 	// run with in the browser. It's a secret: it must never be logged or stored.
 	AccessToken(ctx context.Context) (string, error)
-	// List returns one page of objects. An empty token starts from the beginning.
+	// RootID names dextro's own folder, the top of everything it stores.
+	RootID() string
+	// CreateFolder makes a folder inside parent, or in dextro's own folder if parent is
+	// empty, and returns its ID.
+	CreateFolder(ctx context.Context, parent, name string) (string, error)
+	// Rename changes an object's name.
+	Rename(ctx context.Context, id, name string) error
+	// Move puts an object inside parent, or in dextro's own folder if parent is empty.
+	Move(ctx context.Context, id, parent string) error
+	// Trash moves an object to the account's trash, where its owner can still get it
+	// back. Folders go this way because deleting one takes its contents with it, and
+	// dextro can't see anything added to it by hand.
+	Trash(ctx context.Context, id string) error
+	// List returns one page of everything the account lets dextro see, folders
+	// included, but not dextro's own folder. An empty token starts from the beginning.
 	List(ctx context.Context, pageToken string) (ObjectPage, error)
 	// BeginResumable starts an upload sent in chunks. The result is the session's
 	// address, which grants access to the upload and must be kept secret.

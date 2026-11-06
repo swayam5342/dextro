@@ -37,7 +37,7 @@ func plainError(err error) error {
 
 // BeginResumable implements provider.Provider.
 func (p *Provider) BeginResumable(ctx context.Context, upload provider.Resumable) (string, error) {
-	metadata, err := json.Marshal(&drive.File{Name: upload.Name, Parents: []string{p.folderID}})
+	metadata, err := json.Marshal(&drive.File{Name: upload.Name, Parents: []string{p.parent(upload.Parent)}})
 	if err != nil {
 		return "", fmt.Errorf("encode file details: %w", err)
 	}

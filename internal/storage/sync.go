@@ -44,6 +44,19 @@ type Account struct {
 	UserID uuid.UUID
 }
 
+// AccountsFor returns a user's linked accounts.
+func (s *Service) AccountsFor(ctx context.Context, userID uuid.UUID) ([]Account, error) {
+	records, err := s.store.ListConnectionsForOwner(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	accounts := make([]Account, 0, len(records))
+	for _, r := range records {
+		accounts = append(accounts, Account{ID: r.ID, UserID: userID})
+	}
+	return accounts, nil
+}
+
 // AllAccounts returns every user's linked accounts. Only background jobs call it.
 func (s *Service) AllAccounts(ctx context.Context) ([]Account, error) {
 	records, err := s.store.ListAllConnectionsForJobs(ctx)

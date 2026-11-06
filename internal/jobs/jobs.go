@@ -147,6 +147,9 @@ func (w *fileSyncWorker) Work(ctx context.Context, _ *river.Job[fileSyncArgs]) e
 	result, err := w.deps.Files.SyncAll(ctx)
 	if err == nil {
 		w.deps.Logger.InfoContext(ctx, "file sync finished", "added", result.Added, "removed", result.Removed, "skipped", result.Skipped)
+		for _, failure := range result.Failures {
+			w.deps.Logger.WarnContext(ctx, "file sync skipped an account", "error", failure)
+		}
 	}
 	return finish(ctx, w.deps, KindFileSync, err)
 }
