@@ -4,6 +4,19 @@
 
 - WebDAV, so the pool can be mounted as a drive or used with rclone.
 
+## Unreleased
+
+### Added
+
+- Moving something to the trash now asks first, from the menu, the toolbar, the Delete key and the viewer, and says if a Google link will end.
+- File icons take their colour from the kind of file, and the app has more life: tiles respond to the pointer, buttons to a press, and dialogs and pages animate in. All of it stops for anyone who asks for less motion.
+
+### Fixed
+
+- The memory test no longer fails at random on a busy machine.
+- The website's home page works properly on phones and tablets.
+- In the demo, the banner no longer sits over the Undo button.
+
 ## 0.1.1 (7 November 2026)
 
 ### Added

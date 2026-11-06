@@ -14,6 +14,7 @@ import {
 import { useState, type HTMLAttributes, type MouseEvent } from "react";
 
 import type { components } from "@/api/schema";
+import { Mark } from "@/components/mark";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -23,7 +24,7 @@ import { cn } from "@/lib/utils";
 import { thumbnailUrl } from "../queries";
 import { nextSort, SORTS, type SortField, type SortId } from "../sort";
 import { TOP_LEVEL } from "../use-drag-move";
-import { fileIcon } from "./file-icon";
+import { fileIcon, fileTint } from "./file-icon";
 
 type File = components["schemas"]["File"];
 type Folder = components["schemas"]["Folder"];
@@ -45,7 +46,7 @@ export function Breadcrumbs({
   dropOn: (target: string | null) => HTMLAttributes<HTMLElement>;
   dropTarget: string | null;
 }) {
-  const title = "text-xl font-semibold tracking-tight";
+  const title = "text-2xl font-semibold tracking-tight";
   const lit = "rounded-md text-foreground outline-2 outline-offset-2 outline-foreground";
   return (
     <nav aria-label="Folders" className={cn("flex min-w-0 flex-1 items-center gap-x-2", title)}>
@@ -254,7 +255,7 @@ export function FolderTile({
         <li
           {...drag}
           className={cn(
-            "group relative flex min-w-0 items-center gap-1 rounded-[14px] bg-card pr-2 transition-colors hover:bg-accent",
+            "group relative flex min-w-0 items-center gap-1 rounded-[14px] bg-card pr-2 transition-[background-color,transform] duration-150 hover:scale-[1.012] hover:bg-accent",
             selected && "outline-2 outline-foreground",
             lit && "bg-raised outline-2 outline-foreground",
           )}
@@ -266,7 +267,7 @@ export function FolderTile({
             onClick={handleClick}
             className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5"
           >
-            <FolderIcon className="size-[22px] shrink-0 text-muted-foreground" />
+            <FolderIcon className="size-[22px] shrink-0 fill-raised text-foreground" />
             <span className="min-w-0 leading-tight">
               <span className="block truncate font-medium">{folder.name}</span>
               <span className="hidden truncate text-xs text-faint md:block">{formatDate(folder.created_at)}</span>
@@ -317,7 +318,7 @@ export function FileTile({
         <li
           {...drag}
           className={cn(
-            "group relative h-(--row) min-w-0 overflow-hidden rounded-[10px] bg-card",
+            "group relative h-(--row) min-w-0 overflow-hidden rounded-[10px] bg-card transition-transform duration-150 hover:scale-[1.012]",
             selected && "outline-2 outline-foreground",
           )}
           style={{ flex: `${ratio} 1 calc(var(--row) * ${ratio})` }}
@@ -339,7 +340,7 @@ export function FileTile({
               />
             ) : (
               <span className="flex h-full flex-col justify-end gap-1.5 p-3.5 md:gap-2.5">
-                <Icon className="size-[22px] text-muted-foreground md:size-[30px]" />
+                <Icon className={cn("size-[22px] md:size-[30px]", fileTint(file.content_type))} />
                 <span className="min-w-0">
                   <span className="line-clamp-1 leading-tight font-medium break-words md:line-clamp-2">{file.name}</span>
                   <span className="mt-0.5 block text-xs text-faint">{formatBytes(file.size)}</span>
@@ -396,7 +397,7 @@ export function ListThumb({ file }: { file: File }) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <Icon className="size-[18px] text-muted-foreground" />
+        <Icon className={cn("size-[18px]", fileTint(file.content_type))} />
       )}
     </span>
   );
@@ -472,8 +473,9 @@ export function ListRow({
 
 export function Blank({ title, text, children }: { title: string; text: string; children?: React.ReactNode }) {
   return (
-    <div className="grid justify-items-start gap-1 py-10">
-      <h2 className="text-base font-semibold">{title}</h2>
+    <div className="page-in grid justify-items-start gap-1 py-10">
+      <Mark className="mb-3 size-10" />
+      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
       <p className="text-muted-foreground">{text}</p>
       {children && <div className="mt-3">{children}</div>}
     </div>

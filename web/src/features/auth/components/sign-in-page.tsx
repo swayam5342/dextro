@@ -16,7 +16,7 @@ export function SignInPage({ redirectError }: { redirectError: string | undefine
 
   return (
     <CenteredPage>
-      <h1 className="text-xl font-semibold tracking-tight">Sign in to your files</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Sign in to your files</h1>
       <FormError message={redirectMessage(redirectError)} />
       <CredentialsForm
         submitLabel="Sign in"

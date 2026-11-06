@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { failureMessage } from "@/api/errors";
 import type { components } from "@/api/schema";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormError } from "@/components/field";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,7 @@ type Action =
   | { type: "move"; items: Item[]; name: string }
   | { type: "account"; fileIds: string[]; name: string; from: string[] }
   | { type: "share"; fileId: string; name: string }
+  | { type: "trash"; items: Item[]; name: string; viewed?: File }
   | { type: "new-folder" };
 
 const VIEW_KEY = "dextro.view";
@@ -170,7 +172,7 @@ function Browser({
         return;
       }
       if (event.key === "Delete" && selecting) {
-        void moveToTrash(selected);
+        setAction({ type: "trash", items: selected, name: count(selected.length, "item") });
       } else if (event.key === "F2" && selected.length === 1 && selected[0]) {
         const item = selected[0];
         const named = [...folders, ...files].find((entry) => entry.id === item.id);
@@ -276,6 +278,25 @@ function Browser({
     }
   }
 
+  /** What going to the trash means, including what Undo can't bring back. */
+  function trashText(items: Item[]): string {
+    const many = items.length > 1;
+    const parts = [`You can restore ${many ? "them" : "it"} from the trash.`];
+    if (items.some((item) => item.kind === "folder")) {
+      parts.push("Everything inside goes too.");
+      if (shares.size > 0) {
+        parts.push("Any Google links inside will end, and restoring won't bring them back.");
+      }
+    } else if (items.some((item) => shares.has(item.id))) {
+      parts.push(`${many ? "Their Google links" : "Its Google link"} will end, and restoring won't bring ${many ? "them" : "it"} back.`);
+    }
+    return parts.join(" ");
+  }
+
+  function askViewerTrash(file: File) {
+    setAction({ type: "trash", items: [{ kind: "file", id: file.id }], name: file.name, viewed: file });
+  }
+
   function handleViewerTrash(file: File) {
     const item: Item = { kind: "file", id: file.id };
     const next = files[viewIndex + 1] ?? files[viewIndex - 1];
@@ -341,7 +362,7 @@ function Browser({
       { label: "Select", icon: CheckSquare, run: () => toggle(item) },
       { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: target.name }) },
       { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: target.name }) },
-      { label: "Move to trash", icon: Trash2, run: () => void moveToTrash([item]) },
+      { label: "Move to trash", icon: Trash2, run: () => setAction({ type: "trash", items: [item], name: target.name }) },
     ];
   }
 
@@ -381,7 +402,7 @@ function Browser({
       // An added file is the person's own, and stays in the account it came from.
       ...(canChangeAccount && !file.external && !shared ? [toAccount] : []),
       ...((links?.enabled || shared) && !file.external ? [linkEntry] : []),
-      { label: "Move to trash", icon: Trash2, run: () => void moveToTrash([item]) },
+      { label: "Move to trash", icon: Trash2, run: () => setAction({ type: "trash", items: [item], name: file.name }) },
     ];
   }
 
@@ -447,7 +468,7 @@ function Browser({
               <span className="hidden sm:inline">Account</span>
             </Button>
           )}
-          <Button variant="ghost" aria-label="Move selected items to the trash" onClick={() => void moveToTrash(selected)}>
+          <Button variant="ghost" aria-label="Move selected items to the trash" onClick={() => setAction({ type: "trash", items: selected, name: count(selected.length, "item") })}>
             <Trash2 />
             <span className="hidden sm:inline">Trash</span>
           </Button>
@@ -455,7 +476,7 @@ function Browser({
       ) : (
         <div className="mb-[18px] flex min-h-9 items-center gap-2">
           {flat ? (
-            <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">
+            <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold tracking-tight">
               {list ? FILE_LISTS[list].title : `Results for ${query}`}
             </h1>
           ) : (
@@ -561,7 +582,7 @@ function Browser({
                 name={target.name}
                 thumb={
                   <span className="grid size-[38px] shrink-0 place-items-center rounded-[7px] bg-card">
-                    <FolderIcon className="size-[18px] text-muted-foreground" />
+                    <FolderIcon className="size-[18px] fill-raised text-foreground" />
                   </span>
                 }
                 open={
@@ -603,7 +624,7 @@ function Browser({
           accountName={accountName}
           trashError={trash.error?.message}
           onShow={(file) => setViewing(file.id)}
-          onTrash={handleViewerTrash}
+          onTrash={askViewerTrash}
           onClose={() => {
             setViewing(null);
             trash.reset();
@@ -632,6 +653,22 @@ function Browser({
           error={rename.error?.message}
           onClose={close}
           onSubmit={(name) => rename.mutate({ item: action.item, name }, { onSuccess: close })}
+        />
+      )}
+      {action?.type === "trash" && (
+        <ConfirmDialog
+          title={`Move ${action.name} to the trash?`}
+          text={trashText(action.items)}
+          action="Move to trash"
+          onClose={close}
+          onConfirm={() => {
+            close();
+            if (action.viewed) {
+              handleViewerTrash(action.viewed);
+            } else {
+              void moveToTrash(action.items);
+            }
+          }}
         />
       )}
       {action?.type === "share" && <ShareDialog fileId={action.fileId} name={action.name} onClose={close} />}

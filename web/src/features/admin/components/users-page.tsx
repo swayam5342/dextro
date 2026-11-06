@@ -224,7 +224,7 @@ export function UsersPage() {
   return (
     <div className="max-w-4xl">
       <div className="mb-[18px] flex min-h-9 items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold tracking-tight">Users</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
         <Button onClick={() => setAction({ type: "add" })}>
           <UserPlus />
           Add user

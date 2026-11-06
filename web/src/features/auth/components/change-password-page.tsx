@@ -26,7 +26,7 @@ export function ChangePasswordPage() {
   return (
     <CenteredPage>
       <div className="space-y-2">
-        <h1 className="text-xl font-semibold tracking-tight">Choose your own password</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Choose your own password</h1>
         <p className="text-muted-foreground">
           Your admin set the password you just used, so it needs replacing before you can continue.
         </p>

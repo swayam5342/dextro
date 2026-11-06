@@ -185,7 +185,7 @@ export function UploadPanel() {
     <section
       aria-label="Uploads"
       className={cn(
-        "fixed right-4 bottom-[74px] z-30 overflow-hidden rounded-2xl bg-card shadow-float md:right-5 md:bottom-5",
+        "pop-in fixed right-4 bottom-[74px] z-30 overflow-hidden rounded-2xl bg-card shadow-float md:right-5 md:bottom-5",
         minimised ? "w-[min(280px,calc(100vw-2rem))]" : "w-[min(360px,calc(100vw-2rem))]",
       )}
     >

@@ -67,7 +67,7 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-xl space-y-4">
-      <h1 className="text-xl font-semibold tracking-tight">Server settings</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Server settings</h1>
       {isPending && <p className="text-sm text-muted-foreground">Loading settings…</p>}
       {isError && <FormError message="Settings couldn't be loaded. Reload the page to try again." />}
       {settings && <UploadLimit current={settings.max_upload_bytes} />}

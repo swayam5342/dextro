@@ -43,3 +43,26 @@ export function fileIcon(contentType: string): LucideIcon {
   }
   return FileIcon;
 }
+
+/** Files are where the colour goes, in the same colours the usage card uses for each kind. */
+export function fileTint(contentType: string): string {
+  if (contentType.startsWith("image/")) {
+    return "text-usage-photo";
+  }
+  if (contentType.startsWith("video/")) {
+    return "text-usage-video";
+  }
+  if (includesAny(contentType, ARCHIVES)) {
+    return "text-usage-free";
+  }
+  if (contentType.startsWith("audio/") || includesAny(contentType, CODE)) {
+    return "text-usage-other";
+  }
+  if (includesAny(contentType, SHEETS)) {
+    return "text-usage-photo";
+  }
+  if (contentType.startsWith("text/") || contentType.includes("pdf") || contentType.includes("word") || contentType.includes("document")) {
+    return "text-usage-document";
+  }
+  return "text-muted-foreground";
+}

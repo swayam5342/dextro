@@ -35,7 +35,7 @@ export function LinksPage() {
   return (
     <div className="max-w-3xl space-y-[18px]">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Google links</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Google links</h1>
         <p className="text-muted-foreground">Anyone who has one of these links can open the file without signing in.</p>
       </div>
       {isPending && <p className="text-muted-foreground">Loading your links…</p>}

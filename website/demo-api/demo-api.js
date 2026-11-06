@@ -393,20 +393,25 @@
   }
   window.XMLHttpRequest = DemoRequest;
 
-  /** Says what this is, on every page of the demo. */
+  /**
+   * Says what this is, on every page of the demo. It takes its own strip at the top rather
+   * than floating, because anything floating ends up over a toast or the upload panel. It
+   * sits under dialogs, so it can't cover the viewer's buttons.
+   */
   addEventListener("DOMContentLoaded", () => {
+    const style = document.createElement("style");
+    style.textContent = "body{box-sizing:border-box;padding-top:32px}#root{height:100%}";
     const bar = document.createElement("div");
     bar.setAttribute("role", "note");
-    // Clear of the search box, and above the tabs on a phone.
-    const bottom = matchMedia("(min-width: 768px)").matches ? 12 : 66;
-    bar.style.cssText = `position:fixed;left:50%;bottom:${bottom}px;transform:translateX(-50%);z-index:60;display:flex;gap:12px;align-items:center;white-space:nowrap;padding:6px 8px 6px 14px;border-radius:999px;background:#0d3a55;color:#fff;font:500 13px 'Instrument Sans',system-ui,sans-serif`;
+    bar.style.cssText = "position:fixed;inset:0 0 auto 0;height:32px;z-index:40;display:flex;gap:12px;align-items:center;justify-content:center;white-space:nowrap;background:#0d3a55;color:#fff;font:500 13px 'Instrument Sans',system-ui,sans-serif";
     const text = document.createElement("span");
     text.textContent = "Demo with made-up files";
     const back = document.createElement("a");
     back.href = "/";
     back.textContent = "Back to the site";
-    back.style.cssText = "padding:3px 10px;border-radius:999px;background:#fff;color:#000;text-decoration:none";
+    back.style.cssText = "color:#fff;text-underline-offset:2px";
     bar.append(text, back);
+    document.head.append(style);
     document.body.append(bar);
   });
 })();

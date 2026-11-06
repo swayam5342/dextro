@@ -351,7 +351,9 @@ function Frame() {
       <Sidebar />
       <main id="main" className="relative min-w-0 overflow-y-auto px-4 pt-4 pb-24 md:px-7 md:pt-[22px]">
         <AccountAlert />
-        <Outlet />
+        <div key={pathname} className="page-in">
+          <Outlet />
+        </div>
       </main>
       <MobileTabs />
       <UploadPanel />

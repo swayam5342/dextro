@@ -472,7 +472,7 @@ export function StoragePage({
     <div className="max-w-5xl space-y-[18px]">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">Storage</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Storage</h1>
           {pool && pool.accounts.length > 0 && <PoolSummary pool={pool} />}
         </div>
         {config?.google_enabled && (

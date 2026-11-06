@@ -17,7 +17,7 @@ function DropdownMenuContent({
         align="end"
         sideOffset={6}
         className={cn(
-          "z-50 min-w-52 rounded-xl bg-popover p-1.5 shadow-menu",
+          "pop-in z-50 min-w-52 rounded-xl bg-popover p-1.5 shadow-menu",
           className
         )}
         {...props}

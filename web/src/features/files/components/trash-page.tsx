@@ -76,7 +76,7 @@ export function TrashPage() {
   return (
     <div className="max-w-3xl">
       <div className="mb-1 flex min-h-9 items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold tracking-tight">Trash</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Trash</h1>
         {hasItems && (
           <Button variant="destructive" onClick={() => setConfirming(true)}>
             Empty trash

@@ -50,7 +50,7 @@ export function UsageCard({ className }: { className?: string }) {
         <div
           role="img"
           aria-label={`${formatBytes(pool.used_bytes)} of ${formatBytes(limit)} used`}
-          className="flex h-1.5 overflow-hidden rounded-full bg-raised"
+          className="flex h-2 overflow-hidden rounded-full bg-raised"
         >
           {parts.map(({ label, bytes, color }) => (
             <span key={label} className={color} style={{ width: `${(bytes / limit) * 100}%` }} />
