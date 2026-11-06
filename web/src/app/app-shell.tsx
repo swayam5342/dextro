@@ -10,6 +10,7 @@ import {
   Search,
   Settings,
   Trash2,
+  FolderUp,
   Upload,
   UserRound,
   Users,
@@ -28,7 +29,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { meQuery, useLogout } from "@/features/auth/queries";
+import { ToastProvider } from "@/components/toast";
 import { DropZone, UploadPanel } from "@/features/files/components/upload-panel";
+import { treeFromPicked } from "@/features/files/folder-tree";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
 import { connectionsQuery, poolQuery } from "@/features/storage/queries";
 import { formatBytes } from "@/lib/format";
@@ -192,10 +195,11 @@ function SearchBox() {
 }
 
 function UploadButton({ folderId }: { folderId: string | undefined }) {
-  const { add, target, setTarget } = useUploads();
+  const { add, addTree, target, setTarget } = useUploads();
   const { data: connections } = useQuery(connectionsQuery);
   const { data: pool } = useQuery(poolQuery);
   const picker = useRef<HTMLInputElement>(null);
+  const folderPicker = useRef<HTMLInputElement | null>(null);
   const hasAccounts = (connections?.length ?? 0) > 0;
   const chosen = connections?.find((c) => c.id === target);
 
@@ -204,6 +208,15 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
     event.target.value = "";
     if (picked.length > 0) {
       add(picked, folderId);
+    }
+  }
+
+  function handleFolderPick(event: ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    const name = picked[0]?.webkitRelativePath.split("/")[0];
+    if (name) {
+      void addTree(name, Promise.resolve(treeFromPicked(picked)), folderId);
     }
   }
 
@@ -221,6 +234,19 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
   return (
     <div className="flex shrink-0 gap-px">
       <input ref={picker} type="file" multiple hidden aria-label="Choose files" onChange={handlePick} />
+      <input
+        ref={(input) => {
+          folderPicker.current = input;
+          if (input) {
+            // React has no prop for this.
+            input.webkitdirectory = true;
+          }
+        }}
+        type="file"
+        hidden
+        aria-label="Choose a folder"
+        onChange={handleFolderPick}
+      />
       <Button
         className="rounded-r-none pr-3"
         disabled={!hasAccounts}
@@ -232,11 +258,16 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button className="rounded-l-none px-2.5" disabled={!hasAccounts} aria-label="Choose where uploads go">
+          <Button className="rounded-l-none px-2.5" disabled={!hasAccounts} aria-label="More upload options">
             <ChevronDown />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-80 max-w-[calc(100vw-2rem)]">
+          <DropdownMenuItem onSelect={() => folderPicker.current?.click()}>
+            <FolderUp />
+            Upload a folder
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuLabel>Upload to</DropdownMenuLabel>
           <DropdownMenuItem onSelect={() => setTarget("")}>
             <span className="flex-1">Most free space</span>
@@ -314,8 +345,10 @@ function Frame() {
 /** The frame around every signed-in page. */
 export function AppShell() {
   return (
-    <UploadsProvider>
-      <Frame />
-    </UploadsProvider>
+    <ToastProvider>
+      <UploadsProvider>
+        <Frame />
+      </UploadsProvider>
+    </ToastProvider>
   );
 }

@@ -11,13 +11,15 @@ import {
 } from "react";
 
 import { api } from "@/api/client";
-import { ApiError, toApiError } from "@/api/errors";
+import { ApiError, failureMessage, toApiError } from "@/api/errors";
 import type { components } from "@/api/schema";
 import { poolQuery } from "@/features/storage/queries";
 
+import { foldersToMake, type FolderTree } from "./folder-tree";
 import { useRefreshFiles } from "./queries";
 
 type Session = components["schemas"]["UploadSession"];
+type Folder = components["schemas"]["Folder"];
 
 /** A multiple of 256 KiB, which Drive insists on for every piece but the last. */
 const CHUNK_BYTES = 8 * 1024 * 1024;
@@ -27,6 +29,7 @@ const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000];
 const RETRY_STATUSES = new Set([0, 429, 500, 502, 503, 504]);
 
 export type UploadStatus =
+  | "preparing"
   | "waiting"
   | "uploading"
   | "retrying"
@@ -53,6 +56,8 @@ interface UploadsValue {
   target: string;
   setTarget: (connectionId: string) => void;
   add: (files: File[], folderId: string | undefined) => void;
+  /** Recreates a folder from the computer, then uploads what's in it. */
+  addTree: (name: string, tree: Promise<FolderTree>, folderId: string | undefined) => Promise<void>;
   pause: (id: number) => void;
   resume: (id: number) => void;
   /** Gives an upload from before a reload its file back. */
@@ -169,6 +174,42 @@ async function readSession(id: string): Promise<Session> {
   } catch (error) {
     throw error instanceof ApiError || error instanceof Retryable ? error : new Retryable("The connection was lost.");
   }
+}
+
+async function foldersIn(parent: string | undefined): Promise<Folder[]> {
+  const { data, error } = await api.GET("/api/v1/files", {
+    params: { query: parent ? { folder_id: parent } : {} },
+  });
+  if (!data) {
+    throw toApiError(error);
+  }
+  return data.folders;
+}
+
+/**
+ * Makes a tree's folders and says which is which, by path. A folder that's already
+ * there is used, so uploading the rest of a folder doesn't make a second copy of it.
+ */
+async function makeFolders(tree: FolderTree, root: string | undefined) {
+  const ids = new Map<string, string | undefined>([["", root]]);
+  const listings = new Map<string | undefined, Folder[]>();
+  for (const path of foldersToMake(tree)) {
+    const name = path.at(-1) ?? "";
+    const parent = ids.get(path.slice(0, -1).join("/"));
+    const siblings = listings.get(parent) ?? (await foldersIn(parent));
+    listings.set(parent, siblings);
+    let folder = siblings.find((other) => other.name === name);
+    if (!folder) {
+      const { data, error } = await api.POST("/api/v1/folders", { body: { name, parent_id: parent ?? null } });
+      if (!data) {
+        throw toApiError(error);
+      }
+      folder = data;
+      siblings.push(folder);
+    }
+    ids.set(path.join("/"), folder.id);
+  }
+  return ids;
 }
 
 /**
@@ -336,9 +377,9 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
     pump();
   }, [pump, update]);
 
-  const add = useCallback((files: File[], folderId: string | undefined) => {
+  const queueFiles = useCallback((files: { file: File; folderId: string | undefined }[]) => {
     const connectionId = target || undefined;
-    const added = files.map((file) => {
+    const added = files.map(({ file, folderId }) => {
       nextId.current += 1;
       const id = nextId.current;
       jobs.current.set(id, {
@@ -356,6 +397,25 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
     setUploads((current) => [...current, ...added]);
     pump();
   }, [pump, target]);
+
+  const add = useCallback((files: File[], folderId: string | undefined) => {
+    queueFiles(files.map((file) => ({ file, folderId })));
+  }, [queueFiles]);
+
+  const addTree = useCallback(async (name: string, tree: Promise<FolderTree>, folderId: string | undefined) => {
+    nextId.current += 1;
+    const row = nextId.current;
+    setUploads((current) => [...current, { id: row, name, loaded: 0, total: 0, status: "preparing" }]);
+    try {
+      const read = await tree;
+      const ids = await makeFolders(read, folderId);
+      setUploads((current) => current.filter((u) => u.id !== row));
+      queueFiles(read.files.map(({ file, dirs }) => ({ file, folderId: ids.get(dirs.join("/")) })));
+      await refresh();
+    } catch (error) {
+      update(row, { status: "failed", error: failureMessage(error) });
+    }
+  }, [queueFiles, refresh, update]);
 
   const pause = useCallback((id: number) => {
     const job = jobs.current.get(id);
@@ -461,7 +521,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
   }, [enqueue]);
 
   // Leaving is safe, but picking every file again isn't something to do by accident.
-  const busy = uploads.some((u) => u.status === "uploading" || u.status === "waiting" || u.status === "retrying");
+  const busy = uploads.some((u) => ["preparing", "uploading", "waiting", "retrying"].includes(u.status));
   useEffect(() => {
     if (!busy) {
       return undefined;
@@ -474,8 +534,8 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
   }, [busy]);
 
   const value = useMemo(
-    () => ({ uploads, target, setTarget, add, pause, resume, reattach, cancel, clearFinished }),
-    [uploads, target, add, pause, resume, reattach, cancel, clearFinished],
+    () => ({ uploads, target, setTarget, add, addTree, pause, resume, reattach, cancel, clearFinished }),
+    [uploads, target, add, addTree, pause, resume, reattach, cancel, clearFinished],
   );
   return <UploadsContext.Provider value={value}>{children}</UploadsContext.Provider>;
 }

@@ -22,3 +22,8 @@ export function toApiError(error: unknown): ApiError {
   }
   return new ApiError("unknown", "The server sent an unexpected response. Try again.");
 }
+
+/** The message to show for something caught, which may not have come from the API. */
+export function failureMessage(error: unknown): string {
+  return (error instanceof ApiError ? error : toApiError(error)).message;
+}

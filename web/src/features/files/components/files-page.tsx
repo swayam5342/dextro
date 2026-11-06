@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Check,
   CheckSquare,
   Download,
@@ -17,10 +20,12 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type HTMLAttributes, type MouseEvent } from "react";
 
+import { failureMessage } from "@/api/errors";
 import type { components } from "@/api/schema";
 import { FormError } from "@/components/field";
+import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -39,15 +44,20 @@ import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import {
+  checkZip,
   contentUrl,
   folderQuery,
   searchQuery,
   thumbnailUrl,
   useCreateFolder,
+  useMove,
   useMoveToTrash,
   useRename,
+  useRestore,
+  zipUrl,
   type Item,
 } from "../queries";
+import { loadSort, nextSort, saveSort, sorted, SORTS, type SortField, type SortId } from "../sort";
 import { MoveDialog, NameDialog } from "./dialogs";
 import { fileIcon } from "./file-icon";
 import { Viewer } from "./viewer";
@@ -61,6 +71,12 @@ type Action =
   | { type: "move"; items: Item[]; name: string }
   | { type: "new-folder" };
 
+/** Something being dragged, and the folder to put it back in. */
+interface Moving {
+  item: Item;
+  from: string | null;
+}
+
 interface MenuEntry {
   label: string;
   icon: LucideIcon;
@@ -69,6 +85,9 @@ interface MenuEntry {
 
 const VIEW_KEY = "dextro.view";
 const SHOW_ON_TOUCH = "[@media(hover:none)]:opacity-100";
+/** Has no "Files" type, so the upload drop zone leaves these drags alone. */
+const DRAG_TYPE = "application/x-dextro-items";
+const TOP_LEVEL = "top";
 
 /** A remembered convenience, so it does without storage when the browser refuses it. */
 function loadView(): View {
@@ -91,21 +110,54 @@ function itemKey(item: Item): string {
   return `${item.kind}:${item.id}`;
 }
 
-function download(file: File) {
+function save(url: string) {
   const link = document.createElement("a");
-  link.href = contentUrl(file.id, false);
+  link.href = url;
   link.download = "";
   link.click();
 }
 
-function Breadcrumbs({ path }: { path: Folder[] }) {
+function download(file: File) {
+  save(contentUrl(file.id, false));
+}
+
+function countOf(items: unknown[]): string {
+  return items.length === 1 ? "1 item" : `${items.length} items`;
+}
+
+/** Shows how many are moving, because a browser only pictures the one that was grabbed. */
+function setCountPicture(transfer: DataTransfer, count: number) {
+  const picture = document.createElement("div");
+  picture.textContent = `${count} items`;
+  picture.className = "fixed -top-24 left-0 rounded-full bg-raised px-3 py-1.5 text-sm font-medium text-foreground";
+  document.body.append(picture);
+  transfer.setDragImage(picture, 0, 0);
+  setTimeout(() => picture.remove());
+}
+
+function Breadcrumbs({
+  path,
+  dropOn,
+  dropTarget,
+}: {
+  path: Folder[];
+  dropOn: (target: string | null) => HTMLAttributes<HTMLElement>;
+  dropTarget: string | null;
+}) {
   const title = "text-xl font-semibold tracking-tight";
+  const lit = "rounded-md text-foreground outline-2 outline-offset-2 outline-white";
   return (
     <nav aria-label="Folders" className={cn("flex min-w-0 flex-1 items-center gap-x-2", title)}>
       {path.length === 0 ? (
         <h1>Files</h1>
       ) : (
-        <Link to="/" search={{}} className="text-muted-foreground hover:text-foreground">
+        <Link
+          to="/"
+          search={{}}
+          draggable={false}
+          {...dropOn(null)}
+          className={cn("text-muted-foreground hover:text-foreground", dropTarget === TOP_LEVEL && lit)}
+        >
           Files
         </Link>
       )}
@@ -115,13 +167,75 @@ function Breadcrumbs({ path }: { path: Folder[] }) {
           {index === path.length - 1 ? (
             <h1 className={cn("truncate", title)}>{folder.name}</h1>
           ) : (
-            <Link to="/" search={{ folder: folder.id }} className="truncate text-muted-foreground hover:text-foreground">
+            <Link
+              to="/"
+              search={{ folder: folder.id }}
+              draggable={false}
+              {...dropOn(folder.id)}
+              className={cn("truncate text-muted-foreground hover:text-foreground", dropTarget === folder.id && lit)}
+            >
               {folder.name}
             </Link>
           )}
         </span>
       ))}
     </nav>
+  );
+}
+
+function SortMenu({ sort, onSort }: { sort: SortId; onSort: (sort: SortId) => void }) {
+  const current = SORTS.find((option) => option.id === sort)?.label;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" aria-label={`Sort: ${current}`}>
+          <ArrowUpDown />
+          <span className="hidden lg:inline">{current}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {SORTS.map((option) => (
+          <DropdownMenuItem key={option.id} onSelect={() => onSort(option.id)}>
+            <span className="flex-1">{option.label}</span>
+            {option.id === sort && <Check />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SortHeading({
+  label,
+  field,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  field: SortField;
+  sort: SortId;
+  onSort: (sort: SortId) => void;
+  className?: string;
+}) {
+  const active = sort.startsWith(field);
+  const ascending = sort.endsWith("asc");
+  const Arrow = ascending ? ArrowUp : ArrowDown;
+  let order: "ascending" | "descending" | undefined;
+  if (active) {
+    order = ascending ? "ascending" : "descending";
+  }
+  return (
+    <th scope="col" aria-sort={order} className={cn("px-3 pb-2 font-normal", className)}>
+      <button
+        type="button"
+        className={cn("inline-flex items-center gap-1 hover:text-foreground", active && "text-foreground")}
+        onClick={() => onSort(nextSort(sort, field))}
+      >
+        {label}
+        {active && <Arrow className="size-3" />}
+      </button>
+    </th>
   );
 }
 
@@ -196,10 +310,19 @@ interface TileProps<T> {
   selected: boolean;
   selecting: boolean;
   entries: MenuEntry[];
+  drag: HTMLAttributes<HTMLElement>;
   onToggle: () => void;
 }
 
-function FolderTile({ value: folder, selected, selecting, entries, onToggle }: TileProps<Folder>) {
+function FolderTile({
+  value: folder,
+  selected,
+  selecting,
+  entries,
+  drag,
+  lit,
+  onToggle,
+}: TileProps<Folder> & { lit: boolean }) {
   function handleClick(event: MouseEvent) {
     if (selecting || event.ctrlKey || event.metaKey) {
       event.preventDefault();
@@ -211,14 +334,17 @@ function FolderTile({ value: folder, selected, selecting, entries, onToggle }: T
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <li
+          {...drag}
           className={cn(
             "group relative flex min-w-0 items-center gap-1 rounded-[14px] bg-card pr-2 transition-colors hover:bg-accent",
             selected && "outline-2 outline-white",
+            lit && "bg-raised outline-2 outline-white",
           )}
         >
           <Link
             to="/"
             search={{ folder: folder.id }}
+            draggable={false}
             onClick={handleClick}
             className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5"
           >
@@ -249,6 +375,7 @@ function FileTile({
   selected,
   selecting,
   entries,
+  drag,
   onToggle,
   onOpen,
 }: TileProps<File> & { onOpen: () => void }) {
@@ -269,6 +396,7 @@ function FileTile({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <li
+          {...drag}
           className={cn(
             "group relative h-(--row) min-w-0 overflow-hidden rounded-[10px] bg-card",
             selected && "outline-2 outline-white",
@@ -363,15 +491,30 @@ interface ListRowProps {
   selected: boolean;
   selecting: boolean;
   entries: MenuEntry[];
+  drag: HTMLAttributes<HTMLElement>;
+  lit?: boolean;
   onToggle: () => void;
 }
 
-function ListRow({ name, thumb, open, size, account, date, selected, selecting, entries, onToggle }: ListRowProps) {
+function ListRow({
+  name,
+  thumb,
+  open,
+  size,
+  account,
+  date,
+  selected,
+  selecting,
+  entries,
+  drag,
+  lit,
+  onToggle,
+}: ListRowProps) {
   const cell = "border-t px-3 py-2 whitespace-nowrap text-muted-foreground group-hover:bg-[#0c0c0c]";
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <tr className={cn("group", selected && "[&>td]:bg-accent")}>
+        <tr {...drag} className={cn("group", selected && "[&>td]:bg-accent", lit && "[&>td]:bg-raised")}>
           <td className={cn(cell, "w-full max-w-0 text-foreground")}>
             <span className="flex min-w-0 items-center gap-3">
               <span className="relative shrink-0">
@@ -419,15 +562,21 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   const { data: connections } = useQuery(connectionsQuery);
 
   const [view, setView] = useState<View>(loadView);
+  const [sort, setSort] = useState<SortId>(loadSort);
   const [selected, setSelected] = useState<Item[]>([]);
+  const [dragging, setDragging] = useState<Moving[] | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const createFolder = useCreateFolder();
   const rename = useRename();
   const trash = useMoveToTrash();
+  const restore = useRestore();
+  const move = useMove();
+  const toast = useToast();
 
-  const folders = data?.folders ?? [];
-  const files = data?.files ?? [];
+  const folders = useMemo(() => sorted(data?.folders ?? [], sort), [data?.folders, sort]);
+  const files = useMemo(() => sorted(data?.files ?? [], sort), [data?.files, sort]);
   const selecting = selected.length > 0;
   const chosen = new Set(selected.map(itemKey));
   const viewIndex = files.findIndex((file) => file.id === viewing);
@@ -467,28 +616,179 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
     saveView(next);
   }
 
+  function changeSort(next: SortId) {
+    setSort(next);
+    saveSort(next);
+  }
+
+  function deselect(items: Item[]) {
+    const gone = new Set(items.map(itemKey));
+    setSelected((current) => current.filter((item) => !gone.has(itemKey(item))));
+  }
+
+  async function undoTrash(items: Item[]) {
+    try {
+      for (const item of items) {
+        await restore.mutateAsync(item);
+      }
+      toast({ message: `Restored ${countOf(items)}` });
+    } catch (error) {
+      toast({ message: failureMessage(error) });
+    }
+  }
+
+  function announceTrash(items: Item[]) {
+    toast({
+      message: `Moved ${countOf(items)} to the trash`,
+      action: { label: "Undo", run: () => void undoTrash(items) },
+    });
+  }
+
   /** One at a time, so a failure stops here and its message stays on screen. */
   async function moveToTrash(items: Item[]) {
     trash.reset();
+    const done: Item[] = [];
     try {
       for (const item of items) {
         await trash.mutateAsync(item);
+        done.push(item);
       }
-      setSelected([]);
     } catch {
       // The mutation's error is shown on the page.
+    }
+    deselect(done);
+    if (done.length > 0) {
+      announceTrash(done);
     }
   }
 
   function handleViewerTrash(file: File) {
+    const item: Item = { kind: "file", id: file.id };
     const next = files[viewIndex + 1] ?? files[viewIndex - 1];
-    trash.mutate({ kind: "file", id: file.id }, { onSuccess: () => setViewing(next?.id ?? null) });
+    trash.mutate(item, {
+      onSuccess: () => {
+        setViewing(next?.id ?? null);
+        announceTrash([item]);
+      },
+    });
+  }
+
+  async function downloadItems(items: Item[]) {
+    try {
+      await checkZip(items);
+      save(zipUrl(items));
+    } catch (error) {
+      toast({ message: failureMessage(error) });
+    }
+  }
+
+  function downloadSelected() {
+    const [first] = selected;
+    const file = selected.length === 1 && first?.kind === "file" ? files.find(({ id }) => id === first.id) : undefined;
+    if (file) {
+      download(file);
+    } else {
+      void downloadItems(selected);
+    }
+  }
+
+  function originOf(item: Item): string | null {
+    if (item.kind === "file") {
+      return files.find(({ id }) => id === item.id)?.folder_id ?? null;
+    }
+    return folders.find(({ id }) => id === item.id)?.parent_id ?? null;
+  }
+
+  function placeName(target: string | null): string {
+    const places = [...folders, ...(data?.path ?? [])];
+    return places.find(({ id }) => id === target)?.name ?? "Files";
+  }
+
+  async function moveBack(done: Moving[]) {
+    try {
+      for (const { item, from } of done) {
+        await move.mutateAsync({ item, target: from });
+      }
+      toast({ message: `Moved ${countOf(done)} back` });
+    } catch (error) {
+      toast({ message: failureMessage(error) });
+    }
+  }
+
+  /** One at a time, like the trash. Whatever moved before a failure can still be undone. */
+  async function moveTo(target: string | null) {
+    const moving = (dragging ?? []).filter(({ from }) => from !== target);
+    setDragging(null);
+    setDropTarget(null);
+    const done: Moving[] = [];
+    let failure: string | undefined;
+    try {
+      for (const entry of moving) {
+        await move.mutateAsync({ item: entry.item, target });
+        done.push(entry);
+      }
+    } catch (error) {
+      failure = failureMessage(error);
+    }
+    deselect(done.map(({ item }) => item));
+    const undo = { label: "Undo", run: () => void moveBack(done) };
+    toast({
+      message: failure ?? `Moved ${countOf(done)} to ${placeName(target)}`,
+      action: done.length > 0 ? undo : undefined,
+    });
+  }
+
+  /** Dragging a selected item takes the whole selection with it. */
+  function dragFrom(item: Item): HTMLAttributes<HTMLElement> {
+    return {
+      draggable: true,
+      onDragStart(event) {
+        const items = chosen.has(itemKey(item)) ? selected : [item];
+        const moving = items.map((one) => ({ item: one, from: originOf(one) }));
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData(DRAG_TYPE, "items");
+        if (items.length > 1) {
+          setCountPicture(event.dataTransfer, items.length);
+        }
+        // After the event, because changing the page during it can cancel the drag.
+        setTimeout(() => setDragging(moving));
+      },
+      onDragEnd() {
+        setDragging(null);
+        setDropTarget(null);
+      },
+    };
+  }
+
+  /** Only offers a place the drag can actually go. */
+  function dropOn(target: string | null): HTMLAttributes<HTMLElement> {
+    const intoItself = dragging?.some(({ item }) => item.kind === "folder" && item.id === target);
+    if (!dragging || intoItself || dragging.every(({ from }) => from === target)) {
+      return {};
+    }
+    return {
+      onDragOver(event) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDropTarget(target ?? TOP_LEVEL);
+      },
+      onDragLeave(event) {
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) {
+          setDropTarget(null);
+        }
+      },
+      onDrop(event) {
+        event.preventDefault();
+        void moveTo(target);
+      },
+    };
   }
 
   function folderEntries(target: Folder): MenuEntry[] {
     const item: Item = { kind: "folder", id: target.id };
     return [
       { label: "Open", icon: FolderOpen, run: () => void navigate({ to: "/", search: { folder: target.id } }) },
+      { label: "Download as zip", icon: Download, run: () => void downloadItems([item]) },
       { label: "Select", icon: CheckSquare, run: () => toggle(item) },
       { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: target.name }) },
       { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: target.name }) },
@@ -521,7 +821,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
 
   const empty = data && folders.length === 0 && files.length === 0;
   const noAccounts = connections?.length === 0;
-  const selectedFiles = files.filter((file) => chosen.has(itemKey({ kind: "file", id: file.id })));
+  const path = data?.path ?? [];
   const countText = selected.length === 1 ? "1 selected" : `${selected.length} selected`;
 
   return (
@@ -531,13 +831,13 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
           <Button variant="ghost" size="icon" aria-label="Clear selection" onClick={() => setSelected([])}>
             <X />
           </Button>
-          <span className="mr-auto font-semibold">{countText}</span>
-          <Button
-            variant="ghost"
-            disabled={selectedFiles.length === 0}
-            aria-label="Download selected files"
-            onClick={() => selectedFiles.forEach(download)}
-          >
+          {/* A drag needs somewhere to go, and the path is hidden while selecting. */}
+          {dragging && path.length > 0 ? (
+            <Breadcrumbs path={path} dropOn={dropOn} dropTarget={dropTarget} />
+          ) : (
+            <span className="mr-auto font-semibold">{countText}</span>
+          )}
+          <Button variant="ghost" aria-label="Download selected items" onClick={downloadSelected}>
             <Download />
             <span className="hidden sm:inline">Download</span>
           </Button>
@@ -559,7 +859,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
           {query ? (
             <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">Results for {query}</h1>
           ) : (
-            <Breadcrumbs path={data?.path ?? []} />
+            <Breadcrumbs path={path} dropOn={dropOn} dropTarget={dropTarget} />
           )}
           {!query && (
             <Button variant="outline" aria-label="New folder" onClick={() => setAction({ type: "new-folder" })}>
@@ -567,6 +867,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
               <span className="hidden sm:inline">New folder</span>
             </Button>
           )}
+          <SortMenu sort={sort} onSort={changeSort} />
           <div role="group" aria-label="View" className="flex rounded-full bg-card p-0.5">
             {(
               [
@@ -621,6 +922,8 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
                     selected={chosen.has(itemKey(item))}
                     selecting={selecting}
                     entries={folderEntries(target)}
+                    drag={{ ...dragFrom(item), ...dropOn(target.id) }}
+                    lit={dropTarget === target.id}
                     onToggle={() => toggle(item)}
                   />
                 );
@@ -637,6 +940,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
                   selected={chosen.has(itemKey(item))}
                   selecting={selecting}
                   entries={fileEntries(file)}
+                  drag={dragFrom(item)}
                   onToggle={() => toggle(item)}
                   onOpen={() => setViewing(file.id)}
                 />
@@ -650,10 +954,10 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="text-left text-xs text-faint">
-              <th className="px-3 pb-2 font-normal">Name</th>
-              <th className="px-3 pb-2 text-right font-normal">Size</th>
-              <th className="hidden px-3 pb-2 font-normal lg:table-cell">Stored in</th>
-              <th className="hidden px-3 pb-2 font-normal sm:table-cell">Added</th>
+              <SortHeading label="Name" field="name" sort={sort} onSort={changeSort} />
+              <SortHeading label="Size" field="size" sort={sort} onSort={changeSort} className="text-right" />
+              <th scope="col" className="hidden px-3 pb-2 font-normal lg:table-cell">Stored in</th>
+              <SortHeading label="Added" field="date" sort={sort} onSort={changeSort} className="hidden sm:table-cell" />
               <th aria-label="Actions" />
             </tr>
           </thead>
@@ -670,7 +974,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
                     </span>
                   }
                   open={
-                    <Link to="/" search={{ folder: target.id }} className="truncate hover:underline">
+                    <Link to="/" search={{ folder: target.id }} draggable={false} className="truncate hover:underline">
                       {target.name}
                     </Link>
                   }
@@ -680,6 +984,8 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
                   selected={chosen.has(itemKey(item))}
                   selecting={selecting}
                   entries={folderEntries(target)}
+                  drag={{ ...dragFrom(item), ...dropOn(target.id) }}
+                  lit={dropTarget === target.id}
                   onToggle={() => toggle(item)}
                 />
               );
@@ -702,6 +1008,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
                   selected={chosen.has(itemKey(item))}
                   selecting={selecting}
                   entries={fileEntries(file)}
+                  drag={dragFrom(item)}
                   onToggle={() => toggle(item)}
                 />
               );

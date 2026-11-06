@@ -181,6 +181,27 @@ export function thumbnailUrl(fileId: string): string {
   return `/api/v1/files/${fileId}/thumbnail`;
 }
 
+function idsOf(items: Item[], kind: Item["kind"]): string[] {
+  return items.filter((item) => item.kind === kind).map((item) => item.id);
+}
+
+export function zipUrl(items: Item[]): string {
+  const query = new URLSearchParams();
+  idsOf(items, "file").forEach((id) => query.append("file", id));
+  idsOf(items, "folder").forEach((id) => query.append("folder", id));
+  return `/api/v1/zip?${query.toString()}`;
+}
+
+/** Asks before downloading, because a refused download can't show its reason. */
+export async function checkZip(items: Item[]): Promise<void> {
+  const { error, response } = await api.GET("/api/v1/zip", {
+    params: { query: { file: idsOf(items, "file"), folder: idsOf(items, "folder"), check: "true" } },
+  });
+  if (!response.ok) {
+    throw toApiError(error);
+  }
+}
+
 export function contentUrl(fileId: string, inline: boolean): string {
   const query = inline ? "?disposition=inline" : "";
   return `/api/v1/files/${fileId}/content${query}`;

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "r
 import { Button } from "@/components/ui/button";
 import { connectionsQuery } from "@/features/storage/queries";
 
+import { treeFromDrop } from "../folder-tree";
 import { useUploads, type Upload, type UploadStatus } from "../uploads";
 
 function destination(upload: Upload, emails: Map<string, string>): string {
@@ -35,6 +36,7 @@ function Row({ upload, emails }: { upload: Upload; emails: Map<string, string> }
   const running = upload.status === "waiting" || upload.status === "uploading" || upload.status === "retrying";
   const stopped = upload.status === "paused" || upload.status === "needs-file";
   const labels: Record<UploadStatus, string> = {
+    preparing: "Creating folders…",
     waiting: "Waiting",
     uploading: `${percent}%`,
     retrying: "Reconnecting…",
@@ -107,7 +109,7 @@ export function UploadPanel() {
   }
   const emails = new Map(connections?.map((c) => [c.id, c.summary]));
   const count = (...statuses: UploadStatus[]) => uploads.filter((u) => statuses.includes(u.status)).length;
-  const left = count("waiting", "uploading", "retrying");
+  const left = count("preparing", "waiting", "uploading", "retrying");
   const stopped = count("paused", "needs-file");
   const finished = count("done", "failed", "cancelled");
   const failed = count("failed");
@@ -141,7 +143,7 @@ export function UploadPanel() {
 
 /** Dropping files anywhere in the app uploads them to the folder on screen. */
 export function DropZone({ folderId, hint }: { folderId: string | undefined; hint: string }) {
-  const { add } = useUploads();
+  const { add, addTree } = useUploads();
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
 
@@ -169,6 +171,15 @@ export function DropZone({ folderId, hint }: { folderId: string | undefined; hin
       event.preventDefault();
       depth.current = 0;
       setDragging(false);
+      // These have to be taken now: the browser empties the list when this returns.
+      const entries = Array.from(event.dataTransfer?.items ?? [])
+        .map((item) => item.webkitGetAsEntry())
+        .filter((entry) => entry !== null);
+      if (entries.some((entry) => entry.isDirectory)) {
+        const name = entries.length === 1 ? (entries[0]?.name ?? "Folder") : `${entries.length} items`;
+        void addTree(name, treeFromDrop(entries), folderId);
+        return;
+      }
       const files = Array.from(event.dataTransfer?.files ?? []);
       if (files.length > 0) {
         add(files, folderId);
@@ -184,7 +195,7 @@ export function DropZone({ folderId, hint }: { folderId: string | undefined; hin
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [add, folderId]);
+  }, [add, addTree, folderId]);
 
   if (!dragging) {
     return null;
