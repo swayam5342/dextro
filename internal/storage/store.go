@@ -150,10 +150,10 @@ func toRecord(row dbgen.StorageConnection) record {
 	}
 }
 
-// ListAllConnectionsForQuotaSync returns every user's connections. It is unscoped
-// on purpose and is for the background sync only.
-func (s *Store) ListAllConnectionsForQuotaSync(ctx context.Context) ([]record, error) {
-	rows, err := s.queries.ListAllConnectionsForQuotaSync(ctx)
+// ListAllConnectionsForJobs returns every user's connections. It is unscoped on
+// purpose and is for the background jobs only.
+func (s *Store) ListAllConnectionsForJobs(ctx context.Context) ([]record, error) {
+	rows, err := s.queries.ListAllConnectionsForJobs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list connections: %w", err)
 	}

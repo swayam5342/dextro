@@ -14,6 +14,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
+	"github.com/swayam5342/dextro/internal/files"
 	"github.com/swayam5342/dextro/internal/storage"
 )
 
@@ -22,12 +23,16 @@ const (
 	KindQuotaSync      = "quota_sync"
 	KindSessionCleanup = "session_cleanup"
 	KindUploadCleanup  = "upload_cleanup"
+	KindFileSync       = "file_sync"
 )
 
 const (
 	quotaSyncEvery      = time.Hour
 	sessionCleanupEvery = 24 * time.Hour
 	uploadCleanupEvery  = time.Hour
+	// Often, because this is how a file deleted in Drive leaves the app. It's cheap:
+	// a listing is one request per thousand files.
+	fileSyncEvery = 5 * time.Minute
 	// A dead account can take a while to give up on, and there may be many.
 	quotaSyncTimeout = 15 * time.Minute
 	maxAttempts      = 3
@@ -49,6 +54,11 @@ type Uploads interface {
 	CleanupUploads(ctx context.Context) (int, error)
 }
 
+// Files is what the file sync needs from the files feature.
+type Files interface {
+	SyncAll(ctx context.Context) (files.SyncResult, error)
+}
+
 // Runs remembers when each job last finished.
 type Runs interface {
 	RecordJobRun(ctx context.Context, name string, succeeded bool) error
@@ -61,6 +71,7 @@ type Deps struct {
 	Quotas   Quotas
 	Sessions Sessions
 	Uploads  Uploads
+	Files    Files
 	Runs     Runs
 }
 
@@ -75,6 +86,10 @@ func (sessionCleanupArgs) Kind() string { return KindSessionCleanup }
 type uploadCleanupArgs struct{}
 
 func (uploadCleanupArgs) Kind() string { return KindUploadCleanup }
+
+type fileSyncArgs struct{}
+
+func (fileSyncArgs) Kind() string { return KindFileSync }
 
 type quotaSyncWorker struct {
 	river.WorkerDefaults[quotaSyncArgs]
@@ -117,6 +132,23 @@ func (w *uploadCleanupWorker) Work(ctx context.Context, _ *river.Job[uploadClean
 		w.deps.Logger.InfoContext(ctx, "upload cleanup finished", "removed", removed)
 	}
 	return finish(ctx, w.deps, KindUploadCleanup, err)
+}
+
+type fileSyncWorker struct {
+	river.WorkerDefaults[fileSyncArgs]
+	deps Deps
+}
+
+func (w *fileSyncWorker) Timeout(*river.Job[fileSyncArgs]) time.Duration {
+	return quotaSyncTimeout
+}
+
+func (w *fileSyncWorker) Work(ctx context.Context, _ *river.Job[fileSyncArgs]) error {
+	result, err := w.deps.Files.SyncAll(ctx)
+	if err == nil {
+		w.deps.Logger.InfoContext(ctx, "file sync finished", "added", result.Added, "removed", result.Removed, "skipped", result.Skipped)
+	}
+	return finish(ctx, w.deps, KindFileSync, err)
 }
 
 // finish records the outcome. A job stopped by the server shutting down didn't
@@ -162,6 +194,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 	river.AddWorker(workers, &quotaSyncWorker{deps: d})
 	river.AddWorker(workers, &sessionCleanupWorker{deps: d})
 	river.AddWorker(workers, &uploadCleanupWorker{deps: d})
+	river.AddWorker(workers, &fileSyncWorker{deps: d})
 	client, err := river.NewClient(driver, &river.Config{
 		Logger:  d.Logger,
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}},
@@ -170,6 +203,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 			every(quotaSyncEvery, quotaSyncArgs{}),
 			every(sessionCleanupEvery, sessionCleanupArgs{}),
 			every(uploadCleanupEvery, uploadCleanupArgs{}),
+			every(fileSyncEvery, fileSyncArgs{}),
 		},
 	})
 	if err != nil {

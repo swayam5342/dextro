@@ -145,3 +145,13 @@ WHERE folders.user_id = $1
   AND folders.name ILIKE sqlc.arg('pattern')::text ESCAPE '\'
 ORDER BY lower(folders.name), folders.id
 LIMIT 100;
+
+-- name: ListObjectsForConnection :many
+SELECT id, object_id, created_at
+FROM files
+WHERE user_id = $1 AND connection_id = $2;
+
+-- name: ImportFile :execrows
+INSERT INTO files (id, user_id, connection_id, object_id, name, size, content_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (connection_id, object_id) DO NOTHING;

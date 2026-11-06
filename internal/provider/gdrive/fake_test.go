@@ -291,6 +291,7 @@ func (f *fakeDrive) upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		file.MimeType = r.Header.Get("X-Upload-Content-Type")
 		if length := r.Header.Get("X-Upload-Content-Length"); length != "" {
 			f.beginSession(w, r, &file, length)
 			return
@@ -326,6 +327,7 @@ func (f *fakeDrive) uploadMultipart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	file.MimeType = media.Header.Get("Content-Type")
 	body, err := io.ReadAll(media)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

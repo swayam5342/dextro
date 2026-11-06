@@ -60,6 +60,7 @@ type FilesHandlers interface {
 	GetUpload(w http.ResponseWriter, r *http.Request, id types.UUID)
 	CancelUpload(w http.ResponseWriter, r *http.Request, id types.UUID)
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.PutUploadChunkParams)
+	SyncConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 }
 
 // StorageHandlers is the part of the API the storage feature implements.

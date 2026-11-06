@@ -106,3 +106,14 @@ func toAPIUpload(s UploadSession) apigen.UploadSession {
 	}
 	return body
 }
+
+// SyncConnection implements apigen.ServerInterface. It lives here, not with the
+// other connection routes, because what it changes is files.
+func (h *Handler) SyncConnection(w http.ResponseWriter, r *http.Request, id types.UUID) {
+	result, err := h.service.SyncConnection(r.Context(), userID(r), id, httpx.ClientIP(r.Context()))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, apigen.SyncResult{Added: result.Added, Removed: result.Removed})
+}

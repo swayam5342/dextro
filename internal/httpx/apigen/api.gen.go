@@ -448,6 +448,12 @@ type SettingsUpdate struct {
 	MaxUploadBytes *int64 `json:"max_upload_bytes,omitempty"`
 }
 
+// SyncResult defines model for SyncResult.
+type SyncResult struct {
+	Added   int `json:"added"`
+	Removed int `json:"removed"`
+}
+
 // Trash defines model for Trash.
 type Trash struct {
 	Files   []File   `json:"files"`
@@ -719,6 +725,9 @@ type ServerInterface interface {
 	// DeleteConnection Remove a connection and forget its credentials
 	// (DELETE /api/v1/storage/connections/{id})
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// SyncConnection Make dextro match what's really in an account
+	// (POST /api/v1/storage/connections/{id}/sync)
+	SyncConnection(w http.ResponseWriter, r *http.Request, id Id)
 	// TestConnection Check that a connection still works
 	// (POST /api/v1/storage/connections/{id}/test)
 	TestConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -1004,6 +1013,12 @@ func (_ Unimplemented) ListConnections(w http.ResponseWriter, r *http.Request) {
 // DeleteConnection Remove a connection and forget its credentials
 // (DELETE /api/v1/storage/connections/{id})
 func (_ Unimplemented) DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SyncConnection Make dextro match what's really in an account
+// (POST /api/v1/storage/connections/{id}/sync)
+func (_ Unimplemented) SyncConnection(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2041,6 +2056,32 @@ func (siw *ServerInterfaceWrapper) DeleteConnection(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// SyncConnection operation middleware
+func (siw *ServerInterfaceWrapper) SyncConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // TestConnection operation middleware
 func (siw *ServerInterfaceWrapper) TestConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -2567,6 +2608,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/storage/connections/{id}", wrapper.DeleteConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/sync", wrapper.SyncConnection)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/test", wrapper.TestConnection)

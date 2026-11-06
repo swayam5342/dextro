@@ -170,6 +170,38 @@ func (q *Queries) GetFolderForOwner(ctx context.Context, arg GetFolderForOwnerPa
 	return i, err
 }
 
+const importFile = `-- name: ImportFile :execrows
+INSERT INTO files (id, user_id, connection_id, object_id, name, size, content_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (connection_id, object_id) DO NOTHING
+`
+
+type ImportFileParams struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	ConnectionID uuid.UUID
+	ObjectID     string
+	Name         string
+	Size         int64
+	ContentType  string
+}
+
+func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, error) {
+	result, err := q.db.Exec(ctx, importFile,
+		arg.ID,
+		arg.UserID,
+		arg.ConnectionID,
+		arg.ObjectID,
+		arg.Name,
+		arg.Size,
+		arg.ContentType,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listFilesInFolderForOwner = `-- name: ListFilesInFolderForOwner :many
 SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at
 FROM files
@@ -359,6 +391,43 @@ func (q *Queries) ListFoldersInFolderForOwner(ctx context.Context, arg ListFolde
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listObjectsForConnection = `-- name: ListObjectsForConnection :many
+SELECT id, object_id, created_at
+FROM files
+WHERE user_id = $1 AND connection_id = $2
+`
+
+type ListObjectsForConnectionParams struct {
+	UserID       uuid.UUID
+	ConnectionID uuid.UUID
+}
+
+type ListObjectsForConnectionRow struct {
+	ID        uuid.UUID
+	ObjectID  string
+	CreatedAt time.Time
+}
+
+func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsForConnectionParams) ([]ListObjectsForConnectionRow, error) {
+	rows, err := q.db.Query(ctx, listObjectsForConnection, arg.UserID, arg.ConnectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListObjectsForConnectionRow{}
+	for rows.Next() {
+		var i ListObjectsForConnectionRow
+		if err := rows.Scan(&i.ID, &i.ObjectID, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

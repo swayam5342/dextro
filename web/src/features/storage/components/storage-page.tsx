@@ -15,6 +15,7 @@ import {
   poolQuery,
   useConnectGoogleDrive,
   useRemoveConnection,
+  useSyncConnection,
   useTestConnection,
 } from "../queries";
 
@@ -28,6 +29,20 @@ const REDIRECT_MESSAGES: Record<string, string> = {
 };
 
 const SOFT_BUTTON = "bg-raised hover:bg-[#3a3a3a]";
+
+function syncText({ added, removed }: { added: number; removed: number }): string {
+  if (added === 0 && removed === 0) {
+    return "Already up to date.";
+  }
+  const parts = [];
+  if (added > 0) {
+    parts.push(added === 1 ? "1 file found" : `${added} files found`);
+  }
+  if (removed > 0) {
+    parts.push(removed === 1 ? "1 file gone from Drive" : `${removed} files gone from Drive`);
+  }
+  return `${parts.join(", ")}.`;
+}
 
 /** How much room an account has. No limit is the most room there is. */
 function room(account: PoolAccount): number {
@@ -90,6 +105,7 @@ function Tank({
 }) {
   const test = useTestConnection(connection.id);
   const remove = useRemoveConnection(connection.id);
+  const sync = useSyncConnection(connection.id);
   const [confirming, setConfirming] = useState(false);
   const broken = account?.available === false;
   const limit = account?.limit_bytes;
@@ -116,8 +132,13 @@ function Tank({
       {isNext && <p className="text-[13px] text-water">Next upload goes here</p>}
       {broken && <p className="text-[13px] text-destructive">Link it again to repair it.</p>}
       {test.isSuccess && <p className="text-[13px]">This account works.</p>}
+      {sync.data && <p className="text-[13px]">{syncText(sync.data)}</p>}
+      <FormError message={sync.error ? "This account couldn't be checked, so nothing changed." : undefined} />
       <FormError message={test.error ? "This account couldn't be reached. Link it again to repair it." : undefined} />
-      <div className="mt-auto flex gap-2">
+      <div className="mt-auto flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" className={SOFT_BUTTON} disabled={sync.isPending} onClick={() => sync.mutate()}>
+          {sync.isPending ? "Syncing…" : "Sync"}
+        </Button>
         <Button variant="outline" size="sm" className={SOFT_BUTTON} disabled={test.isPending} onClick={() => test.mutate()}>
           {test.isPending ? "Testing…" : "Test"}
         </Button>

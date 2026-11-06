@@ -152,6 +152,7 @@ func TestHandlers(t *testing.T) {
 		{"cancelling at google", testDriveCancelled},
 		{"google failures are hidden", testDriveFailureHidden},
 		{"the callback needs a session", testDriveCallbackNeedsSession},
+		{"linking an account syncs it", testLinkingSyncsTheAccount},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -164,7 +165,12 @@ func TestHandlers(t *testing.T) {
 				DB:           f.pool,
 				PublicOrigin: testOrigin,
 				Sessions:     sessions{},
-				Storage:      NewHandler(f.service, logger),
+				Storage: NewHandler(f.service, logger, func(ctx context.Context, userID, id uuid.UUID, ip string) error {
+					if f.afterConnect == nil {
+						return nil
+					}
+					return f.afterConnect(ctx, userID, id, ip)
+				}),
 			})})
 		})
 	}
@@ -374,5 +380,23 @@ func testHandlerPool(t *testing.T, s *server) {
 	pool = decode[apigen.Pool](t, b.do(http.MethodGet, "/api/v1/storage/pool"))
 	if pool.LimitBytes != nil || pool.FreeBytes != nil {
 		t.Errorf("limit = %v, free = %v, want none with an unlimited account", pool.LimitBytes, pool.FreeBytes)
+	}
+}
+
+// A linked account's files show up straight away, and a sync that fails doesn't
+// undo the link.
+func testLinkingSyncsTheAccount(t *testing.T, s *server) {
+	var calls int
+	s.afterConnect = func(_ context.Context, _, _ uuid.UUID, _ string) error {
+		calls++
+		return errors.New("drive is having a moment")
+	}
+	b := s.signedIn(t)
+	rec := b.callback(b.startDrive())
+	if got := rec.Header().Get("Location"); got != "/storage?connected=google" {
+		t.Errorf("redirect = %q, a failed sync must not undo the link", got)
+	}
+	if calls != 1 {
+		t.Errorf("syncs = %d, want 1", calls)
 	}
 }

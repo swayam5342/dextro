@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -24,6 +25,9 @@ const (
 	flowTTL        = 10 * time.Minute
 	secretBytes    = 32
 
+	// The browser is waiting on the redirect while this runs.
+	afterConnectTimeout = 30 * time.Second
+
 	// Each check calls out to Google, so they are limited per user.
 	checkBurst = 10
 	checkEvery = 30 * time.Second
@@ -40,16 +44,22 @@ const (
 	redirectGoogleCancelled = "google_cancelled"
 )
 
+// AfterConnect runs once an account is linked. The files feature passes this in,
+// because it imports this one.
+type AfterConnect func(ctx context.Context, userID, connectionID uuid.UUID, ip string) error
+
 // Handler serves the storage routes.
 type Handler struct {
 	service *Service
 	logger  *slog.Logger
-	checks  *httpx.RateLimiter
+	// afterConnect may be nil.
+	afterConnect AfterConnect
+	checks       *httpx.RateLimiter
 }
 
 // NewHandler returns a Handler for service.
-func NewHandler(service *Service, logger *slog.Logger) *Handler {
-	return &Handler{service: service, logger: logger, checks: httpx.NewRateLimiter(checkEvery, checkBurst)}
+func NewHandler(service *Service, logger *slog.Logger, afterConnect AfterConnect) *Handler {
+	return &Handler{service: service, logger: logger, afterConnect: afterConnect, checks: httpx.NewRateLimiter(checkEvery, checkBurst)}
 }
 
 // ListConnections implements apigen.ServerInterface.
@@ -141,14 +151,30 @@ func (h *Handler) GoogleDriveCallback(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 	principal, _ := httpx.PrincipalFrom(r.Context())
-	_, err := h.service.ConnectDrive(r.Context(), principal.UserID, *params.Code, verifier, httpx.ClientIP(r.Context()))
+	connection, err := h.service.ConnectDrive(r.Context(), principal.UserID, *params.Code, verifier, httpx.ClientIP(r.Context()))
 	if err != nil {
 		h.logger.WarnContext(r.Context(), "connect google drive",
 			"request_id", httpx.RequestID(r.Context()), "error", err)
 		redirectError(w, r, redirectGoogleFailed)
 		return
 	}
+	h.syncNewAccount(r, principal.UserID, connection.ID)
 	http.Redirect(w, r, "/storage?connected=google", http.StatusFound)
+}
+
+// syncNewAccount brings back what's already in an account, so its files show up the
+// moment it's linked. It's not worth failing the link over: the background sync
+// picks up whatever this doesn't finish.
+func (h *Handler) syncNewAccount(r *http.Request, userID, connectionID uuid.UUID) {
+	if h.afterConnect == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), afterConnectTimeout)
+	defer cancel()
+	if err := h.afterConnect(ctx, userID, connectionID, httpx.ClientIP(r.Context())); err != nil {
+		h.logger.WarnContext(r.Context(), "sync new account",
+			"request_id", httpx.RequestID(r.Context()), "error", err)
+	}
 }
 
 func readFlow(r *http.Request) (state, verifier string, ok bool) {

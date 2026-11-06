@@ -32,8 +32,8 @@ RETURNING *;
 DELETE FROM storage_connections
 WHERE user_id = $1 AND id = $2;
 
--- Instance-wide on purpose: only the background quota sync calls this.
--- name: ListAllConnectionsForQuotaSync :many
+-- Instance-wide on purpose: only the background jobs call this.
+-- name: ListAllConnectionsForJobs :many
 SELECT *
 FROM storage_connections
 ORDER BY created_at, id;

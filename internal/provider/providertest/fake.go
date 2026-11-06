@@ -3,6 +3,7 @@ package providertest
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -36,6 +37,10 @@ type Fake struct {
 	DropBytes int64
 	// ChunkErr, if set, is what PutChunk returns once the body is read.
 	ChunkErr error
+	// ListFailsAfter, if set, makes List fail after this many pages.
+	ListFailsAfter int
+	listed         int
+	hidden         map[string]bool
 }
 
 type fakeSession struct {
@@ -91,6 +96,8 @@ func (f *Fake) Put(_ context.Context, upload provider.Upload) (provider.Object, 
 		Name:       upload.Name,
 		Size:       int64(len(body)),
 		ModifiedAt: time.Now(),
+
+		ContentType: upload.ContentType,
 	}
 	f.objects[object.ID] = fakeObject{Object: object, body: body}
 	return object, nil
@@ -146,8 +153,17 @@ func (f *Fake) Delete(_ context.Context, id string) error {
 func (f *Fake) List(_ context.Context, pageToken string) (provider.ObjectPage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.ListFailsAfter > 0 {
+		if f.listed >= f.ListFailsAfter {
+			return provider.ObjectPage{}, errors.New("listing failed")
+		}
+		f.listed++
+	}
 	ids := make([]int, 0, len(f.objects))
 	for id := range f.objects {
+		if f.hidden[id] {
+			continue
+		}
 		n, err := strconv.Atoi(id)
 		if err != nil {
 			return provider.ObjectPage{}, fmt.Errorf("bad id %q: %w", id, err)
@@ -210,7 +226,13 @@ func (f *Fake) PutChunk(_ context.Context, session string, chunk provider.Chunk)
 	s.body = append(s.body, body...)
 	if last {
 		f.nextID++
-		object := provider.Object{ID: strconv.Itoa(f.nextID), Name: s.upload.Name, Size: int64(len(s.body)), ModifiedAt: time.Now()}
+		object := provider.Object{
+			ID:          strconv.Itoa(f.nextID),
+			Name:        s.upload.Name,
+			Size:        int64(len(s.body)),
+			ContentType: s.upload.ContentType,
+			ModifiedAt:  time.Now(),
+		}
 		f.objects[object.ID] = fakeObject{Object: object, body: s.body}
 		s.finished = &object
 		return provider.ResumeState{Received: object.Size, Object: &object}, nil
@@ -253,4 +275,38 @@ func (f *Fake) ExpireSessions() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sessions = map[string]*fakeSession{}
+}
+
+// Age makes every object look this much older.
+func (f *Fake) Age(by time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for id, object := range f.objects {
+		object.ModifiedAt = object.ModifiedAt.Add(-by)
+		f.objects[id] = object
+	}
+}
+
+// Hide keeps an object out of listings, as trashing it in Drive does.
+func (f *Fake) Hide(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.hidden == nil {
+		f.hidden = map[string]bool{}
+	}
+	f.hidden[id] = true
+}
+
+// Unhide puts an object back in listings.
+func (f *Fake) Unhide(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.hidden, id)
+}
+
+// SetPageSize changes how many objects a listing returns at a time.
+func (f *Fake) SetPageSize(size int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pageSize = size
 }

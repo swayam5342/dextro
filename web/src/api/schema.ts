@@ -142,6 +142,10 @@ export interface components {
       /** Present once the upload has finished. */
       file?: components["schemas"]["File"];
     };
+    SyncResult: {
+      added: number;
+      removed: number;
+    };
     SearchResults: {
       folders: components["schemas"]["Folder"][];
       files: components["schemas"]["File"][];
@@ -345,6 +349,18 @@ export interface paths {
   };
   "/api/v1/storage/connections/{id}": {
     delete: PathOperation;
+  };
+  "/api/v1/storage/connections/{id}/sync": {
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: { id: string };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: { 200: JsonBody<Schemas["SyncResult"]>; default: JsonBody<Schemas["Error"]> };
+    };
   };
   "/api/v1/storage/connections/{id}/test": {
     post: PathOperation;

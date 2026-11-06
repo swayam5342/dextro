@@ -40,6 +40,27 @@ export function useTestConnection(id: string) {
   });
 }
 
+export function useSyncConnection(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await api.POST("/api/v1/storage/connections/{id}/sync", {
+        params: { path: { id } },
+      });
+      if (!data) {
+        throw toApiError(error);
+      }
+      return data;
+    },
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["files"] }),
+        queryClient.invalidateQueries({ queryKey: ["trash"] }),
+        queryClient.invalidateQueries({ queryKey: poolQuery.queryKey }),
+      ]),
+  });
+}
+
 export function useRemoveConnection(id: string) {
   const queryClient = useQueryClient();
   return useMutation({

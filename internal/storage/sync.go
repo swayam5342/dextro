@@ -7,6 +7,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/swayam5342/dextro/internal/provider/gdrive"
 )
 
@@ -36,11 +38,30 @@ type Health struct {
 	Unreachable []Unreachable
 }
 
+// Account names a linked account and its owner.
+type Account struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// AllAccounts returns every user's linked accounts. Only background jobs call it.
+func (s *Service) AllAccounts(ctx context.Context) ([]Account, error) {
+	records, err := s.store.ListAllConnectionsForJobs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	accounts := make([]Account, 0, len(records))
+	for _, r := range records {
+		accounts = append(accounts, Account{ID: r.ID, UserID: r.userID})
+	}
+	return accounts, nil
+}
+
 // SyncQuotas asks every linked account how full it is and saves the answer. An
 // account that can't be reached is a result, not a failure; an error here means
 // the sync itself couldn't run.
 func (s *Service) SyncQuotas(ctx context.Context) (SyncResult, error) {
-	records, err := s.store.ListAllConnectionsForQuotaSync(ctx)
+	records, err := s.store.ListAllConnectionsForJobs(ctx)
 	if err != nil {
 		return SyncResult{}, err
 	}

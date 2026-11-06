@@ -66,6 +66,8 @@ type fixture struct {
 	opened   []gdrive.Credentials
 	// wrap, if set, changes the provider an account opens to.
 	wrap func(provider.Provider) provider.Provider
+	// afterConnect, if set, runs after an account is linked over HTTP.
+	afterConnect AfterConnect
 }
 
 // account returns the in-memory Drive behind an email address.

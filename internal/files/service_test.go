@@ -130,6 +130,10 @@ func (p *providers) OpenUploadSession(uuid.UUID, secrets.Sealed) (string, error)
 	return "", errors.New("not used by these tests")
 }
 
+func (p *providers) AllAccounts(context.Context) ([]storage.Account, error) {
+	return nil, errors.New("not used by these tests")
+}
+
 func (p *providers) forConnection(id uuid.UUID) *flaky {
 	p.mu.Lock()
 	defer p.mu.Unlock()

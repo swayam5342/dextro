@@ -900,6 +900,26 @@ paths:
           description: The connection is gone.
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/storage/connections/{id}/sync:
+    post:
+      operationId: syncConnection
+      summary: Make dextro match what's really in an account
+      description: >
+        Files in dextro's folder that dextro has no record of are added, and
+        records of files that are gone are removed. Files added back go to the
+        top level, because folders exist only in dextro.
+      tags: [storage]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: What changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/storage/connections/{id}/test:
     post:
       operationId: testConnection
@@ -1484,6 +1504,14 @@ components:
           format: date-time
         file:
           $ref: "#/components/schemas/File"
+    SyncResult:
+      type: object
+      required: [added, removed]
+      properties:
+        added:
+          type: integer
+        removed:
+          type: integer
     Error:
       type: object
       description: Body of every error response.

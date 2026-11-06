@@ -26,7 +26,7 @@ const (
 	chunkSize       = 8 << 20
 	defaultPageSize = 1000
 	tokenTimeout    = 30 * time.Second
-	fileFields      = "id,name,size,modifiedTime"
+	fileFields      = "id,name,size,mimeType,modifiedTime"
 	// thumbnailSize is the long edge to ask Google for, sharp at the size of a grid tile.
 	thumbnailSize = "=s480"
 )
@@ -293,7 +293,7 @@ func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectP
 func toObject(file *drive.File) provider.Object {
 	// A bad timestamp isn't worth failing over; the zero time just shows as unknown.
 	modified, _ := time.Parse(time.RFC3339, file.ModifiedTime)
-	return provider.Object{ID: file.Id, Name: file.Name, Size: file.Size, ModifiedAt: modified}
+	return provider.Object{ID: file.Id, Name: file.Name, Size: file.Size, ContentType: file.MimeType, ModifiedAt: modified}
 }
 
 func escapeQuery(value string) string {

@@ -86,6 +86,15 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 	})
 
+	t.Run("a listing says what type an object is", func(t *testing.T) {
+		object := put(t, "typed.txt", "hello")
+		for _, listed := range listAll(t) {
+			if listed.ID == object.ID && listed.ContentType != "text/plain" {
+				t.Errorf("ContentType = %q", listed.ContentType)
+			}
+		}
+	})
+
 	t.Run("a stored object reads back", func(t *testing.T) {
 		object := put(t, "notes.txt", "hello")
 		if object.ID == "" || object.Name != "notes.txt" || object.Size != 5 {

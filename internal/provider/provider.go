@@ -18,10 +18,13 @@ var (
 // Object describes one stored file.
 type Object struct {
 	// ID is what the provider knows the object by. It is opaque to callers.
-	ID         string
-	Name       string
-	Size       int64
-	ModifiedAt time.Time
+	ID   string
+	Name string
+	Size int64
+	// ContentType is what the object was stored as, which a listing needs to bring a
+	// file back. Empty if the account doesn't say.
+	ContentType string
+	ModifiedAt  time.Time
 }
 
 // ObjectPage is one page of a listing. NextPageToken is empty on the last page.

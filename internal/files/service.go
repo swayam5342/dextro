@@ -95,6 +95,7 @@ type Providers interface {
 	Reserve(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, r storage.Reservation) (storage.Chosen, error)
 	SealUploadSession(id uuid.UUID, address string) secrets.Sealed
 	OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string, error)
+	AllAccounts(ctx context.Context) ([]storage.Account, error)
 }
 
 // Service holds the rules for files and folders.

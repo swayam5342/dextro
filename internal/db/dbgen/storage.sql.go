@@ -155,15 +155,15 @@ func (q *Queries) GetConnectionTotals(ctx context.Context) (GetConnectionTotalsR
 	return i, err
 }
 
-const listAllConnectionsForQuotaSync = `-- name: ListAllConnectionsForQuotaSync :many
+const listAllConnectionsForJobs = `-- name: ListAllConnectionsForJobs :many
 SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes
 FROM storage_connections
 ORDER BY created_at, id
 `
 
-// Instance-wide on purpose: only the background quota sync calls this.
-func (q *Queries) ListAllConnectionsForQuotaSync(ctx context.Context) ([]StorageConnection, error) {
-	rows, err := q.db.Query(ctx, listAllConnectionsForQuotaSync)
+// Instance-wide on purpose: only the background jobs call this.
+func (q *Queries) ListAllConnectionsForJobs(ctx context.Context) ([]StorageConnection, error) {
+	rows, err := q.db.Query(ctx, listAllConnectionsForJobs)
 	if err != nil {
 		return nil, err
 	}

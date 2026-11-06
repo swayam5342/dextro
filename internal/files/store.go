@@ -344,3 +344,40 @@ func toFolder(row dbgen.Folder) Folder {
 		UpdatedAt: row.UpdatedAt,
 	}
 }
+
+// objectRecord is enough of a file to compare it with what's in an account.
+type objectRecord struct {
+	id        uuid.UUID
+	createdAt time.Time
+}
+
+// ObjectsForConnection returns a user's files in one account, by object ID.
+func (s *Store) ObjectsForConnection(ctx context.Context, userID, connectionID uuid.UUID) (map[string]objectRecord, error) {
+	rows, err := s.queries.ListObjectsForConnection(ctx, dbgen.ListObjectsForConnectionParams{UserID: userID, ConnectionID: connectionID})
+	if err != nil {
+		return nil, fmt.Errorf("list objects: %w", err)
+	}
+	objects := make(map[string]objectRecord, len(rows))
+	for _, row := range rows {
+		objects[row.ObjectID] = objectRecord{id: row.ID, createdAt: row.CreatedAt}
+	}
+	return objects, nil
+}
+
+// ImportFile records an object found in an account, unless something already has.
+// It says whether it added one.
+func (s *Store) ImportFile(ctx context.Context, userID uuid.UUID, r fileRecord) (bool, error) {
+	rows, err := s.queries.ImportFile(ctx, dbgen.ImportFileParams{
+		ID:           uuid.New(),
+		UserID:       userID,
+		ConnectionID: r.ConnectionID,
+		ObjectID:     r.objectID,
+		Name:         r.Name,
+		Size:         r.Size,
+		ContentType:  r.ContentType,
+	})
+	if err != nil {
+		return false, fmt.Errorf("import file: %w", err)
+	}
+	return rows > 0, nil
+}

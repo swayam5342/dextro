@@ -29,6 +29,7 @@ const (
 	ActionSettingsUpdated  = "settings.updated"
 	ActionStorageConnected = "storage.connected"
 	ActionStorageRemoved   = "storage.removed"
+	ActionStorageSynced    = "storage.synced"
 	ActionAPIKeyCreated    = "api_key.created"
 	ActionAPIKeyRevoked    = "api_key.revoked"
 	ActionFileDeleted      = "file.deleted"

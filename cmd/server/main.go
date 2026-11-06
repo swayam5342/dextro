@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swayam5342/dextro/internal/admin"
@@ -82,7 +83,7 @@ func run() error {
 		APIKeys:        authService,
 		Auth:           auth.NewHandler(authService, google, logger),
 		Admin:          admin.NewHandler(admin.NewService(settings, storageService), logger),
-		Storage:        storage.NewHandler(storageService, logger),
+		Storage:        storage.NewHandler(storageService, logger, syncNewAccount(filesService)),
 		Files:          files.NewHandler(filesService, logger),
 	})
 
@@ -92,6 +93,7 @@ func run() error {
 		Quotas:   storageService,
 		Sessions: authService,
 		Uploads:  filesService,
+		Files:    filesService,
 		Runs:     settings,
 	})
 	if err != nil {
@@ -112,6 +114,14 @@ func run() error {
 	stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	return errors.Join(serveErr, runner.Stop(stopCtx))
+}
+
+// syncNewAccount lets the storage feature, which files imports, trigger a sync.
+func syncNewAccount(service *files.Service) storage.AfterConnect {
+	return func(ctx context.Context, userID, connectionID uuid.UUID, ip string) error {
+		_, err := service.SyncConnection(ctx, userID, connectionID, ip)
+		return err
+	}
 }
 
 func newStorageService(cfg config.Config, pool *pgxpool.Pool) (*storage.Service, error) {
