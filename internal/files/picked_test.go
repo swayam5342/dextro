@@ -14,8 +14,8 @@ import (
 	"github.com/swayam5342/dextro/internal/storage"
 )
 
-// picked puts a file in an account that dextro didn't create, as someone's own
-// files are. Listings leave it out, because it isn't in dextro's folder.
+// picked puts a file in an account that Tributary didn't create, as someone's own
+// files are. Listings leave it out, because it isn't in Tributary's folder.
 func (f *uploadFixture) picked(t *testing.T, email, name, contentType string) string {
 	t.Helper()
 	account := f.account(email)
@@ -176,7 +176,7 @@ func testPickedAudited(t *testing.T, f *uploadFixture) {
 	}
 }
 
-// addedFile adds a picked file and returns its ID in dextro and in the account.
+// addedFile adds a picked file and returns its ID in Tributary and in the account.
 func (f *uploadFixture) addedFile(t *testing.T, userID, connection uuid.UUID) (uuid.UUID, string) {
 	t.Helper()
 	object := f.picked(t, "a@gmail.com", "mine.jpg", "image/jpeg")

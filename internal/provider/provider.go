@@ -1,4 +1,4 @@
-// Package provider defines what dextro needs from a storage service.
+// Package provider defines what Tributary needs from a storage service.
 package provider
 
 import (
@@ -75,7 +75,7 @@ type Thumbnail struct {
 type Upload struct {
 	Name        string
 	ContentType string
-	// Parent is the folder to store it in. Empty means dextro's own folder.
+	// Parent is the folder to store it in. Empty means Tributary's own folder.
 	Parent string
 	Body   io.Reader
 }
@@ -91,7 +91,7 @@ type Resumable struct {
 	Name        string
 	ContentType string
 	Size        int64
-	// Parent is the folder to store it in. Empty means dextro's own folder.
+	// Parent is the folder to store it in. Empty means Tributary's own folder.
 	Parent string
 }
 
@@ -121,8 +121,8 @@ const (
 	ShareEditor    ShareRole = "writer"
 )
 
-// Provider is a storage account. Implementations see only what the account lets dextro
-// see, keep new objects in dextro's folder, touch permissions only in Share and Unshare, and keep no state
+// Provider is a storage account. Implementations see only what the account lets Tributary
+// see, keep new objects in Tributary's folder, touch permissions only in Share and Unshare, and keep no state
 // between calls that would tie them to one request.
 type Provider interface {
 	// Check confirms the account is reachable with its credentials.
@@ -137,7 +137,7 @@ type Provider interface {
 	Get(ctx context.Context, id string, rng *ByteRange) (io.ReadCloser, error)
 	// Thumbnail opens a small preview image of an object.
 	Thumbnail(ctx context.Context, id string) (Thumbnail, error)
-	// Delete removes an object permanently. Moving files to the trash is dextro's
+	// Delete removes an object permanently. Moving files to the trash is Tributary's
 	// job, above this interface.
 	Delete(ctx context.Context, id string) error
 	// Exists asks about one object directly. Something in the account's trash counts
@@ -149,21 +149,21 @@ type Provider interface {
 	// AccessToken returns a short-lived token for the account, for Google's picker to
 	// run with in the browser. It's a secret: it must never be logged or stored.
 	AccessToken(ctx context.Context) (string, error)
-	// RootID names dextro's own folder, the top of everything it stores.
+	// RootID names Tributary's own folder, the top of everything it stores.
 	RootID() string
-	// CreateFolder makes a folder inside parent, or in dextro's own folder if parent is
+	// CreateFolder makes a folder inside parent, or in Tributary's own folder if parent is
 	// empty, and returns its ID.
 	CreateFolder(ctx context.Context, parent, name string) (string, error)
 	// Rename changes an object's name.
 	Rename(ctx context.Context, id, name string) error
-	// Move puts an object inside parent, or in dextro's own folder if parent is empty.
+	// Move puts an object inside parent, or in Tributary's own folder if parent is empty.
 	Move(ctx context.Context, id, parent string) error
 	// Trash moves an object to the account's trash, where its owner can still get it
 	// back. Folders go this way because deleting one takes its contents with it, and
-	// dextro can't see anything added to it by hand.
+	// Tributary can't see anything added to it by hand.
 	Trash(ctx context.Context, id string) error
-	// List returns one page of everything the account lets dextro see, folders
-	// included, but not dextro's own folder. An empty token starts from the beginning.
+	// List returns one page of everything the account lets Tributary see, folders
+	// included, but not Tributary's own folder. An empty token starts from the beginning.
 	List(ctx context.Context, pageToken string) (ObjectPage, error)
 	// BeginResumable starts an upload sent in chunks. The result is the session's
 	// address, which grants access to the upload and must be kept secret.

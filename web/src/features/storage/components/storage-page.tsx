@@ -63,21 +63,21 @@ function emptyingText(files: AccountFiles | undefined, idle: boolean): string {
   }
   const added = files?.external_files ?? 0;
   if (added > 0) {
-    return `Emptied. ${added === 1 ? "1 file added from Drive stays" : `${added} files added from Drive stay`} here, and will leave dextro if you remove the account.`;
+    return `Emptied. ${added === 1 ? "1 file added from Drive stays" : `${added} files added from Drive stay`} here, and will leave Tributary if you remove the account.`;
   }
   return "Empty. You can remove it now.";
 }
 
-/** Says what removing an account costs, which is everything dextro shows from it. */
+/** Says what removing an account costs, which is everything Tributary shows from it. */
 function removeText(files: AccountFiles | undefined): string {
   if (!files) {
-    return "dextro will forget its token and stop showing anything stored in it. It all stays in that Drive. To keep it in dextro, empty the account first.";
+    return "Tributary will forget its token and stop showing anything stored in it. It all stays in that Drive. To keep it in Tributary, empty the account first.";
   }
   const held = files.files + files.external_files;
   if (held === 0) {
-    return "dextro will forget its token. Nothing is stored in it.";
+    return "Tributary will forget its token. Nothing is stored in it.";
   }
-  return `dextro will forget its token and stop showing the ${count(held, "file")} stored in it, trash included. They stay in that Drive. To keep them in dextro, empty the account first.`;
+  return `Tributary will forget its token and stop showing the ${count(held, "file")} stored in it, trash included. They stay in that Drive. To keep them in Tributary, empty the account first.`;
 }
 
 /** The account an upload goes to next: the one picked, or the one with most room. */
@@ -413,7 +413,7 @@ export function StoragePage({
       <Moves queue={queue} />
       {config?.google_enabled ? (
         <p className="max-w-[60ch] text-xs text-faint">
-          dextro keeps its files in a folder named dextro in each account, and can't see anything else in
+          Tributary keeps its files in a folder named dextro in each account, and can't see anything else in
           them. A file is stored whole in one account, so the largest file you can upload is limited by the
           account with the most free space.
         </p>

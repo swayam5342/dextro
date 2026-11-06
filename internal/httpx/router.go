@@ -91,6 +91,7 @@ type AdminHandlers interface {
 	GetSettings(w http.ResponseWriter, r *http.Request)
 	UpdateSettings(w http.ResponseWriter, r *http.Request)
 	GetServerStatus(w http.ResponseWriter, r *http.Request)
+	RunJob(w http.ResponseWriter, r *http.Request, name string)
 	ListAuditEvents(w http.ResponseWriter, r *http.Request, params apigen.ListAuditEventsParams)
 }
 

@@ -1,4 +1,4 @@
-// Command server runs dextro. This file only wires the pieces together.
+// Command server runs Tributary. This file only wires the pieces together.
 package main
 
 import (
@@ -29,7 +29,7 @@ const shutdownTimeout = 15 * time.Second
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "dextro:", err)
+		fmt.Fprintln(os.Stderr, "tributary:", err)
 		os.Exit(1)
 	}
 }
@@ -68,20 +68,6 @@ func run() error {
 	}
 	filesService := files.NewService(files.NewStore(pool), storageService)
 	settings := admin.NewStore(pool)
-	adminService := admin.NewService(settings, storageService)
-	router := httpx.NewRouter(httpx.Deps{
-		Logger:         logger,
-		DB:             pool,
-		PublicOrigin:   cfg.PublicURL,
-		TrustedProxies: cfg.TrustedProxies,
-		Sessions:       authService,
-		APIKeys:        authService,
-		Auth:           auth.NewHandler(authService, google, logger),
-		Admin:          admin.NewHandler(adminService, logger),
-		Storage:        storage.NewHandler(storageService, logger, syncNewAccount(filesService)),
-		Files:          files.NewHandler(filesService, logger),
-	})
-
 	runner, err := jobs.Start(ctx, jobs.Deps{
 		Pool:     pool,
 		Logger:   logger,
@@ -94,6 +80,20 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	adminService := admin.NewService(settings, storageService, runner)
+	router := httpx.NewRouter(httpx.Deps{
+		Logger:         logger,
+		DB:             pool,
+		PublicOrigin:   cfg.PublicURL,
+		TrustedProxies: cfg.TrustedProxies,
+		Sessions:       authService,
+		APIKeys:        authService,
+		Auth:           auth.NewHandler(authService, google, logger),
+		Admin:          admin.NewHandler(adminService, logger),
+		Storage:        storage.NewHandler(storageService, logger, syncNewAccount(filesService)),
+		Files:          files.NewHandler(filesService, logger),
+	})
 
 	// There is no WriteTimeout or ReadTimeout because uploads and downloads can
 	// legitimately run for hours.

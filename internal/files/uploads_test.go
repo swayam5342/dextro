@@ -531,7 +531,7 @@ func testResumeSyncsWithAccount(t *testing.T, f *uploadFixture) {
 	f.link(t, user, "a@gmail.com", 1<<30)
 	body := strings.Repeat("x", 2*align)
 	session := f.begin(t, user, int64(len(body)))
-	// The chunk reached the account, but the answer never got back to dextro.
+	// The chunk reached the account, but the answer never got back to Tributary.
 	_, err := f.account("a@gmail.com").PutChunk(f.ctx, f.address(t, user, session.ID), provider.Chunk{
 		Length: align,
 		Total:  int64(len(body)),

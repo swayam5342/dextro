@@ -518,7 +518,7 @@ func runFolders(t *testing.T, p provider.Provider) {
 		return id
 	}
 
-	t.Run("a new folder is listed inside dextro's own", func(t *testing.T) {
+	t.Run("a new folder is listed inside the app's own", func(t *testing.T) {
 		id := folder(t, "", "Photos")
 		got, ok := everything(t)[id]
 		if !ok || !got.Folder || got.Name != "Photos" || got.Parent != p.RootID() {
@@ -526,9 +526,9 @@ func runFolders(t *testing.T, p provider.Provider) {
 		}
 	})
 
-	t.Run("dextro's own folder isn't listed", func(t *testing.T) {
+	t.Run("the app's own folder isn't listed", func(t *testing.T) {
 		if _, ok := everything(t)[p.RootID()]; ok {
-			t.Error("the listing includes dextro's own folder")
+			t.Error("the listing includes the app's own folder")
 		}
 	})
 

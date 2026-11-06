@@ -14,6 +14,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
+	"github.com/swayam5342/dextro/internal/admin"
 	"github.com/swayam5342/dextro/internal/files"
 	"github.com/swayam5342/dextro/internal/storage"
 )
@@ -293,6 +294,20 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 		return nil, fmt.Errorf("start river: %w", err)
 	}
 	return &Runner{client: client}, nil
+}
+
+// RunNow starts a job straight away, alongside its schedule. A job that's already running
+// runs twice, which every job here can take.
+func (r *Runner) RunNow(ctx context.Context, name string) error {
+	for _, args := range []river.JobArgs{quotaSyncArgs{}, sessionCleanupArgs{}, uploadCleanupArgs{}, fileSyncArgs{}, fileTransfersArgs{}, shareExpiryArgs{}} {
+		if args.Kind() == name {
+			if _, err := r.client.Insert(ctx, args, &river.InsertOpts{MaxAttempts: maxAttempts}); err != nil {
+				return fmt.Errorf("start job %s: %w", name, err)
+			}
+			return nil
+		}
+	}
+	return admin.ErrUnknownJob
 }
 
 // Stop lets running jobs finish, up to ctx's deadline.

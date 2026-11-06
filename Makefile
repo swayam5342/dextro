@@ -52,8 +52,8 @@ web-build: $(WEB_DEPS) ## Type-check and build the frontend into web/dist
 	cd web && pnpm build
 
 build: web-build ## Build the frontend into web/dist, and the server and admin CLI into bin/
-	CGO_ENABLED=0 go build -trimpath -o $(BIN)/dextro$(EXE) ./cmd/server
-	CGO_ENABLED=0 go build -trimpath -o $(BIN)/dextro-cli$(EXE) ./cmd/cli
+	CGO_ENABLED=0 go build -trimpath -o $(BIN)/tributary$(EXE) ./cmd/server
+	CGO_ENABLED=0 go build -trimpath -o $(BIN)/tributary-cli$(EXE) ./cmd/cli
 
 lint: $(GOLANGCI_LINT) $(WEB_DEPS) ## Lint Go and TypeScript, and type-check the frontend
 	$(GOLANGCI_LINT) run ./...
@@ -92,10 +92,10 @@ down: ## Stop the stack and keep its data
 
 admin: export MSYS_NO_PATHCONV=1
 admin: ## Run an admin command on the running stack: make admin cmd="users"
-	$(COMPOSE) exec api /dextro-cli $(or $(cmd),help)
+	$(COMPOSE) exec api /tributary-cli $(or $(cmd),help)
 
 migration: $(GOOSE) ## Create a migration: make migration name=add_users
 	$(GOOSE) -dir internal/db/migrations create $(name) sql
 
 clean: ## Remove build output, keeping the tools in bin/
-	rm -rf $(BIN)/dextro$(EXE) web/dist
+	rm -rf $(BIN)/tributary$(EXE) $(BIN)/tributary-cli$(EXE) web/dist

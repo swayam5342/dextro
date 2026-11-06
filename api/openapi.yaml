@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: dextro
+  title: Tributary
   version: 0.1.0
   description: >
     Self-hosted file storage gateway. Paths in this file are written in full.
@@ -698,7 +698,7 @@ paths:
   /api/v1/admin/users/{id}:
     delete:
       operationId: deleteUser
-      summary: Delete an account and dextro's records of its files
+      summary: Delete an account and Tributary's records of its files
       description: The files themselves stay in that person's Google Drive.
       tags: [admin]
       parameters:
@@ -740,6 +740,26 @@ paths:
                 $ref: "#/components/schemas/ServerStatus"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/admin/jobs/{name}/run:
+    post:
+      operationId: runJob
+      summary: Run a background job now
+      description: >
+        Starts the job and answers straight away, without waiting for it to finish. The
+        status page shows when it has.
+      tags: [admin]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: The job's name, as the status page reports it.
+          schema:
+            type: string
+      responses:
+        "202":
+          description: The job has started.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/admin/audit:
     get:
       operationId: listAuditEvents
@@ -772,7 +792,7 @@ paths:
       operationId: getUsage
       summary: See how much of your storage each kind of file takes
       description: >
-        From dextro's own records, so it costs no Google requests. Files in the trash
+        From Tributary's own records, so it costs no Google requests. Files in the trash
         count, because they still take up room in their accounts.
       tags: [files]
       responses:
@@ -1111,9 +1131,9 @@ paths:
   /api/v1/storage/connections/{id}/sync:
     post:
       operationId: syncConnection
-      summary: Make dextro match what's really in an account
+      summary: Make Tributary match what's really in an account
       description: >
-        Files in dextro's folder that dextro has no record of are added, and
+        Files in Tributary's folder that Tributary has no record of are added, and
         records of files that are gone are removed. Files and folders come back in their right place.
       tags: [storage]
       parameters:
@@ -1152,7 +1172,7 @@ paths:
       summary: Add files chosen in Google's picker
       description: >
         The files stay where they are in Drive, and deleting them forever only
-        removes them from dextro.
+        removes them from Tributary.
       tags: [storage]
       parameters:
         - $ref: "#/components/parameters/Id"
@@ -1385,7 +1405,7 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: When dextro removes the link. Null means it stays until removed.
+          description: When Tributary removes the link. Null means it stays until removed.
         created_at:
           type: string
           format: date-time

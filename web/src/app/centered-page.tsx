@@ -9,7 +9,7 @@ export function CenteredPage({ children }: { children: ReactNode }) {
       <div className="w-full max-w-sm space-y-6 py-8">
         <p className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
           <Mark className="size-7" />
-          dextro
+          Tributary
         </p>
         {children}
       </div>

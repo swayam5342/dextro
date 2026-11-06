@@ -1,4 +1,4 @@
-// Command dextro-cli is the admin's command line. It's wiring only: the commands are in
+// Command tributary-cli is the admin's command line. It's wiring only: the commands are in
 // internal/cli.
 package main
 
@@ -22,7 +22,7 @@ import (
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "dextro-cli:", err)
+		fmt.Fprintln(os.Stderr, "tributary-cli:", err)
 		os.Exit(1)
 	}
 }
@@ -52,8 +52,9 @@ func run(args []string, out io.Writer) error {
 		return err
 	}
 	return cli.Run(ctx, cli.Deps{
-		Auth:  auth.NewService(auth.NewStore(pool)),
-		Admin: admin.NewService(admin.NewStore(pool), storageService),
+		Auth: auth.NewService(auth.NewStore(pool)),
+		// Starting jobs is the running server's business, so nothing here can.
+		Admin: admin.NewService(admin.NewStore(pool), storageService, nil),
 		Files: files.NewService(files.NewStore(pool), storageService),
 	}, args, out)
 }

@@ -19,8 +19,8 @@ const (
 	// maxZipFiles bounds a zip, because each file costs about a second at Google.
 	maxZipFiles = 2000
 	// missingFilesNote says what couldn't be included, inside the zip itself.
-	missingFilesNote = "Files dextro could not find.txt"
-	defaultZipName   = "dextro.zip"
+	missingFilesNote = "Files Tributary could not find.txt"
+	defaultZipName   = "tributary.zip"
 )
 
 // Errors for zip downloads.

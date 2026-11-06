@@ -19,11 +19,11 @@ import (
 	"github.com/swayam5342/dextro/internal/files"
 )
 
-const usage = `usage: dextro-cli <command>
+const usage = `usage: tributary-cli <command>
 
 Server
   status                       How the server, accounts and background jobs are doing
-  sync                         Match dextro to every linked account now
+  sync                         Match Tributary to every linked account now
 
 Users
   users                        List every user
@@ -79,11 +79,11 @@ func Run(ctx context.Context, d Deps, args []string, out io.Writer) error {
 	case name == "create-user" && len(rest) == 1:
 		return createUser(ctx, d, rest[0], out)
 	case name == "delete-user" && len(rest) == 1:
-		_, err := fmt.Fprintf(out, `This deletes %[1]s, their linked accounts and dextro's records of their files.
+		_, err := fmt.Fprintf(out, `This deletes %[1]s, their linked accounts and Tributary's records of their files.
 Their files stay in Google Drive, and any Google links they made keep working.
 It can't be undone. To go ahead:
 
-  dextro-cli delete-user %[1]s --yes
+  tributary-cli delete-user %[1]s --yes
 `, rest[0])
 		return err
 	case name == "delete-user" && len(rest) == 2 && rest[1] == "--yes":

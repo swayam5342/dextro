@@ -35,7 +35,7 @@ func (f *uploadFixture) stored(t *testing.T, email, name, contentType string) pr
 	return object
 }
 
-// recorded uploads a file through dextro and makes it old enough to be judged.
+// recorded uploads a file through Tributary and makes it old enough to be judged.
 func (f *uploadFixture) recorded(t *testing.T, userID uuid.UUID, email, name string) File {
 	t.Helper()
 	file, err := f.service.Upload(f.ctx, userID, UploadInput{Name: name, ContentType: "text/plain", Size: 5, Body: strings.NewReader("hello")})
@@ -384,7 +384,7 @@ func testMissingFolderRemovesNothing(t *testing.T, f *uploadFixture) {
 	connection := f.link(t, user, "a@gmail.com", 1<<30)
 	f.recorded(t, user, "a@gmail.com", "a.txt")
 	account := f.account("a@gmail.com")
-	// A trashed dextro folder lists as empty. That mustn't read as everything deleted.
+	// A trashed Tributary folder lists as empty. That mustn't read as everything deleted.
 	account.Hide("1")
 	account.CheckErr = errFolderMissing
 	if _, err := f.service.SyncConnection(f.ctx, user, connection, "job"); !errors.Is(err, ErrProviderFailed) {

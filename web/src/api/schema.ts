@@ -65,7 +65,7 @@ export interface components {
       name: string;
       role: "viewer" | "commenter" | "editor";
       url: string;
-      /** When dextro removes the link. Null means it stays until removed. */
+      /** When Tributary removes the link. Null means it stays until removed. */
       expires_at: string | null;
       created_at: string;
     };
@@ -612,6 +612,21 @@ export interface paths {
   };
   "/api/v1/admin/status": {
     get: Operation<{ 200: JsonBody<Schemas["ServerStatus"]> }>;
+  };
+  "/api/v1/admin/jobs/{name}/run": {
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: { name: string };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        202: NoContent;
+        default: JsonBody<Schemas["Error"]>;
+      };
+    };
   };
   "/api/v1/admin/audit": {
     get: {

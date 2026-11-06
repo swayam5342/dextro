@@ -1,4 +1,4 @@
-// Package storage manages the Google Drive accounts users link to dextro.
+// Package storage manages the Google Drive accounts users link to Tributary.
 package storage
 
 import (
@@ -35,7 +35,7 @@ var (
 	ErrConnectionFailed   = errors.New("connection failed")
 	ErrConnectionNotFound = errors.New("connection not found")
 	// ErrConnectionHasLinks means removing an account would leave public links working
-	// with nothing in dextro to show them.
+	// with nothing in Tributary to show them.
 	ErrConnectionHasLinks = errors.New("connection has public links")
 	ErrPickerDisabled     = errors.New("picker isn't configured")
 )

@@ -30,9 +30,9 @@ type ImportResult struct {
 }
 
 // ImportPicked adds files someone chose in Google's picker, which is what lets
-// dextro see them. They stay where they are in Drive. They're the person's own files
-// rather than dextro's, so they're marked External and deleting them only removes
-// them from dextro.
+// Tributary see them. They stay where they are in Drive. They're the person's own files
+// rather than Tributary's, so they're marked External and deleting them only removes
+// them from Tributary.
 func (s *Service) ImportPicked(ctx context.Context, userID, connectionID uuid.UUID, ids []string, ip string) (ImportResult, error) {
 	if len(ids) == 0 || len(ids) > maxPicked {
 		return ImportResult{}, ErrInvalidImport

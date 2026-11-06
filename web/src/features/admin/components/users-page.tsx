@@ -140,8 +140,8 @@ function DeleteUserDialog({ user, onClose }: { user: ManagedUser; onClose: () =>
         <div className="space-y-1.5">
           <DialogTitle className="truncate text-base font-semibold">Delete {user.email}?</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Their linked accounts and dextro's records of their files go for good. The files themselves stay in
-            their Google Drive. This can't be undone. Any Google links they made keep working, and dextro can't end them afterwards.
+            Their linked accounts and Tributary's records of their files go for good. The files themselves stay in
+            their Google Drive. This can't be undone. Any Google links they made keep working, and Tributary can't end them afterwards.
           </DialogDescription>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

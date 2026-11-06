@@ -125,6 +125,23 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	// Asking for a job runs it now, on its own queue if it has one.
+	syncs, moves := synced.calls.Load(), synced.transfers.Load()
+	if err := runner.RunNow(ctx, KindFileSync); err != nil {
+		t.Fatalf("RunNow: %v", err)
+	}
+	if err := runner.RunNow(ctx, KindFileTransfers); err != nil {
+		t.Fatalf("RunNow: %v", err)
+	}
+	for synced.calls.Load() == syncs || synced.transfers.Load() == moves {
+		if time.Now().After(deadline) {
+			t.Fatal("the jobs didn't run")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := runner.RunNow(ctx, "nonsense"); !errors.Is(err, admin.ErrUnknownJob) {
+		t.Errorf("error = %v, want ErrUnknownJob", err)
+	}
 	if quotas.calls.Load() == 0 || sessions.calls.Load() == 0 || uploads.calls.Load() == 0 {
 		t.Errorf("calls: quotas %d, sessions %d, uploads %d", quotas.calls.Load(), sessions.calls.Load(), uploads.calls.Load())
 	}

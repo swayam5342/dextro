@@ -63,7 +63,7 @@ func TestCommands(t *testing.T) {
 	service := storage.NewService(storage.Deps{Store: storage.NewStore(pool), Keyring: keyring, OpenDrive: storage.NewOpenDrive(nil)})
 	f := &fixture{ctx: ctx, pool: pool, deps: Deps{
 		Auth:  auth.NewService(auth.NewStore(pool)),
-		Admin: admin.NewService(admin.NewStore(pool), service),
+		Admin: admin.NewService(admin.NewStore(pool), service, nil),
 		Files: files.NewService(files.NewStore(pool), service),
 	}}
 	tests := []struct {

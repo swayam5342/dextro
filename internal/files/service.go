@@ -345,7 +345,7 @@ func liveFile(ctx context.Context, store *Store, userID, id uuid.UUID) (fileReco
 	return record, nil
 }
 
-// RenameFile changes a file's name. Only dextro's record changes.
+// RenameFile changes a file's name. Only Tributary's record changes.
 func (s *Service) RenameFile(ctx context.Context, userID, id uuid.UUID, rawName string) (File, error) {
 	name, err := cleanName(rawName)
 	if err != nil {
@@ -441,7 +441,7 @@ func (s *Service) DeleteFile(ctx context.Context, userID, id uuid.UUID, ip strin
 // fails, the record stays so the delete can be tried again; an object that's
 // already gone counts as success, which is what makes a retry safe.
 func (s *Service) destroy(ctx context.Context, userID uuid.UUID, record fileRecord, ip string) error {
-	// Someone's own Drive file isn't dextro's to delete, so only the record goes.
+	// Someone's own Drive file isn't Tributary's to delete, so only the record goes.
 	if !record.External {
 		stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 		if err != nil {

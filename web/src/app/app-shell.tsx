@@ -291,7 +291,7 @@ function Frame() {
     <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_58px] md:grid-cols-[224px_minmax(0,1fr)] md:grid-rows-[64px_minmax(0,1fr)]">
       <Link to="/" search={{}} className="hidden items-center gap-2.5 border-r border-b px-5 text-[17px] font-semibold tracking-tight md:flex">
         <Mark className="size-6" />
-        dextro
+        Tributary
       </Link>
       <header className="flex min-w-0 items-center gap-3 border-b px-3 md:px-6">
         <SearchBox />
