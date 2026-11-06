@@ -1,19 +1,32 @@
 import { useQuery } from "@tanstack/react-query";
-import { Pause, Play, Upload as UploadIcon, X } from "lucide-react";
+import { ChevronDown, Pause, Play, Upload as UploadIcon, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { connectionsQuery } from "@/features/storage/queries";
+import { routingText } from "@/features/storage/pool";
+import { connectionsQuery, routingQuery } from "@/features/storage/queries";
+import { recall, remember } from "@/lib/remember";
+import { cn } from "@/lib/utils";
 
 import { treeFromDrop } from "../folder-tree";
 import { useUploads, type Upload, type UploadStatus } from "../uploads";
 
-function destination(upload: Upload, emails: Map<string, string>): string {
+const MINIMISED_KEY = "dextro.uploads-minimised";
+
+function destination(upload: Upload, emails: Map<string, string>, routed: string): string {
   const account = upload.connectionId ? emails.get(upload.connectionId) : undefined;
   if (upload.status === "done") {
     return `In ${account ?? "your pool"}`;
   }
-  return account ? `To ${account}` : "To the account with the most free space";
+  return `To ${account ?? routed}`;
+}
+
+/** How far along the uploads are together. Ones that ended early don't count. */
+function overallPercent(uploads: Upload[]): number {
+  const counted = uploads.filter((upload) => upload.status !== "failed" && upload.status !== "cancelled");
+  const total = counted.reduce((sum, upload) => sum + upload.total, 0);
+  const loaded = counted.reduce((sum, upload) => sum + upload.loaded, 0);
+  return total > 0 ? Math.round((loaded / total) * 100) : 100;
 }
 
 export function RowButton({
@@ -30,7 +43,7 @@ export function RowButton({
   return (
     <button
       type="button"
-      className="grid size-6 place-items-center rounded-full hover:bg-raised hover:text-foreground"
+      className="grid size-6 place-items-center rounded-full enabled:hover:bg-raised enabled:hover:text-foreground disabled:opacity-40"
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
@@ -40,7 +53,7 @@ export function RowButton({
   );
 }
 
-function Row({ upload, emails }: { upload: Upload; emails: Map<string, string> }) {
+function Row({ upload, emails, routed }: { upload: Upload; emails: Map<string, string>; routed: string }) {
   const { cancel, pause, resume, reattach } = useUploads();
   const picker = useRef<HTMLInputElement>(null);
   const percent = upload.total > 0 ? Math.round((upload.loaded / upload.total) * 100) : 100;
@@ -105,7 +118,7 @@ function Row({ upload, emails }: { upload: Upload; emails: Map<string, string> }
           {upload.error}
         </p>
       ) : (
-        upload.status !== "cancelled" && <p className="text-xs text-faint">{destination(upload, emails)}</p>
+        upload.status !== "cancelled" && <p className="text-xs text-faint">{destination(upload, emails, routed)}</p>
       )}
     </li>
   );
@@ -115,8 +128,14 @@ function Row({ upload, emails }: { upload: Upload; emails: Map<string, string> }
 export function UploadPanel() {
   const { uploads, clearFinished } = useUploads();
   const { data: connections } = useQuery(connectionsQuery);
+  const { data: routing } = useQuery(routingQuery);
+  const [minimised, setMinimised] = useState(() => recall(MINIMISED_KEY) === "true");
   if (uploads.length === 0) {
     return null;
+  }
+  function toggle() {
+    setMinimised(!minimised);
+    remember(MINIMISED_KEY, String(!minimised));
   }
   const emails = new Map(connections?.map((c) => [c.id, c.summary]));
   const count = (...statuses: UploadStatus[]) => uploads.filter((u) => statuses.includes(u.status)).length;
@@ -132,22 +151,46 @@ export function UploadPanel() {
   } else if (failed > 0) {
     title = `${failed} failed`;
   }
+  const percent = overallPercent(uploads);
+  const unfinished = left + stopped > 0;
   return (
     <section
       aria-label="Uploads"
-      className="fixed right-4 bottom-[74px] z-30 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-card shadow-float md:right-5 md:bottom-5"
+      className={cn(
+        "fixed right-4 bottom-[74px] z-30 overflow-hidden rounded-2xl bg-card shadow-float md:right-5 md:bottom-5",
+        minimised ? "w-[min(280px,calc(100vw-2rem))]" : "w-[min(360px,calc(100vw-2rem))]",
+      )}
     >
-      <header className="flex items-center gap-2 py-2 pr-2 pl-4 font-semibold">
-        <span className="flex-1">{title}</span>
+      <header className="flex items-center gap-1 py-2 pr-2 pl-4 font-semibold">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={!minimised}
+          aria-controls="upload-list"
+          onClick={toggle}
+        >
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          {minimised && unfinished && <span className="shrink-0 text-[13px] font-normal text-muted-foreground">{percent}%</span>}
+          <span className="sr-only">{minimised ? "Show uploads" : "Minimise uploads"}</span>
+          <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground", minimised && "rotate-180")} />
+        </button>
         <Button variant="ghost" size="icon" disabled={finished === 0} aria-label="Clear finished uploads" onClick={clearFinished}>
           <X />
         </Button>
       </header>
-      <ul className="grid max-h-60 gap-3 overflow-y-auto px-4 pb-4">
-        {uploads.map((upload) => (
-          <Row key={upload.id} upload={upload} emails={emails} />
-        ))}
-      </ul>
+      {minimised ? (
+        unfinished && (
+          <div className="px-4 pb-3">
+            <progress className="level block" value={percent} max={100} aria-label="Progress of all uploads" />
+          </div>
+        )
+      ) : (
+        <ul id="upload-list" className="grid max-h-60 gap-3 overflow-y-auto px-4 pb-4">
+          {uploads.map((upload) => (
+            <Row key={upload.id} upload={upload} emails={emails} routed={routingText(routing?.mode)} />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { components } from "@/api/schema";
@@ -13,16 +13,18 @@ import { useUploads } from "@/features/files/uploads";
 import { count, formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { room, syncText, usableConnections } from "../pool";
+import { nextAccount, room, syncText, usableConnections } from "../pool";
 import {
   connectionsQuery,
   poolQuery,
+  routingQuery,
   transfersQuery,
   useCancelTransfer,
   useConnectGoogleDrive,
   useEmptyConnection,
   useRemoveConnection,
   useRetryTransfers,
+  useSetRouting,
   useStopEmptying,
   useSyncConnection,
   useTestConnection,
@@ -33,6 +35,7 @@ type AccountFiles = components["schemas"]["AccountFiles"];
 type Connection = components["schemas"]["Connection"];
 type Pool = components["schemas"]["Pool"];
 type PoolAccount = components["schemas"]["PoolAccount"];
+type RoutingMode = components["schemas"]["RoutingMode"];
 type Transfer = components["schemas"]["Transfer"];
 type TransferQueue = components["schemas"]["TransferQueue"];
 
@@ -80,16 +83,81 @@ function removeText(files: AccountFiles | undefined): string {
   return `Tributary will forget its token and stop showing the ${count(held, "file")} stored in it, trash included. They stay in that Drive. To keep them in Tributary, empty the account first.`;
 }
 
-/** The account an upload goes to next: the one picked, or the one with most room. */
-function nextAccount(pool: Pool, target: string): string | undefined {
-  if (target) {
-    return target;
+const ROUTING_MODES: { mode: RoutingMode; label: string; text: string }[] = [
+  { mode: "most_space", label: "Most space", text: "Each file goes to the account with the most free space." },
+  { mode: "round_robin", label: "Round robin", text: "Files take turns, so they spread evenly across your accounts." },
+  { mode: "priority", label: "Priority order", text: "Files fill your first account, then move on when one won't fit." },
+];
+
+/** How uploads choose an account. With one account there's nothing to choose. */
+function UploadRouting() {
+  const { data: connections } = useQuery(connectionsQuery);
+  const { data: routing } = useQuery(routingQuery);
+  const save = useSetRouting();
+  if (!connections || connections.length < 2 || !routing) {
+    return null;
   }
-  const working = pool.accounts.filter((account) => account.available && !account.connection.draining);
-  if (working.length < 2) {
-    return undefined;
+  const { mode, order } = routing;
+  function move(from: number, to: number) {
+    const next = [...order];
+    next.splice(to, 0, ...next.splice(from, 1));
+    save.mutate({ mode, order: next });
   }
-  return working.reduce((best, account) => (room(account) > room(best) ? account : best)).connection.id;
+  return (
+    <section aria-label="Upload routing" className="rounded-[14px] bg-card p-3.5">
+      <h2 className="font-semibold">Upload routing</h2>
+      <p className="text-[13px] text-muted-foreground">Where new files go when you don't pick an account.</p>
+      <div role="radiogroup" aria-label="Upload routing" className="mt-3 grid gap-2 sm:grid-cols-3">
+        {ROUTING_MODES.map(({ mode: option, label, text }) => (
+          <label
+            key={option}
+            className={cn(
+              "flex cursor-pointer items-start gap-2 rounded-[10px] border bg-well p-2.5",
+              option === mode && "border-foreground",
+            )}
+          >
+            <input
+              type="radio"
+              name="upload-routing"
+              className="mt-1 accent-foreground"
+              checked={option === mode}
+              onChange={() => save.mutate({ mode: option, order })}
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{label}</span>
+              <span className="block text-xs text-muted-foreground">{text}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {mode === "priority" && (
+        <ol aria-label="Account order" className="mt-3 grid gap-1">
+          {order.map((id, index) => {
+            const connection = connections.find((c) => c.id === id);
+            const name = connection?.summary ?? "Unknown account";
+            return (
+              <li key={id} className="flex items-center gap-2 text-[13px]">
+                <span className="w-4 shrink-0 text-right text-muted-foreground">{index + 1}</span>
+                <span className="min-w-0 flex-1 truncate">{name}</span>
+                {connection?.draining && <span className="shrink-0 text-xs text-faint">Being emptied, so skipped</span>}
+                <RowButton label={`Move ${name} up`} disabled={index === 0} onClick={() => move(index, index - 1)}>
+                  <ChevronUp className="size-4" />
+                </RowButton>
+                <RowButton
+                  label={`Move ${name} down`}
+                  disabled={index === order.length - 1}
+                  onClick={() => move(index, index + 1)}
+                >
+                  <ChevronDown className="size-4" />
+                </RowButton>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <FormError message={save.error ? "That wasn't saved. Try again." : undefined} />
+    </section>
+  );
 }
 
 function Figure({ account }: { account: PoolAccount | undefined }) {
@@ -323,6 +391,7 @@ function PoolSummary({ pool }: { pool: Pool }) {
 
 function Accounts({ pool, queue }: { pool: Pool | undefined; queue: TransferQueue | undefined }) {
   const { data: connections, isPending, isError } = useQuery(connectionsQuery);
+  const { data: routing } = useQuery(routingQuery);
   const { target } = useUploads();
 
   if (isPending) {
@@ -334,7 +403,7 @@ function Accounts({ pool, queue }: { pool: Pool | undefined; queue: TransferQueu
   if (connections.length === 0) {
     return <p className="py-6 text-muted-foreground">No accounts are linked yet. Link a Google Drive account to start storing files.</p>;
   }
-  const next = pool && nextAccount(pool, target);
+  const next = pool && nextAccount(pool, routing, target);
   const usable = usableConnections(connections).length;
   return (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] gap-3.5">
@@ -410,12 +479,13 @@ export function StoragePage({
       {added && <p role="status">{added}</p>}
       <UsageCard className="rounded-[14px] bg-card p-3.5 md:hidden" />
       <Accounts pool={pool} queue={queue} />
+      <UploadRouting />
       <Moves queue={queue} />
       {config?.google_enabled ? (
         <p className="max-w-[60ch] text-xs text-faint">
           Tributary keeps its files in a folder named dextro in each account, and can't see anything else in
           them. A file is stored whole in one account, so the largest file you can upload is limited by the
-          account with the most free space.
+          account with the most free space, however uploads are routed.
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">

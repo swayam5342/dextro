@@ -17,7 +17,7 @@ Link your Drive accounts, then upload, organize, preview and share files from on
 
 ## What it does
 
-- **One pool from many accounts.** Uploads go to the account with the most free space, or to the one you pick. An account that can't be reached is skipped.
+- **One pool from many accounts.** Uploads go to the one you pick, or follow your routing: most free space, round robin or a priority order. An account that can't be reached is skipped.
 - **Real folders.** Folders appear in every linked account, inside a Drive folder named `dextro`.
 - **Large uploads that survive problems.** Files go up in pieces, so an upload can pause, resume and recover from a lost connection. You can upload a whole folder, or drag one onto the page.
 - **File management.** Sort, search, drag files onto folders, and move things to a trash with Undo. Images, video and PDFs preview in the app.

@@ -36,8 +36,8 @@ import { DropZone, UploadPanel } from "@/features/files/components/upload-panel"
 import { treeFromPicked } from "@/features/files/folder-tree";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
 import { UsageCard } from "@/features/storage/components/usage-card";
-import { freeSpaceText, usableConnections } from "@/features/storage/pool";
-import { connectionsQuery, poolQuery, useFollowTransfers } from "@/features/storage/queries";
+import { freeSpaceText, routingText, usableConnections } from "@/features/storage/pool";
+import { connectionsQuery, poolQuery, routingQuery, useFollowTransfers } from "@/features/storage/queries";
 
 function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/links" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
   return (
@@ -281,9 +281,10 @@ function Frame() {
   const { pathname } = useLocation();
   const { target } = useUploads();
   const { data: connections } = useQuery(connectionsQuery);
+  const { data: routing } = useQuery(routingQuery);
   const folderId = pathname === "/" ? folder : undefined;
   const chosen = connections?.find((c) => c.id === target);
-  const hint = chosen ? `Goes to ${chosen.summary}` : "Goes to the account with the most free space";
+  const hint = `Goes to ${chosen ? chosen.summary : routingText(routing?.mode)}`;
   const canDrop = usableConnections(connections).length > 0;
   useFollowTransfers();
 

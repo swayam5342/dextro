@@ -30,6 +30,41 @@ export const poolQuery = queryOptions({
   },
 });
 
+export const routingQuery = queryOptions({
+  queryKey: ["upload-routing"],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/storage/routing");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
+type Routing = components["schemas"]["Routing"];
+type RoutingUpdate = components["schemas"]["RoutingUpdate"];
+
+/** The choice shows at once, and saves take turns so a quick run of moves lands in order. */
+export function useSetRouting() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    scope: { id: "upload-routing" },
+    mutationFn: async (body: RoutingUpdate) => {
+      const { data, error } = await api.PUT("/api/v1/storage/routing", { body });
+      if (!data) {
+        throw toApiError(error);
+      }
+      return data;
+    },
+    onMutate: async (body) => {
+      // A read already on its way would put the old choice back.
+      await queryClient.cancelQueries({ queryKey: routingQuery.queryKey });
+      queryClient.setQueryData<Routing>(routingQuery.queryKey, (old) => old && { ...old, ...body });
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: routingQuery.queryKey }),
+  });
+}
+
 type TransferQueue = components["schemas"]["TransferQueue"];
 
 function isMoving(queue: TransferQueue | undefined): boolean {
@@ -56,7 +91,7 @@ function useRefreshAccounts() {
   return () =>
     Promise.all([
       refreshFiles(),
-      ...[connectionsQuery, poolQuery, transfersQuery, sharesQuery].map(({ queryKey }) => queryClient.invalidateQueries({ queryKey })),
+      ...[connectionsQuery, poolQuery, routingQuery, transfersQuery, sharesQuery].map(({ queryKey }) => queryClient.invalidateQueries({ queryKey })),
     ]);
 }
 

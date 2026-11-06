@@ -13,7 +13,7 @@ import {
 import { api } from "@/api/client";
 import { ApiError, failureMessage, toApiError } from "@/api/errors";
 import type { components } from "@/api/schema";
-import { poolQuery } from "@/features/storage/queries";
+import { poolQuery, routingQuery } from "@/features/storage/queries";
 
 import { foldersToMake, type FolderTree } from "./folder-tree";
 import { createFolder, folderQuery, useRefreshFiles } from "./queries";
@@ -52,7 +52,7 @@ export interface Upload {
 
 interface UploadsValue {
   uploads: Upload[];
-  /** The account uploads go to. Empty means the one with the most free space. */
+  /** The account uploads go to. Empty leaves it to the user's routing. */
   target: string;
   setTarget: (connectionId: string) => void;
   add: (files: File[], folderId: string | undefined) => void;
@@ -326,7 +326,11 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
       await (job.size === 0 ? sendEmpty(job, file) : sendChunks(job, file));
       update(job.id, { status: "done", loaded: job.size });
       jobs.current.delete(job.id);
-      await Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: poolQuery.queryKey })]);
+      await Promise.all([
+        refresh(),
+        queryClient.invalidateQueries({ queryKey: poolQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: routingQuery.queryKey }),
+      ]);
     } catch (error) {
       if (error instanceof Stopped) {
         if (job.stopping === "pause") {
