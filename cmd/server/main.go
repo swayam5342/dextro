@@ -91,6 +91,7 @@ func run() error {
 		Logger:   logger,
 		Quotas:   storageService,
 		Sessions: authService,
+		Uploads:  filesService,
 		Runs:     settings,
 	})
 	if err != nil {

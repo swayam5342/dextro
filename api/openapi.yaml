@@ -765,6 +765,107 @@ paths:
                 $ref: "#/components/schemas/AuditPage"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/uploads:
+    get:
+      operationId: listUploads
+      summary: List the signed-in user's unfinished uploads
+      tags: [files]
+      responses:
+        "200":
+          description: Unfinished uploads, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UploadSession"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: beginUpload
+      summary: Start an upload sent in chunks
+      description: >
+        This chooses an account and holds the file's size on it until the upload
+        finishes or is cancelled. An empty file has nothing to resume, so it goes
+        through uploadFile instead. API keys use uploadFile too.
+      tags: [files]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewUpload"
+      responses:
+        "201":
+          description: The upload is ready for its first chunk.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/uploads/{id}:
+    get:
+      operationId: getUpload
+      summary: Ask the storage account how far an upload has really got
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The upload's progress. It has finished if file is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: cancelUpload
+      summary: Abandon an upload and give back the space it held
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The upload is gone.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/uploads/{id}/chunk:
+    put:
+      operationId: putUploadChunk
+      summary: Send the next piece of an upload
+      description: >
+        The body is the bytes themselves. Every chunk but the last must be a
+        multiple of 256 KiB. The answer's received says how much the storage
+        account kept, which can be less than was sent and is where the next chunk
+        has to start.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - name: offset
+          in: query
+          description: >
+            Required. Where this chunk starts. A string, and not marked required,
+            because generated checks would run before access checks.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          "*/*":
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: The upload's progress. It has finished if file is present.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/storage/connections:
     get:
       operationId: listConnections
@@ -1151,7 +1252,7 @@ components:
           description: The secret, sent as a bearer token. Shown only this once.
     PoolAccount:
       type: object
-      required: [connection, available, used_bytes, limit_bytes]
+      required: [connection, available, used_bytes, reserved_bytes, limit_bytes]
       properties:
         connection:
           $ref: "#/components/schemas/Connection"
@@ -1161,6 +1262,10 @@ components:
         used_bytes:
           type: integer
           format: int64
+        reserved_bytes:
+          type: integer
+          format: int64
+          description: Space held by uploads that haven't finished yet.
         limit_bytes:
           type: integer
           format: int64
@@ -1322,6 +1427,63 @@ components:
           type: string
           nullable: true
           description: Pass this as `before` for the next page. Null on the last page.
+    NewUpload:
+      type: object
+      required: [name, size]
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        content_type:
+          type: string
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+        connection_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The account to use. Left out, the account with the most free space is chosen.
+        last_modified:
+          type: integer
+          format: int64
+          description: >
+            The file's modified time in milliseconds. After a reload the file has
+            to be picked again, and this tells whether it's the same one.
+    UploadSession:
+      type: object
+      required: [id, connection_id, folder_id, name, size, received, last_modified, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        connection_id:
+          type: string
+          format: uuid
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        received:
+          type: integer
+          format: int64
+          description: How much the storage account has kept.
+        last_modified:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        file:
+          $ref: "#/components/schemas/File"
     Error:
       type: object
       description: Body of every error response.

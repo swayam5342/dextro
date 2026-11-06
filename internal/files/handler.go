@@ -32,6 +32,9 @@ const (
 	codeNoStorage           = "no_storage"
 	codeStorageFull         = "storage_full"
 	codeNoThumbnail         = "no_thumbnail"
+	codeInvalidChunk        = "invalid_chunk"
+	codeOffsetMismatch      = "offset_mismatch"
+	codeUploadExpired       = "upload_expired"
 )
 
 // contentPolicy goes on every response that carries a user's file, so that even
@@ -397,7 +400,7 @@ func (h *Handler) noContent(w http.ResponseWriter, r *http.Request, err error) {
 // logs only, because the reason can name internal addresses.
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, ErrFileNotFound), errors.Is(err, ErrFolderNotFound):
+	case errors.Is(err, ErrFileNotFound), errors.Is(err, ErrFolderNotFound), errors.Is(err, ErrUploadNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
 	case errors.Is(err, storage.ErrConnectionNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, codeConnectionNotFound, "That storage connection doesn't exist.")
@@ -416,6 +419,14 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusNotFound, codeNoThumbnail, "This file has no thumbnail.")
 	case errors.Is(err, ErrInvalidSearch):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidSearch, "Enter something to search for.")
+	case errors.Is(err, ErrInvalidUpload):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidUpload, "An upload needs a name and a size.")
+	case errors.Is(err, ErrInvalidChunk):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidChunk, "This piece of the file isn't valid.")
+	case errors.Is(err, ErrOffsetMismatch):
+		httpx.WriteError(w, r, http.StatusConflict, codeOffsetMismatch, "This piece doesn't start where the upload is.")
+	case errors.Is(err, ErrUploadExpired):
+		httpx.WriteError(w, r, http.StatusGone, codeUploadExpired, "This upload expired. Start it again.")
 	case errors.Is(err, storage.ErrNoStorage):
 		httpx.WriteError(w, r, http.StatusConflict, codeNoStorage, "Link a Google Drive account before uploading.")
 	case errors.Is(err, storage.ErrStorageFull):

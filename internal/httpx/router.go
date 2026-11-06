@@ -55,6 +55,11 @@ type FilesHandlers interface {
 	ListTrash(w http.ResponseWriter, r *http.Request)
 	EmptyTrash(w http.ResponseWriter, r *http.Request)
 	Search(w http.ResponseWriter, r *http.Request, params apigen.SearchParams)
+	ListUploads(w http.ResponseWriter, r *http.Request)
+	BeginUpload(w http.ResponseWriter, r *http.Request)
+	GetUpload(w http.ResponseWriter, r *http.Request, id types.UUID)
+	CancelUpload(w http.ResponseWriter, r *http.Request, id types.UUID)
+	PutUploadChunk(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.PutUploadChunkParams)
 }
 
 // StorageHandlers is the part of the API the storage feature implements.

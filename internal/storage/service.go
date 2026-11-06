@@ -25,6 +25,7 @@ const ProviderGoogleDrive ProviderKind = "google_drive"
 const (
 	checkTimeout    = 20 * time.Second
 	secretContextID = "storage_connection:"
+	uploadContextID = "upload_session:"
 )
 
 // Errors the handlers turn into stable API error codes.
@@ -214,6 +215,21 @@ func (s *Service) open(ctx context.Context, r record) (provider.Provider, error)
 		return nil, errors.New("decode credentials: malformed value")
 	}
 	return s.openDrive(ctx, settings, credentials)
+}
+
+// SealUploadSession encrypts a session's address, bound to that upload so the value
+// can't be moved onto another row.
+func (s *Service) SealUploadSession(id uuid.UUID, address string) secrets.Sealed {
+	return s.keyring.Encrypt([]byte(address), uploadContextID+id.String())
+}
+
+// OpenUploadSession decrypts a session's address.
+func (s *Service) OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string, error) {
+	address, err := s.keyring.Decrypt(sealed, uploadContextID+id.String())
+	if err != nil {
+		return "", fmt.Errorf("decrypt upload %s: %w", id, err)
+	}
+	return string(address), nil
 }
 
 // Test checks that a connection still works.

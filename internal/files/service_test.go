@@ -19,6 +19,7 @@ import (
 	"github.com/swayam5342/dextro/internal/db/dbtest"
 	"github.com/swayam5342/dextro/internal/provider"
 	"github.com/swayam5342/dextro/internal/provider/providertest"
+	"github.com/swayam5342/dextro/internal/secrets"
 	"github.com/swayam5342/dextro/internal/storage"
 )
 
@@ -116,6 +117,17 @@ func (p *providers) Choose(ctx context.Context, userID uuid.UUID, preferred *uui
 		return storage.Chosen{}, err
 	}
 	return storage.Chosen{ConnectionID: id, Provider: stored}, nil
+}
+
+// uploads_test.go uses the real storage service for chunked uploads.
+func (p *providers) Reserve(context.Context, uuid.UUID, *uuid.UUID, storage.Reservation) (storage.Chosen, error) {
+	return storage.Chosen{}, errors.New("not used by these tests")
+}
+
+func (p *providers) SealUploadSession(uuid.UUID, string) secrets.Sealed { return secrets.Sealed{} }
+
+func (p *providers) OpenUploadSession(uuid.UUID, secrets.Sealed) (string, error) {
+	return "", errors.New("not used by these tests")
 }
 
 func (p *providers) forConnection(id uuid.UUID) *flaky {

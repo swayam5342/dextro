@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Upload as UploadIcon, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Pause, Play, Upload as UploadIcon, X } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { connectionsQuery } from "@/features/storage/queries";
 
-import { useUploads, type Upload } from "../uploads";
+import { useUploads, type Upload, type UploadStatus } from "../uploads";
 
 function destination(upload: Upload, emails: Map<string, string>): string {
   const account = upload.connectionId ? emails.get(upload.connectionId) : undefined;
@@ -15,39 +15,79 @@ function destination(upload: Upload, emails: Map<string, string>): string {
   return account ? `To ${account}` : "To the account with the most free space";
 }
 
+function RowButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className="grid size-6 place-items-center rounded-full hover:bg-raised hover:text-foreground"
+      aria-label={label}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Row({ upload, emails }: { upload: Upload; emails: Map<string, string> }) {
-  const { cancel } = useUploads();
+  const { cancel, pause, resume, reattach } = useUploads();
+  const picker = useRef<HTMLInputElement>(null);
   const percent = upload.total > 0 ? Math.round((upload.loaded / upload.total) * 100) : 100;
-  const inProgress = upload.status === "waiting" || upload.status === "uploading";
-  const labels = {
+  const running = upload.status === "waiting" || upload.status === "uploading" || upload.status === "retrying";
+  const stopped = upload.status === "paused" || upload.status === "needs-file";
+  const labels: Record<UploadStatus, string> = {
     waiting: "Waiting",
     uploading: `${percent}%`,
+    retrying: "Reconnecting…",
+    paused: `Paused at ${percent}%`,
+    "needs-file": `Stopped at ${percent}%`,
     done: "Done",
     failed: "Failed",
     cancelled: "Cancelled",
   };
+
+  function handlePick(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) {
+      reattach(upload.id, file);
+    }
+  }
+
   return (
     <li className="space-y-1.5">
       <div className="flex items-center justify-between gap-3 text-[13px]">
         <span className="truncate">{upload.name}</span>
         <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
           {labels[upload.status]}
-          {inProgress && (
-            <button
-              type="button"
-              className="grid size-6 place-items-center rounded-full hover:bg-raised hover:text-foreground"
-              aria-label={`Cancel ${upload.name}`}
-              onClick={() => cancel(upload.id)}
-            >
+          {running && (
+            <RowButton label={`Pause ${upload.name}`} onClick={() => pause(upload.id)}>
+              <Pause className="size-3.5" />
+            </RowButton>
+          )}
+          {upload.status === "paused" && (
+            <RowButton label={`Resume ${upload.name}`} onClick={() => resume(upload.id)}>
+              <Play className="size-3.5" />
+            </RowButton>
+          )}
+          {(running || stopped) && (
+            <RowButton label={`Cancel ${upload.name}`} onClick={() => cancel(upload.id)}>
               <X className="size-3.5" />
-            </button>
+            </RowButton>
           )}
         </span>
       </div>
-      {inProgress && (
-        <progress className="level block" value={percent} max={100} aria-label={`Uploading ${upload.name}`} />
+      {(running || stopped) && (
+        <progress className="level block" value={percent} max={100} aria-label={`Progress of ${upload.name}`} />
       )}
-      {upload.status === "failed" ? (
+      {upload.status === "needs-file" && (
+        <>
+          <input ref={picker} type="file" hidden aria-label={`Choose ${upload.name} again`} onChange={handlePick} />
+          <Button variant="outline" size="sm" className="bg-raised hover:bg-[#3a3a3a]" onClick={() => picker.current?.click()}>
+            Pick the file again to continue
+          </Button>
+        </>
+      )}
+      {upload.error ? (
         <p role="alert" className="text-xs text-destructive">
           {upload.error}
         </p>
@@ -66,17 +106,27 @@ export function UploadPanel() {
     return null;
   }
   const emails = new Map(connections?.map((c) => [c.id, c.summary]));
-  const left = uploads.filter((u) => u.status === "waiting" || u.status === "uploading").length;
-  const failed = uploads.filter((u) => u.status === "failed").length;
-  const finishedText = failed > 0 ? `${failed} failed` : "Uploads finished";
+  const count = (...statuses: UploadStatus[]) => uploads.filter((u) => statuses.includes(u.status)).length;
+  const left = count("waiting", "uploading", "retrying");
+  const stopped = count("paused", "needs-file");
+  const finished = count("done", "failed", "cancelled");
+  const failed = count("failed");
+  let title = "Uploads finished";
+  if (left > 0) {
+    title = `Uploading ${left} of ${uploads.length}`;
+  } else if (stopped > 0) {
+    title = stopped === 1 ? "1 upload stopped" : `${stopped} uploads stopped`;
+  } else if (failed > 0) {
+    title = `${failed} failed`;
+  }
   return (
     <section
       aria-label="Uploads"
       className="fixed right-4 bottom-[74px] z-30 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-card shadow-[0_12px_32px_rgba(0,0,0,0.7)] md:right-5 md:bottom-5"
     >
       <header className="flex items-center gap-2 py-2 pr-2 pl-4 font-semibold">
-        <span className="flex-1">{left > 0 ? `Uploading ${left} of ${uploads.length}` : finishedText}</span>
-        <Button variant="ghost" size="icon" disabled={left === uploads.length} aria-label="Clear finished uploads" onClick={clearFinished}>
+        <span className="flex-1">{title}</span>
+        <Button variant="ghost" size="icon" disabled={finished === 0} aria-label="Clear finished uploads" onClick={clearFinished}>
           <X />
         </Button>
       </header>

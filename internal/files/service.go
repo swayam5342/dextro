@@ -17,6 +17,7 @@ import (
 
 	"github.com/swayam5342/dextro/internal/audit"
 	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/dextro/internal/secrets"
 	"github.com/swayam5342/dextro/internal/storage"
 )
 
@@ -91,6 +92,9 @@ type UploadInput struct {
 type Providers interface {
 	Provider(ctx context.Context, userID, connectionID uuid.UUID) (provider.Provider, error)
 	Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64) (storage.Chosen, error)
+	Reserve(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, r storage.Reservation) (storage.Chosen, error)
+	SealUploadSession(id uuid.UUID, address string) secrets.Sealed
+	OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string, error)
 }
 
 // Service holds the rules for files and folders.

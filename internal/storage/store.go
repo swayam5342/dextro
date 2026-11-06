@@ -202,3 +202,47 @@ func (s *Store) ListUnreachableConnections(ctx context.Context) ([]unreachableRo
 	}
 	return unreachable, nil
 }
+
+// LockUploadReservations holds until the transaction ends, so that a user's uploads
+// take turns choosing an account.
+func (s *Store) LockUploadReservations(ctx context.Context, userID uuid.UUID) error {
+	if err := s.queries.LockUploadReservationsForOwner(ctx, userID.String()); err != nil {
+		return fmt.Errorf("lock upload reservations: %w", err)
+	}
+	return nil
+}
+
+// ReservedBytes returns what a user's unfinished uploads hold, by account.
+func (s *Store) ReservedBytes(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]int64, error) {
+	rows, err := s.queries.ListReservedBytesForOwner(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("read reservations: %w", err)
+	}
+	reserved := make(map[uuid.UUID]int64, len(rows))
+	for _, row := range rows {
+		reserved[row.ConnectionID] = row.Reserved
+	}
+	return reserved, nil
+}
+
+// CreateUploadSession saves an upload, which is what holds its space.
+func (s *Store) CreateUploadSession(ctx context.Context, userID, connectionID uuid.UUID, r Reservation) error {
+	folder := uuid.NullUUID{}
+	if r.FolderID != nil {
+		folder = uuid.NullUUID{UUID: *r.FolderID, Valid: true}
+	}
+	err := s.queries.CreateUploadSession(ctx, dbgen.CreateUploadSessionParams{
+		ID:           r.ID,
+		UserID:       userID,
+		ConnectionID: connectionID,
+		FolderID:     folder,
+		Name:         r.Name,
+		ContentType:  r.ContentType,
+		Size:         r.Size,
+		LastModified: r.LastModified,
+	})
+	if err != nil {
+		return fmt.Errorf("create upload: %w", err)
+	}
+	return nil
+}

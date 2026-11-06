@@ -364,6 +364,19 @@ type NewPassword struct {
 	Password string `json:"password"`
 }
 
+// NewUpload defines model for NewUpload.
+type NewUpload struct {
+	// ConnectionId The account to use. Left out, the account with the most free space is chosen.
+	ConnectionId *openapi_types.UUID `json:"connection_id,omitempty"`
+	ContentType  *string             `json:"content_type,omitempty"`
+	FolderId     *openapi_types.UUID `json:"folder_id,omitempty"`
+
+	// LastModified The file's modified time in milliseconds. After a reload the file has to be picked again, and this tells whether it's the same one.
+	LastModified *int64 `json:"last_modified,omitempty"`
+	Name         string `json:"name"`
+	Size         int64  `json:"size"`
+}
+
 // Pool defines model for Pool.
 type Pool struct {
 	Accounts []PoolAccount `json:"accounts"`
@@ -386,7 +399,10 @@ type PoolAccount struct {
 
 	// LimitBytes Null if the account has no limit, or can't be reached.
 	LimitBytes *int64 `json:"limit_bytes"`
-	UsedBytes  int64  `json:"used_bytes"`
+
+	// ReservedBytes Space held by uploads that haven't finished yet.
+	ReservedBytes int64 `json:"reserved_bytes"`
+	UsedBytes     int64 `json:"used_bytes"`
 }
 
 // SearchResults defines model for SearchResults.
@@ -445,6 +461,21 @@ type UnreachableAccount struct {
 
 	// Summary The Google account that couldn't be reached.
 	Summary string `json:"summary"`
+}
+
+// UploadSession defines model for UploadSession.
+type UploadSession struct {
+	ConnectionId openapi_types.UUID  `json:"connection_id"`
+	CreatedAt    time.Time           `json:"created_at"`
+	File         *File               `json:"file,omitempty"`
+	FolderId     *openapi_types.UUID `json:"folder_id"`
+	Id           openapi_types.UUID  `json:"id"`
+	LastModified int64               `json:"last_modified"`
+	Name         string              `json:"name"`
+
+	// Received How much the storage account has kept.
+	Received int64 `json:"received"`
+	Size     int64 `json:"size"`
 }
 
 // User defines model for User.
@@ -518,6 +549,12 @@ type GoogleDriveCallbackParams struct {
 	State *string `form:"state,omitempty" json:"state,omitempty"`
 }
 
+// PutUploadChunkParams defines parameters for PutUploadChunk.
+type PutUploadChunkParams struct {
+	// Offset Required. Where this chunk starts. A string, and not marked required, because generated checks would run before access checks.
+	Offset *string `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // UpdateSettingsJSONRequestBody defines body for UpdateSettings for application/json ContentType.
 type UpdateSettingsJSONRequestBody = SettingsUpdate
 
@@ -553,6 +590,9 @@ type RenameFolderJSONRequestBody = NameInput
 
 // MoveFolderJSONRequestBody defines body for MoveFolder for application/json ContentType.
 type MoveFolderJSONRequestBody = MoveFolderInput
+
+// BeginUploadJSONRequestBody defines body for BeginUpload for application/json ContentType.
+type BeginUploadJSONRequestBody = NewUpload
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -697,6 +737,21 @@ type ServerInterface interface {
 	// ListTrash List what's in the trash
 	// (GET /api/v1/trash)
 	ListTrash(w http.ResponseWriter, r *http.Request)
+	// ListUploads List the signed-in user's unfinished uploads
+	// (GET /api/v1/uploads)
+	ListUploads(w http.ResponseWriter, r *http.Request)
+	// BeginUpload Start an upload sent in chunks
+	// (POST /api/v1/uploads)
+	BeginUpload(w http.ResponseWriter, r *http.Request)
+	// CancelUpload Abandon an upload and give back the space it held
+	// (DELETE /api/v1/uploads/{id})
+	CancelUpload(w http.ResponseWriter, r *http.Request, id Id)
+	// GetUpload Ask the storage account how far an upload has really got
+	// (GET /api/v1/uploads/{id})
+	GetUpload(w http.ResponseWriter, r *http.Request, id Id)
+	// PutUploadChunk Send the next piece of an upload
+	// (PUT /api/v1/uploads/{id}/chunk)
+	PutUploadChunk(w http.ResponseWriter, r *http.Request, id Id, params PutUploadChunkParams)
 	// GetHealth Report whether the server can reach its database
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -985,6 +1040,36 @@ func (_ Unimplemented) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 // ListTrash List what's in the trash
 // (GET /api/v1/trash)
 func (_ Unimplemented) ListTrash(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListUploads List the signed-in user's unfinished uploads
+// (GET /api/v1/uploads)
+func (_ Unimplemented) ListUploads(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// BeginUpload Start an upload sent in chunks
+// (POST /api/v1/uploads)
+func (_ Unimplemented) BeginUpload(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CancelUpload Abandon an upload and give back the space it held
+// (DELETE /api/v1/uploads/{id})
+func (_ Unimplemented) CancelUpload(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetUpload Ask the storage account how far an upload has really got
+// (GET /api/v1/uploads/{id})
+func (_ Unimplemented) GetUpload(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutUploadChunk Send the next piece of an upload
+// (PUT /api/v1/uploads/{id}/chunk)
+func (_ Unimplemented) PutUploadChunk(w http.ResponseWriter, r *http.Request, id Id, params PutUploadChunkParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2084,6 +2169,128 @@ func (siw *ServerInterfaceWrapper) ListTrash(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListUploads operation middleware
+func (siw *ServerInterfaceWrapper) ListUploads(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUploads(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginUpload operation middleware
+func (siw *ServerInterfaceWrapper) BeginUpload(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginUpload(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelUpload operation middleware
+func (siw *ServerInterfaceWrapper) CancelUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelUpload(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUpload operation middleware
+func (siw *ServerInterfaceWrapper) GetUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUpload(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutUploadChunk operation middleware
+func (siw *ServerInterfaceWrapper) PutUploadChunk(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutUploadChunkParams
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutUploadChunk(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -2339,6 +2546,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/uploads", wrapper.ListUploads)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/uploads", wrapper.BeginUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/uploads/{id}", wrapper.CancelUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/uploads/{id}", wrapper.GetUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/uploads/{id}/chunk", wrapper.PutUploadChunk)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/storage/connections", wrapper.ListConnections)

@@ -215,7 +215,7 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
     if (account.limit_bytes === null) {
       return "No limit";
     }
-    return `${formatBytes(Math.max(account.limit_bytes - account.used_bytes, 0))} free`;
+    return `${formatBytes(Math.max(account.limit_bytes - account.used_bytes - account.reserved_bytes, 0))} free`;
   }
 
   return (

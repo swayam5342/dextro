@@ -34,7 +34,7 @@ function room(account: PoolAccount): number {
   if (account.limit_bytes === null) {
     return Number.POSITIVE_INFINITY;
   }
-  return Math.max(account.limit_bytes - account.used_bytes, 0);
+  return Math.max(account.limit_bytes - account.used_bytes - account.reserved_bytes, 0);
 }
 
 /** The account an upload goes to next: the one picked, or the one with most room. */
@@ -72,7 +72,9 @@ function Figure({ account }: { account: PoolAccount | undefined }) {
   return (
     <div>
       <b className="block text-2xl leading-tight font-semibold tracking-tight">{formatBytes(room(account))}</b>
-      <span className="text-xs text-muted-foreground">free of {formatBytes(account.limit_bytes)}</span>
+      <span className="text-xs text-muted-foreground">free of {formatBytes(account.limit_bytes)}
+        {account.reserved_bytes > 0 && `, ${formatBytes(account.reserved_bytes)} held for uploads`}
+      </span>
     </div>
   );
 }

@@ -200,6 +200,8 @@ func toAPIPool(p Pool) apigen.Pool {
 			Connection: toAPI(account.Connection),
 			Available:  account.Available,
 			UsedBytes:  account.Used,
+
+			ReservedBytes: account.Reserved,
 		}
 		if account.Limit > 0 {
 			limit := account.Limit

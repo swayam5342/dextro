@@ -94,6 +94,23 @@ type StorageConnection struct {
 	UsedBytes        pgtype.Int8
 }
 
+type UploadSession struct {
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	ConnectionID     uuid.UUID
+	FolderID         uuid.NullUUID
+	Name             string
+	ContentType      string
+	Size             int64
+	Received         int64
+	LastModified     int64
+	SecretKeyID      pgtype.Text
+	SecretCiphertext []byte
+	FileID           uuid.NullUUID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type User struct {
 	ID                 uuid.UUID
 	Email              string

@@ -57,6 +57,8 @@ export interface components {
       /** False if the account can't be reached, usually because its token expired. */
       available: boolean;
       used_bytes: number;
+      /** Space held by uploads that haven't finished yet. */
+      reserved_bytes: number;
       /** Null if the account has no limit, or can't be reached. */
       limit_bytes: number | null;
     };
@@ -116,6 +118,29 @@ export interface components {
       events: components["schemas"]["AuditEvent"][];
       /** Pass this as `before` for the next page. Null on the last page. */
       next_before: string | null;
+    };
+    NewUpload: {
+      name: string;
+      size: number;
+      content_type?: string;
+      folder_id?: string | null;
+      /** The account to use. Left out, the account with the most free space is chosen. */
+      connection_id?: string | null;
+      /** The file's modified time in milliseconds. */
+      last_modified?: number;
+    };
+    UploadSession: {
+      id: string;
+      connection_id: string;
+      folder_id: string | null;
+      name: string;
+      size: number;
+      /** How much the storage account has kept. */
+      received: number;
+      last_modified: number;
+      created_at: string;
+      /** Present once the upload has finished. */
+      file?: components["schemas"]["File"];
     };
     SearchResults: {
       folders: components["schemas"]["Folder"][];
@@ -388,6 +413,23 @@ export interface paths {
   };
   "/api/v1/folders/{id}/restore": {
     post: PathOperation;
+  };
+  "/api/v1/uploads": {
+    get: Operation<{ 200: JsonBody<Schemas["UploadSession"][]> }>;
+    post: JsonOperation<Schemas["NewUpload"], { 201: JsonBody<Schemas["UploadSession"]> }>;
+  };
+  "/api/v1/uploads/{id}": {
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: { id: string };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: { 200: JsonBody<Schemas["UploadSession"]>; default: JsonBody<Schemas["Error"]> };
+    };
+    delete: PathOperation;
   };
   "/api/v1/search": {
     get: {

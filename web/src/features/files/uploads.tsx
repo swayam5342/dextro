@@ -1,17 +1,45 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
+import { api } from "@/api/client";
 import { ApiError, toApiError } from "@/api/errors";
+import type { components } from "@/api/schema";
 import { poolQuery } from "@/features/storage/queries";
 
 import { useRefreshFiles } from "./queries";
+
+type Session = components["schemas"]["UploadSession"];
+
+/** A multiple of 256 KiB, which Drive insists on for every piece but the last. */
+const CHUNK_BYTES = 8 * 1024 * 1024;
+const MAX_RUNNING = 3;
+const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000];
+
+export type UploadStatus =
+  | "waiting"
+  | "uploading"
+  | "retrying"
+  | "paused"
+  | "needs-file"
+  | "done"
+  | "failed"
+  | "cancelled";
 
 export interface Upload {
   id: number;
   name: string;
   loaded: number;
   total: number;
-  status: "waiting" | "uploading" | "done" | "failed" | "cancelled";
+  status: UploadStatus;
   error?: string;
   /** The account picked for it, then the account it went to. */
   connectionId?: string;
@@ -23,6 +51,10 @@ interface UploadsValue {
   target: string;
   setTarget: (connectionId: string) => void;
   add: (files: File[], folderId: string | undefined) => void;
+  pause: (id: number) => void;
+  resume: (id: number) => void;
+  /** Gives an upload from before a reload its file back. */
+  reattach: (id: number, file: File) => void;
   cancel: (id: number) => void;
   clearFinished: () => void;
 }
@@ -37,49 +69,110 @@ export function useUploads(): UploadsValue {
   return value;
 }
 
-interface Destination {
+/** What the engine knows about an upload, beyond what the panel shows. */
+interface Job {
+  id: number;
+  file?: File;
   connectionId: string | undefined;
   folderId: string | undefined;
+  sessionId?: string;
+  name: string;
+  size: number;
+  lastModified: number;
+  request?: XMLHttpRequest;
+  /** Cuts a retry's wait short. */
+  wake?: () => void;
+  stopping?: "pause" | "cancel";
+  /** Paused by a lost connection, so it can pick up again by itself. */
+  pausedByNetwork?: boolean;
+}
+
+/** Means the upload was paused or cancelled, which is nobody's error. */
+class Stopped extends Error {}
+
+/** Worth trying again: the connection dropped, or the server had a bad moment. */
+class Retryable extends Error {}
+
+function failureFrom(status: number, body: unknown): Error {
+  if (status === 0 || status === 429 || status >= 500) {
+    return new Retryable("The connection was lost during the upload.");
+  }
+  return toApiError(body);
+}
+
+function parse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Sends a file as the request body. This uses XMLHttpRequest because fetch can't
- * report upload progress, and the body is the file itself so it streams.
+ * Sends a request body and reports progress, which fetch can't do. The body is a
+ * File or a slice of one, so the browser streams it.
  */
-function send(file: File, to: Destination, onProgress: (loaded: number) => void, request: XMLHttpRequest) {
-  return new Promise<string>((resolve, reject) => {
-    const query = new URLSearchParams({ name: file.name });
-    if (to.connectionId) {
-      query.set("connection_id", to.connectionId);
-    }
-    if (to.folderId) {
-      query.set("folder_id", to.folderId);
-    }
-    request.open("POST", `/api/v1/files?${query.toString()}`);
-    request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+function transfer<T>(job: Job, open: (request: XMLHttpRequest) => void, body: Blob, onProgress: (sent: number) => void) {
+  return new Promise<T>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    job.request = request;
+    open(request);
     request.upload.onprogress = (event) => onProgress(event.loaded);
     request.onload = () => {
-      let body: unknown;
-      try {
-        body = JSON.parse(request.responseText);
-      } catch {
-        body = undefined;
-      }
+      const parsed = parse(request.responseText);
       if (request.status >= 200 && request.status < 300) {
-        resolve((body as { connection_id: string }).connection_id);
+        resolve(parsed as T);
         return;
       }
-      reject(toApiError(body));
+      if (request.status === 409) {
+        reject(new Retryable("This piece didn't start where the upload was."));
+        return;
+      }
+      reject(failureFrom(request.status, parsed));
     };
-    request.onerror = () => reject(new ApiError("network", "The connection was lost during the upload."));
-    request.onabort = () => reject(new ApiError("cancelled", "Cancelled."));
-    request.send(file);
+    request.onerror = () => reject(new Retryable("The connection was lost during the upload."));
+    request.onabort = () => reject(new Stopped());
+    request.send(body);
   });
+}
+
+async function beginSession(job: Job, file: File): Promise<Session> {
+  try {
+    const { data, error, response } = await api.POST("/api/v1/uploads", {
+      body: {
+        name: job.name,
+        size: job.size,
+        content_type: file.type || undefined,
+        folder_id: job.folderId ?? null,
+        connection_id: job.connectionId ?? null,
+        last_modified: job.lastModified,
+      },
+    });
+    if (data) {
+      return data;
+    }
+    throw failureFrom(response.status, error);
+  } catch (error) {
+    throw error instanceof ApiError || error instanceof Retryable ? error : new Retryable("The connection was lost.");
+  }
+}
+
+async function readSession(id: string): Promise<Session> {
+  try {
+    const { data, error, response } = await api.GET("/api/v1/uploads/{id}", { params: { path: { id } } });
+    if (data) {
+      return data;
+    }
+    throw failureFrom(response.status, error);
+  } catch (error) {
+    throw error instanceof ApiError || error instanceof Retryable ? error : new Retryable("The connection was lost.");
+  }
 }
 
 /**
  * Holds uploads above the pages, so they keep running while someone moves around
- * the app. They run one at a time, so files don't fight over the connection.
+ * the app. Each file goes up in pieces and can pick up where it stopped, because
+ * the server tracks how much the account really has.
  */
 export function UploadsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -87,80 +180,300 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [target, setTarget] = useState("");
   const nextId = useRef(0);
-  const queue = useRef<{ id: number; file: File; to: Destination }[]>([]);
-  const running = useRef(false);
-  const active = useRef<{ id: number; request: XMLHttpRequest } | null>(null);
+  const jobs = useRef(new Map<number, Job>());
+  const queue = useRef<number[]>([]);
+  const running = useRef(0);
 
   const update = useCallback((id: number, change: Partial<Upload>) => {
     setUploads((current) => current.map((u) => (u.id === id ? { ...u, ...change } : u)));
   }, []);
 
-  const run = useCallback(async () => {
-    if (running.current) {
+  /** Waits before a retry. Pausing or cancelling ends the wait straight away. */
+  const wait = useCallback((job: Job, ms: number) => {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      job.wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }, []);
+
+  const sendEmpty = useCallback(async (job: Job, file: File) => {
+    const query = new URLSearchParams({ name: job.name });
+    if (job.connectionId) {
+      query.set("connection_id", job.connectionId);
+    }
+    if (job.folderId) {
+      query.set("folder_id", job.folderId);
+    }
+    const stored = await transfer<{ connection_id: string }>(
+      job,
+      (request) => {
+        request.open("POST", `/api/v1/files?${query.toString()}`);
+        request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      },
+      file,
+      () => {},
+    );
+    update(job.id, { connectionId: stored.connection_id });
+  }, [update]);
+
+  const sendChunks = useCallback(async (job: Job, file: File) => {
+    let offset = 0;
+    let attempt = 0;
+    // A session from before a pause or reload may have moved on without us.
+    let inSync = job.sessionId === undefined;
+
+    for (;;) {
+      try {
+        if (job.stopping) {
+          throw new Stopped();
+        }
+        if (!job.sessionId) {
+          const session = await beginSession(job, file);
+          job.sessionId = session.id;
+          update(job.id, { connectionId: session.connection_id });
+          // Cancelled while this was starting, so nobody else knows to give the space back.
+          if (job.stopping === "cancel") {
+            void api.DELETE("/api/v1/uploads/{id}", { params: { path: { id: session.id } } });
+          }
+          continue;
+        }
+        if (!inSync) {
+          const session = await readSession(job.sessionId);
+          if (session.file) {
+            return;
+          }
+          offset = session.received;
+          inSync = true;
+          update(job.id, { loaded: offset, status: "uploading", error: undefined });
+        }
+
+        const start = offset;
+        const end = Math.min(start + CHUNK_BYTES, job.size);
+        const id = job.sessionId;
+        const session = await transfer<Session>(
+          job,
+          (request) => request.open("PUT", `/api/v1/uploads/${id}/chunk?offset=${start}`),
+          file.slice(start, end),
+          (sent) => update(job.id, { loaded: start + sent }),
+        );
+        if (session.file) {
+          return;
+        }
+        // What the account kept, which can be less than what was just sent.
+        offset = session.received;
+        attempt = 0;
+        update(job.id, { loaded: offset, status: "uploading", error: undefined });
+      } catch (error) {
+        if (!(error instanceof Retryable)) {
+          throw error;
+        }
+        const delay = RETRY_DELAYS_MS[attempt];
+        if (delay === undefined) {
+          job.pausedByNetwork = true;
+          job.stopping = "pause";
+          update(job.id, { error: "The connection was lost. It will carry on when you're back online." });
+          throw new Stopped();
+        }
+        update(job.id, { status: "retrying" });
+        await wait(job, delay);
+        attempt += 1;
+        inSync = job.sessionId === undefined;
+      }
+    }
+  }, [update, wait]);
+
+  const start = useCallback(async (job: Job) => {
+    const file = job.file;
+    if (!file) {
       return;
     }
-    running.current = true;
-    for (let next = queue.current.shift(); next; next = queue.current.shift()) {
-      const { id, file, to } = next;
-      const request = new XMLHttpRequest();
-      active.current = { id, request };
-      update(id, { status: "uploading" });
-      try {
-        const connectionId = await send(file, to, (loaded) => update(id, { loaded }), request);
-        update(id, { status: "done", loaded: file.size, connectionId });
-        await Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: poolQuery.queryKey })]);
-      } catch (error) {
-        const failure = error instanceof ApiError ? error : toApiError(error);
-        update(id, {
-          status: failure.code === "cancelled" ? "cancelled" : "failed",
-          error: failure.message,
+    update(job.id, { status: "uploading", error: undefined });
+    try {
+      await (job.size === 0 ? sendEmpty(job, file) : sendChunks(job, file));
+      update(job.id, { status: "done", loaded: job.size });
+      jobs.current.delete(job.id);
+      await Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: poolQuery.queryKey })]);
+    } catch (error) {
+      if (error instanceof Stopped) {
+        if (job.stopping === "pause") {
+          update(job.id, { status: "paused" });
+        }
+        return;
+      }
+      jobs.current.delete(job.id);
+      const failure = error instanceof ApiError ? error : toApiError(error);
+      update(job.id, { status: "failed", error: failure.message });
+    }
+  }, [queryClient, refresh, sendChunks, sendEmpty, update]);
+
+  const pump = useCallback(() => {
+    while (running.current < MAX_RUNNING) {
+      const next = queue.current.shift();
+      if (next === undefined) {
+        return;
+      }
+      const job = jobs.current.get(next);
+      if (job) {
+        running.current += 1;
+        void start(job).finally(() => {
+          running.current -= 1;
+          pump();
         });
       }
     }
-    active.current = null;
-    running.current = false;
-  }, [queryClient, refresh, update]);
+  }, [start]);
 
-  const add = useCallback(
-    (files: File[], folderId: string | undefined) => {
-      const to = { connectionId: target || undefined, folderId };
-      const added = files.map((file) => {
-        nextId.current += 1;
-        queue.current.push({ id: nextId.current, file, to });
-        return {
-          id: nextId.current,
-          name: file.name,
-          loaded: 0,
-          total: file.size,
-          status: "waiting" as const,
-          connectionId: to.connectionId,
-        };
+  const enqueue = useCallback((job: Job) => {
+    job.stopping = undefined;
+    job.pausedByNetwork = false;
+    queue.current.push(job.id);
+    update(job.id, { status: "waiting", error: undefined });
+    pump();
+  }, [pump, update]);
+
+  const add = useCallback((files: File[], folderId: string | undefined) => {
+    const connectionId = target || undefined;
+    const added = files.map((file) => {
+      nextId.current += 1;
+      const id = nextId.current;
+      jobs.current.set(id, {
+        id,
+        file,
+        connectionId,
+        folderId,
+        name: file.name,
+        size: file.size,
+        lastModified: file.lastModified,
       });
-      setUploads((current) => [...current, ...added]);
-      void run();
-    },
-    [run, target],
-  );
+      queue.current.push(id);
+      return { id, name: file.name, loaded: 0, total: file.size, status: "waiting" as const, connectionId };
+    });
+    setUploads((current) => [...current, ...added]);
+    pump();
+  }, [pump, target]);
 
-  const cancel = useCallback(
-    (id: number) => {
-      if (active.current?.id === id) {
-        active.current.request.abort();
-        return;
-      }
-      queue.current = queue.current.filter((item) => item.id !== id);
-      update(id, { status: "cancelled" });
-    },
-    [update],
-  );
+  const pause = useCallback((id: number) => {
+    const job = jobs.current.get(id);
+    if (!job) {
+      return;
+    }
+    queue.current = queue.current.filter((item) => item !== id);
+    job.stopping = "pause";
+    update(id, { status: "paused" });
+    job.request?.abort();
+    job.wake?.();
+  }, [update]);
+
+  const resume = useCallback((id: number) => {
+    const job = jobs.current.get(id);
+    if (job?.file) {
+      enqueue(job);
+    }
+  }, [enqueue]);
+
+  const reattach = useCallback((id: number, file: File) => {
+    const job = jobs.current.get(id);
+    if (!job) {
+      return;
+    }
+    if (file.name !== job.name || file.size !== job.size || file.lastModified !== job.lastModified) {
+      update(id, { error: `That's a different file. Pick ${job.name} from where it was.` });
+      return;
+    }
+    job.file = file;
+    enqueue(job);
+  }, [enqueue, update]);
+
+  const cancel = useCallback((id: number) => {
+    const job = jobs.current.get(id);
+    if (!job) {
+      return;
+    }
+    queue.current = queue.current.filter((item) => item !== id);
+    job.stopping = "cancel";
+    job.request?.abort();
+    job.wake?.();
+    jobs.current.delete(id);
+    update(id, { status: "cancelled", error: undefined });
+    if (job.sessionId) {
+      void api
+        .DELETE("/api/v1/uploads/{id}", { params: { path: { id: job.sessionId } } })
+        .then(() => queryClient.invalidateQueries({ queryKey: poolQuery.queryKey }));
+    }
+  }, [queryClient, update]);
 
   const clearFinished = useCallback(() => {
-    setUploads((current) => current.filter((u) => u.status === "waiting" || u.status === "uploading"));
+    setUploads((current) => current.filter((u) => !["done", "failed", "cancelled"].includes(u.status)));
   }, []);
 
+  // Uploads from before a reload live on the server, waiting for their file.
+  useEffect(() => {
+    let current = true;
+    void api.GET("/api/v1/uploads").then(({ data }) => {
+      if (!current || !data) {
+        return;
+      }
+      const known = new Set([...jobs.current.values()].map((job) => job.sessionId));
+      const found = data.filter((session) => !known.has(session.id)).map((session) => {
+        nextId.current += 1;
+        const id = nextId.current;
+        jobs.current.set(id, {
+          id,
+          connectionId: session.connection_id,
+          folderId: session.folder_id ?? undefined,
+          sessionId: session.id,
+          name: session.name,
+          size: session.size,
+          lastModified: session.last_modified,
+        });
+        return {
+          id,
+          name: session.name,
+          loaded: session.received,
+          total: session.size,
+          status: "needs-file" as const,
+          connectionId: session.connection_id,
+        };
+      });
+      setUploads((list) => [...found, ...list]);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  // Uploads the connection stopped carry on when it comes back.
+  useEffect(() => {
+    function carryOn() {
+      for (const job of jobs.current.values()) {
+        if (job.pausedByNetwork) {
+          enqueue(job);
+        }
+      }
+    }
+    window.addEventListener("online", carryOn);
+    return () => window.removeEventListener("online", carryOn);
+  }, [enqueue]);
+
+  // Leaving is safe, but picking every file again isn't something to do by accident.
+  const busy = uploads.some((u) => u.status === "uploading" || u.status === "waiting" || u.status === "retrying");
+  useEffect(() => {
+    if (!busy) {
+      return undefined;
+    }
+    function warn(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy]);
+
   const value = useMemo(
-    () => ({ uploads, target, setTarget, add, cancel, clearFinished }),
-    [uploads, target, add, cancel, clearFinished],
+    () => ({ uploads, target, setTarget, add, pause, resume, reattach, cancel, clearFinished }),
+    [uploads, target, add, pause, resume, reattach, cancel, clearFinished],
   );
   return <UploadsContext.Provider value={value}>{children}</UploadsContext.Provider>;
 }

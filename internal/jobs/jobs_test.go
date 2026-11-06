@@ -32,6 +32,13 @@ func (f *fakeSessions) DeleteExpiredSessions(context.Context) (int64, error) {
 	return 0, nil
 }
 
+type fakeUploads struct{ calls atomic.Int32 }
+
+func (f *fakeUploads) CleanupUploads(context.Context) (int, error) {
+	f.calls.Add(1)
+	return 0, nil
+}
+
 // Runs real river against real Postgres, so it proves the wiring: migrations,
 // the schedule and the workers.
 func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
@@ -44,11 +51,13 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 	store := admin.NewStore(pool)
 	quotas := &fakeQuotas{err: errors.New("the database went away")}
 	sessions := &fakeSessions{}
+	uploads := &fakeUploads{}
 	runner, err := Start(ctx, Deps{
 		Pool:     pool,
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Quotas:   quotas,
 		Sessions: sessions,
+		Uploads:  uploads,
 		Runs:     store,
 	})
 	if err != nil {
@@ -68,12 +77,15 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListJobRuns: %v", err)
 		}
-		if len(runs) == 2 {
+		if len(runs) == 3 {
 			if runs[0].Name != KindQuotaSync || runs[0].Succeeded {
 				t.Errorf("a failed job should be recorded as failed: %+v", runs[0])
 			}
 			if runs[1].Name != KindSessionCleanup || !runs[1].Succeeded {
 				t.Errorf("cleanup = %+v", runs[1])
+			}
+			if runs[2].Name != KindUploadCleanup || !runs[2].Succeeded {
+				t.Errorf("upload cleanup = %+v", runs[2])
 			}
 			break
 		}
@@ -82,8 +94,8 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if quotas.calls.Load() == 0 || sessions.calls.Load() == 0 {
-		t.Errorf("calls: quotas %d, sessions %d", quotas.calls.Load(), sessions.calls.Load())
+	if quotas.calls.Load() == 0 || sessions.calls.Load() == 0 || uploads.calls.Load() == 0 {
+		t.Errorf("calls: quotas %d, sessions %d, uploads %d", quotas.calls.Load(), sessions.calls.Load(), uploads.calls.Load())
 	}
 }
 

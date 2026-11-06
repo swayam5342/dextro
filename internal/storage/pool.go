@@ -32,12 +32,14 @@ type Chosen struct {
 }
 
 // AccountUsage is one account in the pool. Available is false if the account
-// couldn't be reached, which usually means its token has expired.
+// couldn't be reached, which usually means its token has expired. Reserved is held
+// by uploads that haven't finished.
 type AccountUsage struct {
 	Connection
 	Available bool
 	Limit     int64
 	Used      int64
+	Reserved  int64
 }
 
 // Pool adds up a user's working accounts. Limit and Free mean nothing if
@@ -108,22 +110,81 @@ func moreRoomFirst(a, b probed) int {
 	return cmp.Compare(bFree, aFree)
 }
 
-// Choose picks the account for an upload of size bytes. If the user named one it
-// is used or refused, never swapped for another. Otherwise the account with the
-// most free space wins, and accounts that can't be reached are passed over so one
-// expired token doesn't stop every upload.
+// Choose picks the account an upload should go to. An account the user picked is
+// used or refused, never swapped for another. Otherwise the account with the most
+// free space wins, and accounts that can't be reached are passed over so one
+// expired token doesn't stop every upload. Space held by unfinished uploads
+// doesn't count as free.
 func (s *Service) Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64) (Chosen, error) {
-	if preferred != nil {
-		return s.choosePreferred(ctx, userID, *preferred, size)
-	}
-	records, err := s.store.ListConnectionsForOwner(ctx, userID)
+	candidates, err := s.candidates(ctx, userID, preferred)
 	if err != nil {
 		return Chosen{}, err
 	}
-	if len(records) == 0 {
-		return Chosen{}, ErrNoStorage
+	reserved, err := s.store.ReservedBytes(ctx, userID)
+	if err != nil {
+		return Chosen{}, err
 	}
+	return pick(candidates, reserved, size)
+}
 
+// Reservation is an upload that needs space held for it.
+type Reservation struct {
+	ID           uuid.UUID
+	FolderID     *uuid.UUID
+	Name         string
+	ContentType  string
+	Size         int64
+	LastModified int64
+}
+
+// Reserve chooses an account as Choose does and holds the space on it, so that two
+// uploads can't both count on the same room. Asking Google is slow, so it happens
+// first, and only the choosing takes turns.
+func (s *Service) Reserve(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, r Reservation) (Chosen, error) {
+	candidates, err := s.candidates(ctx, userID, preferred)
+	if err != nil {
+		return Chosen{}, err
+	}
+	var chosen Chosen
+	err = s.store.InTx(ctx, func(tx *Store) error {
+		if err := tx.LockUploadReservations(ctx, userID); err != nil {
+			return err
+		}
+		reserved, err := tx.ReservedBytes(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if chosen, err = pick(candidates, reserved, r.Size); err != nil {
+			return err
+		}
+		return tx.CreateUploadSession(ctx, userID, chosen.ConnectionID, r)
+	})
+	if err != nil {
+		return Chosen{}, err
+	}
+	return chosen, nil
+}
+
+// candidates asks the accounts an upload could go to how full they are.
+func (s *Service) candidates(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID) ([]probed, error) {
+	if preferred != nil {
+		r, err := s.store.GetConnectionForOwner(ctx, userID, *preferred)
+		if err != nil {
+			return nil, err
+		}
+		result := s.probe(ctx, r)
+		if result.err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrStorageUnavailable, result.err)
+		}
+		return []probed{result}, nil
+	}
+	records, err := s.store.ListConnectionsForOwner(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, ErrNoStorage
+	}
 	results := s.probeAll(ctx, records)
 	var failures []error
 	working := make([]probed, 0, len(results))
@@ -135,35 +196,33 @@ func (s *Service) Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.
 		working = append(working, result)
 	}
 	if len(working) == 0 {
-		return Chosen{}, fmt.Errorf("%w: %w", ErrStorageUnavailable, errors.Join(failures...))
+		return nil, fmt.Errorf("%w: %w", ErrStorageUnavailable, errors.Join(failures...))
 	}
-	slices.SortStableFunc(working, moreRoomFirst)
-	best := working[0]
+	return working, nil
+}
+
+// pick takes the account with the most room once reservations are counted.
+func pick(candidates []probed, reserved map[uuid.UUID]int64, size int64) (Chosen, error) {
+	counted := slices.Clone(candidates)
+	for i := range counted {
+		counted[i].quota.Used += reserved[counted[i].record.ID]
+	}
+	slices.SortStableFunc(counted, moreRoomFirst)
+	best := counted[0]
 	if !hasRoom(best.quota, size) {
 		return Chosen{}, ErrStorageFull
 	}
 	return Chosen{ConnectionID: best.record.ID, Provider: best.provider}, nil
 }
 
-func (s *Service) choosePreferred(ctx context.Context, userID, id uuid.UUID, size int64) (Chosen, error) {
-	r, err := s.store.GetConnectionForOwner(ctx, userID, id)
-	if err != nil {
-		return Chosen{}, err
-	}
-	result := s.probe(ctx, r)
-	if result.err != nil {
-		return Chosen{}, fmt.Errorf("%w: %w", ErrStorageUnavailable, result.err)
-	}
-	if !hasRoom(result.quota, size) {
-		return Chosen{}, ErrStorageFull
-	}
-	return Chosen{ConnectionID: id, Provider: result.provider}, nil
-}
-
 // Pool reports how full each of a user's accounts is, and the total. Accounts that
 // can't be reached are flagged and left out of the total.
 func (s *Service) Pool(ctx context.Context, userID uuid.UUID) (Pool, error) {
 	records, err := s.store.ListConnectionsForOwner(ctx, userID)
+	if err != nil {
+		return Pool{}, err
+	}
+	reserved, err := s.store.ReservedBytes(ctx, userID)
 	if err != nil {
 		return Pool{}, err
 	}
@@ -176,7 +235,9 @@ func (s *Service) Pool(ctx context.Context, userID uuid.UUID) (Pool, error) {
 		account := AccountUsage{Connection: connection, Available: result.err == nil}
 		if account.Available {
 			account.Limit, account.Used = result.quota.Limit, result.quota.Used
+			account.Reserved = reserved[result.record.ID]
 			free, limited := result.quota.Free()
+			free = max(free-account.Reserved, 0)
 			pool.Used += account.Used
 			pool.Limit += account.Limit
 			pool.Free += free

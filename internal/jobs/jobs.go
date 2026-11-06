@@ -21,11 +21,13 @@ import (
 const (
 	KindQuotaSync      = "quota_sync"
 	KindSessionCleanup = "session_cleanup"
+	KindUploadCleanup  = "upload_cleanup"
 )
 
 const (
 	quotaSyncEvery      = time.Hour
 	sessionCleanupEvery = 24 * time.Hour
+	uploadCleanupEvery  = time.Hour
 	// A dead account can take a while to give up on, and there may be many.
 	quotaSyncTimeout = 15 * time.Minute
 	maxAttempts      = 3
@@ -42,6 +44,11 @@ type Sessions interface {
 	DeleteExpiredSessions(ctx context.Context) (int64, error)
 }
 
+// Uploads is what the upload cleanup needs from the files feature.
+type Uploads interface {
+	CleanupUploads(ctx context.Context) (int, error)
+}
+
 // Runs remembers when each job last finished.
 type Runs interface {
 	RecordJobRun(ctx context.Context, name string, succeeded bool) error
@@ -53,6 +60,7 @@ type Deps struct {
 	Logger   *slog.Logger
 	Quotas   Quotas
 	Sessions Sessions
+	Uploads  Uploads
 	Runs     Runs
 }
 
@@ -63,6 +71,10 @@ func (quotaSyncArgs) Kind() string { return KindQuotaSync }
 type sessionCleanupArgs struct{}
 
 func (sessionCleanupArgs) Kind() string { return KindSessionCleanup }
+
+type uploadCleanupArgs struct{}
+
+func (uploadCleanupArgs) Kind() string { return KindUploadCleanup }
 
 type quotaSyncWorker struct {
 	river.WorkerDefaults[quotaSyncArgs]
@@ -92,6 +104,19 @@ func (w *sessionCleanupWorker) Work(ctx context.Context, _ *river.Job[sessionCle
 		w.deps.Logger.InfoContext(ctx, "session cleanup finished", "deleted", deleted)
 	}
 	return finish(ctx, w.deps, KindSessionCleanup, err)
+}
+
+type uploadCleanupWorker struct {
+	river.WorkerDefaults[uploadCleanupArgs]
+	deps Deps
+}
+
+func (w *uploadCleanupWorker) Work(ctx context.Context, _ *river.Job[uploadCleanupArgs]) error {
+	removed, err := w.deps.Uploads.CleanupUploads(ctx)
+	if err == nil {
+		w.deps.Logger.InfoContext(ctx, "upload cleanup finished", "removed", removed)
+	}
+	return finish(ctx, w.deps, KindUploadCleanup, err)
 }
 
 // finish records the outcome. A job stopped by the server shutting down didn't
@@ -136,6 +161,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &quotaSyncWorker{deps: d})
 	river.AddWorker(workers, &sessionCleanupWorker{deps: d})
+	river.AddWorker(workers, &uploadCleanupWorker{deps: d})
 	client, err := river.NewClient(driver, &river.Config{
 		Logger:  d.Logger,
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}},
@@ -143,6 +169,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 		PeriodicJobs: []*river.PeriodicJob{
 			every(quotaSyncEvery, quotaSyncArgs{}),
 			every(sessionCleanupEvery, sessionCleanupArgs{}),
+			every(uploadCleanupEvery, uploadCleanupArgs{}),
 		},
 	})
 	if err != nil {

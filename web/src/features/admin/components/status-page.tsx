@@ -13,6 +13,7 @@ type JobRun = components["schemas"]["JobRun"];
 const JOBS = [
   { name: "quota_sync", label: "Quota sync", about: "Checks every linked account each hour." },
   { name: "session_cleanup", label: "Session cleanup", about: "Clears expired sign-ins each day." },
+  { name: "upload_cleanup", label: "Upload cleanup", about: "Clears uploads left idle for a day, each hour." },
 ];
 
 function Row({ title, about, children }: { title: string; about: string; children: ReactNode }) {
