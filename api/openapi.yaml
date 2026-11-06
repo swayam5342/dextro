@@ -765,6 +765,50 @@ paths:
                 $ref: "#/components/schemas/AuditPage"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/zip:
+    get:
+      operationId: downloadZip
+      summary: Download files and folders as one zip
+      description: >
+        The zip streams as it's made, so a failure partway through cuts the
+        connection rather than ending the download normally. IDs are plain strings
+        because the generated code would reject a bad one before the access checks.
+      tags: [files]
+      parameters:
+        - name: file
+          in: query
+          description: IDs of files to include.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: folder
+          in: query
+          description: IDs of folders to include, with everything inside them.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: check
+          in: query
+          description: >
+            Set to true to find out whether this zip can be made, without making it.
+            A refused download gives the browser nothing useful to show, so the app
+            asks first.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The zip.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "204":
+          description: The zip can be made.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/uploads:
     get:
       operationId: listUploads

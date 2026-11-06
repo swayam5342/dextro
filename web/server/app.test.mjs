@@ -52,6 +52,12 @@ describe("web server", () => {
       req.on("data", (chunk) => chunks.push(chunk));
       req.on("end", () => {
         lastApiRequest = { method: req.method, url: req.url, headers: req.headers, body: Buffer.concat(chunks).toString() };
+        if (req.url === "/api/v1/cut") {
+          res.writeHead(200, { "Content-Type": "application/zip" });
+          res.write("the start of a zip");
+          setTimeout(() => res.destroy(), 20);
+          return;
+        }
         res.writeHead(req.url === "/api/v1/missing" ? 404 : 200, {
           "Content-Type": "application/json",
           "Set-Cookie": "session=abc; HttpOnly",
@@ -182,6 +188,19 @@ describe("web server", () => {
   it("replaces a client-supplied X-Forwarded-For", async () => {
     await fetch(`${base}/api/v1/things`, { headers: { "x-forwarded-for": "1.2.3.4" } });
     assert.ok(!lastApiRequest.headers["x-forwarded-for"].includes("1.2.3.4"));
+  });
+
+  it("breaks the download when the API's response is cut off", async () => {
+    const outcome = await new Promise((resolve) => {
+      http
+        .get(new URL("/api/v1/cut", base), (res) => {
+          res.on("end", () => resolve("finished"));
+          res.on("error", () => resolve("cut"));
+          res.resume();
+        })
+        .on("error", () => resolve("cut"));
+    });
+    assert.equal(outcome, "cut");
   });
 
   it("does not time out long requests", () => {

@@ -587,6 +587,18 @@ type PutUploadChunkParams struct {
 	Offset *string `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// DownloadZipParams defines parameters for DownloadZip.
+type DownloadZipParams struct {
+	// File IDs of files to include.
+	File *[]string `form:"file,omitempty" json:"file,omitempty"`
+
+	// Folder IDs of folders to include, with everything inside them.
+	Folder *[]string `form:"folder,omitempty" json:"folder,omitempty"`
+
+	// Check Set to true to find out whether this zip can be made, without making it. A refused download gives the browser nothing useful to show, so the app asks first.
+	Check *string `form:"check,omitempty" json:"check,omitempty"`
+}
+
 // UpdateSettingsJSONRequestBody defines body for UpdateSettings for application/json ContentType.
 type UpdateSettingsJSONRequestBody = SettingsUpdate
 
@@ -796,6 +808,9 @@ type ServerInterface interface {
 	// PutUploadChunk Send the next piece of an upload
 	// (PUT /api/v1/uploads/{id}/chunk)
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id Id, params PutUploadChunkParams)
+	// DownloadZip Download files and folders as one zip
+	// (GET /api/v1/zip)
+	DownloadZip(w http.ResponseWriter, r *http.Request, params DownloadZipParams)
 	// GetHealth Report whether the server can reach its database
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1132,6 +1147,12 @@ func (_ Unimplemented) GetUpload(w http.ResponseWriter, r *http.Request, id Id) 
 // PutUploadChunk Send the next piece of an upload
 // (PUT /api/v1/uploads/{id}/chunk)
 func (_ Unimplemented) PutUploadChunk(w http.ResponseWriter, r *http.Request, id Id, params PutUploadChunkParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DownloadZip Download files and folders as one zip
+// (GET /api/v1/zip)
+func (_ Unimplemented) DownloadZip(w http.ResponseWriter, r *http.Request, params DownloadZipParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2431,6 +2452,65 @@ func (siw *ServerInterfaceWrapper) PutUploadChunk(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// DownloadZip operation middleware
+func (siw *ServerInterfaceWrapper) DownloadZip(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadZipParams
+
+	// ------------- Optional query parameter "file" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "file", r.URL.Query(), &params.File, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "file"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "file", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "folder" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "folder", r.URL.Query(), &params.Folder, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "folder"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "folder", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "check" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "check", r.URL.Query(), &params.Check, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "check"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "check", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadZip(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -2686,6 +2766,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/zip", wrapper.DownloadZip)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/uploads", wrapper.ListUploads)

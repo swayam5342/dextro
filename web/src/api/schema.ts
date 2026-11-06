@@ -439,6 +439,22 @@ export interface paths {
   "/api/v1/folders/{id}/restore": {
     post: PathOperation;
   };
+  "/api/v1/zip": {
+    get: {
+      parameters: {
+        query?: { file?: string[]; folder?: string[]; check?: string };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        200: { headers: { [name: string]: unknown }; content: { "application/zip": string } };
+        204: { headers: { [name: string]: unknown }; content?: never };
+        default: JsonBody<Schemas["Error"]>;
+      };
+    };
+  };
   "/api/v1/uploads": {
     get: Operation<{ 200: JsonBody<Schemas["UploadSession"][]> }>;
     post: JsonOperation<Schemas["NewUpload"], { 201: JsonBody<Schemas["UploadSession"]> }>;

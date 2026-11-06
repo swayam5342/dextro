@@ -34,6 +34,8 @@ const (
 	codeNoThumbnail         = "no_thumbnail"
 	codeInvalidChunk        = "invalid_chunk"
 	codeInvalidImport       = "invalid_import"
+	codeInvalidZip          = "invalid_zip"
+	codeZipTooLarge         = "zip_too_large"
 	codeOffsetMismatch      = "offset_mismatch"
 	codeUploadExpired       = "upload_expired"
 )
@@ -424,6 +426,10 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidUpload, "An upload needs a name and a size.")
 	case errors.Is(err, ErrInvalidImport):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidImport, "Pick between 1 and 100 files.")
+	case errors.Is(err, ErrInvalidZip):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidZip, "Choose between 1 and 200 items to download.")
+	case errors.Is(err, ErrZipTooLarge):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeZipTooLarge, "That's too many files for one zip. Choose fewer than 2,000.")
 	case errors.Is(err, ErrInvalidChunk):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidChunk, "This piece of the file isn't valid.")
 	case errors.Is(err, ErrOffsetMismatch):

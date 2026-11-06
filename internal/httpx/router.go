@@ -61,6 +61,7 @@ type FilesHandlers interface {
 	CancelUpload(w http.ResponseWriter, r *http.Request, id types.UUID)
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.PutUploadChunkParams)
 	SyncConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
+	DownloadZip(w http.ResponseWriter, r *http.Request, params apigen.DownloadZipParams)
 	ImportPicked(w http.ResponseWriter, r *http.Request, id types.UUID)
 }
 
