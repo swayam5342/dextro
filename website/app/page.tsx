@@ -96,9 +96,9 @@ export default function Home() {
               {LEDGER.map(([what, kept, who, after]) => (
                 <tr key={what}>
                   <td>{what}</td>
-                  <td>{kept}</td>
-                  <td>{who}</td>
-                  <td>{after}</td>
+                  <td data-label="Kept in">{kept}</td>
+                  <td data-label="Reached by">{who}</td>
+                  <td data-label="If you stop">{after}</td>
                 </tr>
               ))}
             </tbody>

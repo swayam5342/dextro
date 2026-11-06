@@ -14,12 +14,19 @@ export function RiverDiagram() {
         <text x="0" y="246" {...label}>15 GB</text>
         <text x="1050" y="172" textAnchor="middle" fill="#00263a" fontSize="64" fontWeight="700" letterSpacing="-2">45 GB</text>
       </svg>
-      <svg className="river tall" viewBox="0 0 300 460" role="img" aria-label="Three streams of 15 gigabytes each join into one river that opens into a pool of 45 gigabytes.">
-        <path d="M36 0 C 30 90 66 130 92 180 S 132 240 138 290" fill="none" stroke="#4cb3f0" strokeWidth="14" />
-        <path d="M150 0 C 136 80 168 130 150 190 S 146 240 150 290" fill="none" stroke="#4cb3f0" strokeWidth="14" />
-        <path d="M264 0 C 272 90 232 130 212 180 S 170 240 162 290" fill="none" stroke="#4cb3f0" strokeWidth="14" />
-        <path d="M130 270 C 128 310 112 330 92 350 C 80 362 40 372 0 380 L 0 460 L 300 460 L 300 380 C 260 372 220 362 208 350 C 188 330 172 310 170 270 Z" fill="#4cb3f0" />
-        <text x="150" y="432" textAnchor="middle" fill="#00263a" fontSize="46" fontWeight="700" letterSpacing="-1">45 GB</text>
+      <svg className="river tall" viewBox="0 0 360 290" role="img" aria-label="Three streams of 15 gigabytes each join into one river that opens into a pool of 45 gigabytes.">
+        <path d="M50 30 C 50 100 130 120 172 190" fill="none" stroke="#4cb3f0" strokeWidth="10" />
+        <path d="M180 30 C 165 90 195 130 180 190" fill="none" stroke="#4cb3f0" strokeWidth="10" />
+        <path d="M310 30 C 310 100 230 120 188 190" fill="none" stroke="#4cb3f0" strokeWidth="10" />
+        <path d="M160 175 C 150 212 100 222 0 232 L 0 290 L 360 290 L 360 232 C 260 222 210 212 200 175 Z" fill="#4cb3f0" />
+        {[50, 180, 310].map((x) => (
+          <text key={x} x={x} y="16" textAnchor="middle" fill="#fff" fontSize="15" fontWeight="600">
+            15 GB
+          </text>
+        ))}
+        <text x="180" y="274" textAnchor="middle" fill="#00263a" fontSize="34" fontWeight="700" letterSpacing="-1">
+          45 GB
+        </text>
       </svg>
     </>
   );

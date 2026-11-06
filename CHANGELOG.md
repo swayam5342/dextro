@@ -1,5 +1,9 @@
 # Changelog
 
+## Planned for 2.0
+
+- WebDAV, so the pool can be mounted as a drive or used with rclone.
+
 ## 0.1.1 (7 November 2026)
 
 ### Added

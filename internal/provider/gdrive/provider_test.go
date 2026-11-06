@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -284,6 +285,10 @@ func TestUploadMemoryStaysFlat(t *testing.T) {
 	const size = 256 << 20
 	// Measured against the chunk buffer, with room for the client and the runtime.
 	const limit = 8 * chunkSize
+	// HeapAlloc counts garbage as well as what's in use, so how high it climbs depends on
+	// when the collector happens to run. Collecting often keeps it close to what the upload
+	// really holds, or a busy machine fails this with no leak at all.
+	defer debug.SetGCPercent(debug.SetGCPercent(10))
 	runtime.GC()
 	var before runtime.MemStats
 	runtime.ReadMemStats(&before)
@@ -315,7 +320,9 @@ func TestUploadMemoryStaysFlat(t *testing.T) {
 	if object.Size != size {
 		t.Errorf("Size = %d, want %d", object.Size, size)
 	}
-	if grew := peak.Load() - min(peak.Load(), before.HeapAlloc); grew > limit {
+	grew := peak.Load() - min(peak.Load(), before.HeapAlloc)
+	t.Logf("heap grew by %d MiB for a %d MiB file", grew>>20, size>>20)
+	if grew > limit {
 		t.Errorf("heap grew by %d MiB for a %d MiB file", grew>>20, size>>20)
 	}
 }

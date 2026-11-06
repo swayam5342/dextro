@@ -983,21 +983,6 @@ code {
     grid-column: 1 / -1;
   }
 
-  .river.wide {
-    display: none;
-  }
-
-  .river.tall {
-    display: block;
-    max-width: 280px;
-    margin-inline: auto;
-  }
-
-  .zones {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
-  }
-
   .menu-open {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1014,19 +999,32 @@ code {
   }
 
   .ledger tr {
-    margin-top: 16px;
+    margin-top: 22px;
   }
 
   .ledger td {
-    padding: 0;
-    font-size: var(--small);
-    color: var(--muted);
+    display: grid;
+    grid-template-columns: 6.2em minmax(0, 1fr);
+    gap: 10px;
+    padding: 2px 0;
+    font-size: 15px;
+  }
+
+  /* Without the table's headings, each value has to say what it is. */
+  .ledger td::before {
+    content: attr(data-label);
+    color: var(--accent);
   }
 
   .ledger td:first-child {
-    font-size: var(--body);
+    display: block;
+    margin-bottom: 4px;
+    font-size: var(--lead);
     font-weight: 600;
-    color: var(--ink);
+  }
+
+  .ledger td:first-child::before {
+    content: none;
   }
 
   .about-text {
@@ -1081,6 +1079,22 @@ code {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0 var(--margin);
+  }
+}
+
+@media (max-width: 560px) {
+  .river.wide {
+    display: none;
+  }
+
+  .river.tall {
+    display: block;
+    margin-top: 32px;
+  }
+
+  .zones {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
   }
 }
 
