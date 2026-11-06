@@ -1,4 +1,4 @@
-/** dextro's mark: water in a square, for a pool of storage. */
+/** Tributary's mark: water in a square, for a pool of storage. */
 export function Mark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">

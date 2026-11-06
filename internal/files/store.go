@@ -378,3 +378,12 @@ func (s *Store) ImportFile(ctx context.Context, userID uuid.UUID, r fileRecord) 
 	}
 	return rows > 0, nil
 }
+
+// UsageForOwner adds up a user's files by kind.
+func (s *Store) UsageForOwner(ctx context.Context, userID uuid.UUID) (Usage, error) {
+	row, err := s.queries.GetFileUsageForOwner(ctx, userID)
+	if err != nil {
+		return Usage{}, fmt.Errorf("get usage: %w", err)
+	}
+	return Usage{Photo: row.PhotoBytes, Video: row.VideoBytes, Document: row.DocumentBytes}, nil
+}

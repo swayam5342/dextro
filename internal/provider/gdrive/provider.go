@@ -21,6 +21,8 @@ import (
 )
 
 const (
+	// folderName is the name from before the app was called Tributary. Accounts are found
+	// by it, so changing it would lose sight of every file already stored.
 	folderName     = "dextro"
 	folderMimeType = "application/vnd.google-apps.folder"
 	// chunkSize sets the memory an upload uses, since one chunk is held at a time.
@@ -30,14 +32,14 @@ const (
 	fileFields      = "id,name,size,mimeType,modifiedTime,parents,md5Checksum"
 	// permissionAnyone is Drive's type for a public link.
 	permissionAnyone = "anyone"
-	// permissionPageSize is more than a file of dextro's will ever have.
+	// permissionPageSize is more than a file of Tributary's will ever have.
 	permissionPageSize = 100
 	// thumbnailSize is the long edge to ask Google for, sharp at the size of a grid tile.
 	thumbnailSize = "=s480"
 )
 
-// ErrFolderMissing means the user trashed or deleted dextro's folder.
-var ErrFolderMissing = errors.New("dextro's drive folder is missing")
+// ErrFolderMissing means the user trashed or deleted Tributary's folder.
+var ErrFolderMissing = errors.New("tributary's drive folder is missing")
 
 // Settings are the non-secret details of a connection.
 type Settings struct {
@@ -51,7 +53,7 @@ type Credentials struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// Client connects Google accounts. It holds dextro's OAuth client, not any user's
+// Client connects Google accounts. It holds Tributary's OAuth client, not any user's
 // credentials, so one is shared by everyone.
 type Client struct {
 	config     oauth2.Config
@@ -76,8 +78,8 @@ func newClient(clientID, clientSecret, redirectURL, authURL, tokenURL, apiBase s
 			ClientSecret: clientSecret,
 			RedirectURL:  redirectURL,
 			Endpoint:     oauth2.Endpoint{AuthURL: authURL, TokenURL: tokenURL},
-			// drive.file reaches only files dextro created, never the rest of the
-			// account. Widening it would hand dextro the user's whole Drive.
+			// drive.file reaches only files Tributary created, never the rest of the
+			// account. Widening it would hand Tributary the user's whole Drive.
 			Scopes: []string{drive.DriveFileScope},
 		},
 		apiBase:    apiBase,
@@ -116,7 +118,7 @@ func (c *Client) AuthCodeURL(state, verifier string) string {
 	)
 }
 
-// Connect finishes the OAuth flow and prepares dextro's folder in the account.
+// Connect finishes the OAuth flow and prepares Tributary's folder in the account.
 func (c *Client) Connect(ctx context.Context, code, verifier string) (Settings, Credentials, error) {
 	exchangeCtx := context.WithValue(ctx, oauth2.HTTPClient, c.httpClient)
 	token, err := c.config.Exchange(exchangeCtx, code, oauth2.VerifierOption(verifier))
@@ -141,7 +143,7 @@ func (c *Client) Connect(ctx context.Context, code, verifier string) (Settings, 
 	return Settings{Email: about.User.EmailAddress, FolderID: folderID}, Credentials{RefreshToken: token.RefreshToken}, nil
 }
 
-// ensureFolder finds dextro's folder or creates it. Finding one matters because
+// ensureFolder finds Tributary's folder or creates it. Finding one matters because
 // drive.file can see folders from an earlier connection of the same account.
 func ensureFolder(ctx context.Context, service *drive.Service) (string, error) {
 	query := fmt.Sprintf("mimeType = '%s' and name = '%s' and 'root' in parents and trashed = false", folderMimeType, folderName)
@@ -187,7 +189,7 @@ func (c *Client) Open(_ context.Context, s Settings, cr Credentials) (*Provider,
 	return &Provider{service: service, httpClient: httpClient, source: source, folderID: s.FolderID, pageSize: defaultPageSize}, nil
 }
 
-// Provider is dextro's folder in one Drive account. Only Share and Unshare touch a
+// Provider is Tributary's folder in one Drive account. Only Share and Unshare touch a
 // file's permissions, so everything else stays private to the account's owner.
 type Provider struct {
 	service    *drive.Service
@@ -324,7 +326,7 @@ func (p *Provider) AccessToken(context.Context) (string, error) {
 	return token.AccessToken, nil
 }
 
-// parent turns "dextro's own folder" into its ID.
+// parent turns the app's own folder into its ID.
 func (p *Provider) parent(id string) string {
 	if id == "" {
 		return p.folderID
@@ -406,7 +408,7 @@ func (p *Provider) Exists(ctx context.Context, id string) (bool, error) {
 
 // List implements provider.Provider.
 func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectPage, error) {
-	// drive.file means this is only what dextro created or was given.
+	// drive.file means this is only what Tributary created or was given.
 	call := p.service.Files.List().Q("trashed = false").
 		Fields(googleapi.Field("nextPageToken,files(" + fileFields + ")")).
 		PageSize(p.pageSize).OrderBy("createdTime").Context(ctx)

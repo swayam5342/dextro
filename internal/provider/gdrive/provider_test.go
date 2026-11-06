@@ -114,7 +114,7 @@ func TestAuthCodeURL(t *testing.T) {
 		"access_type":           "offline",
 		"prompt":                "select_account consent",
 		"code_challenge_method": "S256",
-		// Exactly this: dextro must not be able to read the rest of someone's Drive.
+		// Exactly this: Tributary must not be able to read the rest of someone's Drive.
 		"scope": "https://www.googleapis.com/auth/drive.file",
 	}
 	for key, value := range want {

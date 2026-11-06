@@ -571,7 +571,7 @@ type SettingsUpdate struct {
 type Share struct {
 	CreatedAt time.Time `json:"created_at"`
 
-	// ExpiresAt When dextro removes the link. Null means it stays until removed.
+	// ExpiresAt When Tributary removes the link. Null means it stays until removed.
 	ExpiresAt *time.Time         `json:"expires_at"`
 	FileId    openapi_types.UUID `json:"file_id"`
 	Name      string             `json:"name"`
@@ -663,6 +663,13 @@ type UploadSession struct {
 	// Received How much the storage account has kept.
 	Received int64 `json:"received"`
 	Size     int64 `json:"size"`
+}
+
+// Usage defines model for Usage.
+type Usage struct {
+	DocumentBytes int64 `json:"document_bytes"`
+	PhotoBytes    int64 `json:"photo_bytes"`
+	VideoBytes    int64 `json:"video_bytes"`
 }
 
 // User defines model for User.
@@ -807,6 +814,9 @@ type ServerInterface interface {
 	// ListAuditEvents List security-relevant events, newest first
 	// (GET /api/v1/admin/audit)
 	ListAuditEvents(w http.ResponseWriter, r *http.Request, params ListAuditEventsParams)
+	// RunJob Run a background job now
+	// (POST /api/v1/admin/jobs/{name}/run)
+	RunJob(w http.ResponseWriter, r *http.Request, name string)
 	// GetSettings Return the instance-wide settings
 	// (GET /api/v1/admin/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
@@ -822,7 +832,7 @@ type ServerInterface interface {
 	// CreateUser Create an account with a password the user must replace
 	// (POST /api/v1/admin/users)
 	CreateUser(w http.ResponseWriter, r *http.Request)
-	// DeleteUser Delete an account and dextro's records of its files
+	// DeleteUser Delete an account and Tributary's records of its files
 	// (DELETE /api/v1/admin/users/{id})
 	DeleteUser(w http.ResponseWriter, r *http.Request, id Id)
 	// ResetUserPassword Set a password the user must replace, and sign them out everywhere
@@ -948,7 +958,7 @@ type ServerInterface interface {
 	// OpenPicker Get what Google's picker needs to run in the browser
 	// (POST /api/v1/storage/connections/{id}/picker)
 	OpenPicker(w http.ResponseWriter, r *http.Request, id Id)
-	// SyncConnection Make dextro match what's really in an account
+	// SyncConnection Make Tributary match what's really in an account
 	// (POST /api/v1/storage/connections/{id}/sync)
 	SyncConnection(w http.ResponseWriter, r *http.Request, id Id)
 	// TestConnection Check that a connection still works
@@ -996,6 +1006,9 @@ type ServerInterface interface {
 	// PutUploadChunk Send the next piece of an upload
 	// (PUT /api/v1/uploads/{id}/chunk)
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id Id, params PutUploadChunkParams)
+	// GetUsage See how much of your storage each kind of file takes
+	// (GET /api/v1/usage)
+	GetUsage(w http.ResponseWriter, r *http.Request)
 	// DownloadZip Download files and folders as one zip
 	// (GET /api/v1/zip)
 	DownloadZip(w http.ResponseWriter, r *http.Request, params DownloadZipParams)
@@ -1011,6 +1024,12 @@ type Unimplemented struct{}
 // ListAuditEvents List security-relevant events, newest first
 // (GET /api/v1/admin/audit)
 func (_ Unimplemented) ListAuditEvents(w http.ResponseWriter, r *http.Request, params ListAuditEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RunJob Run a background job now
+// (POST /api/v1/admin/jobs/{name}/run)
+func (_ Unimplemented) RunJob(w http.ResponseWriter, r *http.Request, name string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1044,7 +1063,7 @@ func (_ Unimplemented) CreateUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// DeleteUser Delete an account and dextro's records of its files
+// DeleteUser Delete an account and Tributary's records of its files
 // (DELETE /api/v1/admin/users/{id})
 func (_ Unimplemented) DeleteUser(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -1296,7 +1315,7 @@ func (_ Unimplemented) OpenPicker(w http.ResponseWriter, r *http.Request, id Id)
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// SyncConnection Make dextro match what's really in an account
+// SyncConnection Make Tributary match what's really in an account
 // (POST /api/v1/storage/connections/{id}/sync)
 func (_ Unimplemented) SyncConnection(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -1392,6 +1411,12 @@ func (_ Unimplemented) PutUploadChunk(w http.ResponseWriter, r *http.Request, id
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetUsage See how much of your storage each kind of file takes
+// (GET /api/v1/usage)
+func (_ Unimplemented) GetUsage(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // DownloadZip Download files and folders as one zip
 // (GET /api/v1/zip)
 func (_ Unimplemented) DownloadZip(w http.ResponseWriter, r *http.Request, params DownloadZipParams) {
@@ -1450,6 +1475,32 @@ func (siw *ServerInterfaceWrapper) ListAuditEvents(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAuditEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunJob operation middleware
+func (siw *ServerInterfaceWrapper) RunJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunJob(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2880,6 +2931,20 @@ func (siw *ServerInterfaceWrapper) PutUploadChunk(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetUsage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUsage(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DownloadZip operation middleware
 func (siw *ServerInterfaceWrapper) DownloadZip(w http.ResponseWriter, r *http.Request) {
 
@@ -3193,7 +3258,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/admin/status", wrapper.GetServerStatus)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/admin/jobs/{name}/run", wrapper.RunJob)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/usage", wrapper.GetUsage)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/shares", wrapper.ListShares)

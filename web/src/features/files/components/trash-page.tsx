@@ -26,7 +26,7 @@ function TrashRow({ item, name, detail, icon: Icon, external = false }: TrashRow
   const busy = restore.isPending || destroy.isPending;
   const what = item.kind === "folder" ? "This folder and everything in it" : "This file";
   const warning = external
-    ? "This removes it from dextro. The file stays in your Google Drive."
+    ? "This removes it from Tributary. The file stays in your Google Drive."
     : `${what} will also be removed from your storage account. This can't be undone.`;
 
   return (
@@ -44,16 +44,16 @@ function TrashRow({ item, name, detail, icon: Icon, external = false }: TrashRow
             Restore
           </Button>
           <Button variant="destructive" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
-            {external ? "Remove from dextro" : "Delete forever"}
+            {external ? "Remove from Tributary" : "Delete forever"}
           </Button>
         </div>
       </div>
       <FormError message={restore.error?.message} />
       {confirming && (
         <ConfirmDialog
-          title={external ? `Remove ${name} from dextro?` : `Delete ${name} forever?`}
+          title={external ? `Remove ${name} from Tributary?` : `Delete ${name} forever?`}
           text={warning}
-          action={external ? "Remove from dextro" : "Delete forever"}
+          action={external ? "Remove from Tributary" : "Delete forever"}
           pending={destroy.isPending}
           error={destroy.error?.message}
           onConfirm={() => destroy.mutate(item, { onSuccess: () => setConfirming(false) })}
@@ -113,7 +113,7 @@ export function TrashPage() {
       {confirming && (
         <ConfirmDialog
           title="Empty the trash?"
-          text="Files dextro stored will also be removed from your storage accounts, and files you added from Drive stay in Drive. This can't be undone."
+          text="Files Tributary stored will also be removed from your storage accounts, and files you added from Drive stay in Drive. This can't be undone."
           action="Empty trash"
           pending={empty.isPending}
           error={empty.error?.message}

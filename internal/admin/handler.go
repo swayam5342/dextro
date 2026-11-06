@@ -57,6 +57,21 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, toAPI(settings))
 }
 
+// RunJob implements apigen.ServerInterface.
+func (h *Handler) RunJob(w http.ResponseWriter, r *http.Request, name string) {
+	principal, _ := httpx.PrincipalFrom(r.Context())
+	err := h.service.RunJob(r.Context(), principal.UserID, httpx.ClientIP(r.Context()), name)
+	if errors.Is(err, ErrUnknownJob) {
+		httpx.WriteError(w, r, http.StatusNotFound, "unknown_job", "There's no job by that name.")
+		return
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // GetServerStatus implements apigen.ServerInterface.
 func (h *Handler) GetServerStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.Status(r.Context())

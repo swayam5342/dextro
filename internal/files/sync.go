@@ -17,7 +17,7 @@ const (
 	// object a moment before saving its record, and adding it in that moment would make
 	// the upload's own save fail, which would then delete the object.
 	syncGrace = 10 * time.Minute
-	// importedFallbackName stands in for a name dextro can't use.
+	// importedFallbackName stands in for a name Tributary can't use.
 	importedFallbackName = "Recovered file"
 	// jobActor stands in for a client address on events from the background jobs.
 	jobActor = "job"
@@ -32,7 +32,7 @@ type SyncResult struct {
 	Failures []error
 }
 
-// listing is everything an account lets dextro see.
+// listing is everything an account lets Tributary see.
 type listing struct {
 	folders map[string]provider.Object
 	files   map[string]provider.Object
@@ -69,11 +69,11 @@ type syncRun struct {
 	found        listing
 	// leaving is old copies of moved files, which aren't new files however they look.
 	leaving map[string]bool
-	// mapped says which dextro folder each of the account's folders is.
+	// mapped says which Tributary folder each of the account's folders is.
 	mapped map[string]uuid.UUID
 }
 
-// SyncConnection makes dextro's records match what's really in an account: files and
+// SyncConnection makes Tributary's records match what's really in an account: files and
 // folders it has no record of come back, which is how a lost database recovers, and
 // records of files that are gone are removed.
 //
@@ -152,8 +152,8 @@ func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.
 	return result, errors.Join(err, s.recordSync(ctx, userID, connectionID, ip, result))
 }
 
-// place finds the dextro folder for one of the account's folders, adopting any it
-// doesn't know yet. False means it's outside dextro's folder, or too new to judge.
+// place finds the Tributary folder for one of the account's folders, adopting any it
+// doesn't know yet. False means it's outside Tributary's folder, or too new to judge.
 func (r *syncRun) place(ctx context.Context, objectID string) (*uuid.UUID, bool, error) {
 	if objectID == r.stored.RootID() {
 		return nil, true, nil
@@ -181,7 +181,7 @@ func (r *syncRun) place(ctx context.Context, objectID string) (*uuid.UUID, bool,
 }
 
 // importedName is what to call something found in an account, whose name may not be one
-// dextro accepts.
+// Tributary accepts.
 func importedName(raw string) string {
 	name, err := cleanName(raw)
 	if err != nil {
@@ -190,7 +190,7 @@ func importedName(raw string) string {
 	return name
 }
 
-// adoptFolder finds the dextro folder at this place or makes it, so that the same
+// adoptFolder finds the Tributary folder at this place or makes it, so that the same
 // folder in several accounts becomes one folder.
 func (s *Service) adoptFolder(ctx context.Context, userID uuid.UUID, parent *uuid.UUID, rawName string) (uuid.UUID, error) {
 	name := importedName(rawName)
@@ -228,7 +228,7 @@ func (r *syncRun) importEverything(ctx context.Context, known map[string]fileRec
 		if err != nil {
 			return err
 		}
-		// Outside dextro's folder is a file someone added and then removed from dextro.
+		// Outside Tributary's folder is a file someone added and then removed from Tributary.
 		if !inside {
 			continue
 		}
@@ -269,7 +269,7 @@ func (r *syncRun) removeGoneFiles(ctx context.Context, known map[string]fileReco
 	return nil
 }
 
-// removeGoneFolders forgets folders deleted in Drive. A folder leaves dextro once it's
+// removeGoneFolders forgets folders deleted in Drive. A folder leaves Tributary once it's
 // empty and no account has it, and that can free its parent too.
 func (r *syncRun) removeGoneFolders(ctx context.Context, rows []folderObject) error {
 	for _, row := range rows {
@@ -362,7 +362,7 @@ func (r *syncRun) finishStale(ctx context.Context, row folderObject) error {
 	return r.s.store.ClearFolderObjectStale(ctx, row.folderID, r.connectionID)
 }
 
-// sortFile puts a file from before real folders where dextro shows it. This happens
+// sortFile puts a file from before real folders where Tributary shows it. This happens
 // once per account, so that a change made by hand in Drive later isn't undone.
 func (r *syncRun) sortFile(ctx context.Context, objectID string, record fileRecord) error {
 	object, listed := r.found.files[objectID]

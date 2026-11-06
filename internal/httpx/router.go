@@ -62,6 +62,7 @@ type FilesHandlers interface {
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.PutUploadChunkParams)
 	SyncConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	DownloadZip(w http.ResponseWriter, r *http.Request, params apigen.DownloadZipParams)
+	GetUsage(w http.ResponseWriter, r *http.Request)
 	ListShares(w http.ResponseWriter, r *http.Request)
 	PutShare(w http.ResponseWriter, r *http.Request, id types.UUID)
 	DeleteShare(w http.ResponseWriter, r *http.Request, id types.UUID)
@@ -90,6 +91,7 @@ type AdminHandlers interface {
 	GetSettings(w http.ResponseWriter, r *http.Request)
 	UpdateSettings(w http.ResponseWriter, r *http.Request)
 	GetServerStatus(w http.ResponseWriter, r *http.Request)
+	RunJob(w http.ResponseWriter, r *http.Request, name string)
 	ListAuditEvents(w http.ResponseWriter, r *http.Request, params apigen.ListAuditEventsParams)
 }
 

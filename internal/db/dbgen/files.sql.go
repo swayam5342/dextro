@@ -175,6 +175,32 @@ func (q *Queries) GetFileForOwner(ctx context.Context, arg GetFileForOwnerParams
 	return i, err
 }
 
+const getFileUsageForOwner = `-- name: GetFileUsageForOwner :one
+SELECT coalesce(sum(size) FILTER (WHERE content_type LIKE 'image/%'), 0)::bigint AS photo_bytes,
+       coalesce(sum(size) FILTER (WHERE content_type LIKE 'video/%'), 0)::bigint AS video_bytes,
+       coalesce(sum(size) FILTER (WHERE content_type LIKE 'text/%'
+           OR content_type IN ('application/pdf', 'application/rtf', 'application/msword', 'application/epub+zip')
+           OR content_type LIKE 'application/vnd.ms-%'
+           OR content_type LIKE 'application/vnd.oasis.opendocument.%'
+           OR content_type LIKE 'application/vnd.openxmlformats-officedocument.%'), 0)::bigint AS document_bytes
+FROM files
+WHERE user_id = $1
+`
+
+type GetFileUsageForOwnerRow struct {
+	PhotoBytes    int64
+	VideoBytes    int64
+	DocumentBytes int64
+}
+
+// Trashed files count, because they still take up room in their accounts.
+func (q *Queries) GetFileUsageForOwner(ctx context.Context, userID uuid.UUID) (GetFileUsageForOwnerRow, error) {
+	row := q.db.QueryRow(ctx, getFileUsageForOwner, userID)
+	var i GetFileUsageForOwnerRow
+	err := row.Scan(&i.PhotoBytes, &i.VideoBytes, &i.DocumentBytes)
+	return i, err
+}
+
 const getFolderForOwner = `-- name: GetFolderForOwner :one
 SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at FROM folders WHERE user_id = $1 AND id = $2
 `

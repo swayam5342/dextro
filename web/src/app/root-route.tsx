@@ -5,7 +5,7 @@ import { ErrorPage } from "./error-page";
 import { NotFound } from "./not-found";
 import { RootLayout } from "./root-layout";
 
-export interface RouterContext {
+interface RouterContext {
   queryClient: QueryClient;
 }
 

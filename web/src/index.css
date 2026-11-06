@@ -29,6 +29,11 @@
   --color-nav: var(--nav);
   --color-primary-hover: var(--primary-hover);
   --color-destructive-hover: var(--destructive-hover);
+  --color-usage-photo: var(--usage-photo);
+  --color-usage-video: var(--usage-video);
+  --color-usage-document: var(--usage-document);
+  --color-usage-other: var(--usage-other);
+  --color-usage-free: var(--usage-free);
   --color-avatar: var(--avatar);
   --color-avatar-foreground: var(--avatar-foreground);
   --color-scrim: var(--scrim);

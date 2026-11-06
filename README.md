@@ -1,17 +1,17 @@
-# dextro
+# Tributary
 
 A self-hosted file manager that turns several Google Drive accounts into one pool of storage.
 
-Link your Drive accounts, then upload, organize, preview and share files from one web app. dextro keeps your files in your own Drive accounts, not on its own server.
+Link your Drive accounts, then upload, organize, preview and share files from one web app. Tributary keeps your files in your own Drive accounts, not on its own server.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/media/files-light.webp">
-  <img alt="The dextro file browser, showing folders and a grid of photos, with the storage pool in the sidebar" src="docs/media/files-dark.webp">
+  <img alt="The Tributary file browser, showing folders and a grid of photos, with the storage pool in the sidebar" src="docs/media/files-dark.webp">
 </picture>
 
 ## See it in action
 
-![A tour of dextro: viewing a photo, uploading files, dragging a file into a folder, making a Google link, moving files between accounts, and switching to the light theme](docs/media/demo.gif)
+![A tour of Tributary: viewing a photo, uploading files, dragging a file into a folder, making a Google link, moving files between accounts, and switching to the light theme](docs/media/demo.gif)
 
 [Watch this as a full-quality video](docs/media/demo.mp4).
 
@@ -27,7 +27,9 @@ Link your Drive accounts, then upload, organize, preview and share files from on
 - **Add from Drive.** Bring in files you already have in Drive, using Google's picker.
 - **Accounts for other people.** One admin creates users, each with their own files and linked accounts.
 - **API keys.** Scripts can upload and read files with a scoped key.
+- **Storage at a glance.** See how much photos, videos and documents take up across the pool.
 - **Light and dark themes.** Follows your device, or choose one.
+- **Admin commands.** Manage users and settings from the command line.
 
 ## Screenshots
 
@@ -50,7 +52,7 @@ These show a demo with made-up accounts and [free sample photos](docs/media/CRED
 
 ## How it works
 
-dextro runs as three parts:
+Tributary runs as three parts:
 
 | Part | What it does |
 |---|---|
@@ -62,7 +64,7 @@ File contents pass through the Go server as a stream on their way to and from Dr
 
 Add from Drive moves no file contents, and neither does the sync. Google serves files opened through a Google link, so that traffic never reaches your server either.
 
-dextro uses the `drive.file` scope, so it can only see files it created or that you chose in the picker. Anything else in your Drive stays invisible to it.
+Tributary uses the `drive.file` scope, so it can only see files it created or that you chose in the picker. Anything else in your Drive stays invisible to it.
 
 ## Getting started
 
@@ -132,21 +134,36 @@ The admin can change the upload limit and turn Google links on or off in **Serve
 
 Session cookies are always `Secure`. Chrome accepts them on `http://127.0.0.1`, but any other address needs HTTPS, or sign-in won't stick. If you change `PUBLIC_URL`, update the redirect URIs in Google to match.
 
-## Admin tasks
+## Admin commands
 
-There's one admin. These run on the server:
+There's one admin. `make admin` runs these on the server:
 
 ```sh
-# Hand the admin role to someone else
-docker compose exec api /dextro transfer-admin someone@example.org
-
-# Print a temporary password for someone locked out, the admin included
-docker compose exec api /dextro reset-password someone@example.org
+make admin cmd="help"
 ```
 
-In Git Bash, put `MSYS_NO_PATHCONV=1` in front of these.
+| Command | What it does |
+|---|---|
+| `status` | How the server, accounts and background jobs are doing |
+| `sync` | Match Tributary to every linked account now |
+| `users` | List every user |
+| `create-user <email>` | Add a user and print a temporary password |
+| `delete-user <email> --yes` | Delete a user. Leave off `--yes` to see what that does |
+| `reset-password <email>` | Print a temporary password, for someone locked out, the admin included |
+| `transfer-admin <email>` | Hand the admin role to someone else |
+| `links [on\|off]` | Show or set whether people can make Google links |
+| `upload-limit [GiB]` | Show or set the largest upload |
 
-**Server status** shows whether each background job and linked account is healthy, and the **Audit log** records sign-ins, settings changes, links and permanent deletes.
+For example:
+
+```sh
+make admin cmd="create-user someone@example.org"
+make admin cmd="links on"
+```
+
+Without `make`, run `docker compose exec api /tributary-cli <command>`. In Git Bash, put `MSYS_NO_PATHCONV=1` in front of it.
+
+These show accounts and counts, never what anyone stores, and changes appear in the audit log. In the app, **Server status** shows the same health information and has a **Run now** button for each background job, and the **Audit log** records sign-ins, settings changes, links and permanent deletes.
 
 ## Changing the look
 
@@ -199,7 +216,9 @@ Requirements: Go 1.27, Node 22 and pnpm.
 
 ```
 api/openapi.yaml     The API contract. Change this first, then run make generate.
-cmd/server           Starts everything. Wiring only.
+cmd/server           Starts the server. Wiring only.
+cmd/cli              The admin's command line, tributary-cli. Wiring only.
+internal/cli         The admin commands
 internal/files       Files, folders, the trash, uploads, zips, moves, links and sync
 internal/storage     Linked accounts and the storage pool
 internal/provider    What storage has to provide, and the Google Drive adapter
@@ -214,7 +233,7 @@ Each backend feature has a `handler.go` for HTTP, a `service.go` for rules and a
 
 ## Security
 
-- Files are private. The only public access dextro ever creates is a Google link that a person chose to make, on one file, and only if the admin has turned links on. Every link is listed on one page, audited, and ended when its file goes to the trash.
+- Files are private. The only public access Tributary ever creates is a Google link that a person chose to make, on one file, and only if the admin has turned links on. Every link is listed on one page, audited, and ended when its file goes to the trash.
 - Google tokens are encrypted at rest with AES-256-GCM, and the server refuses to start with placeholder secrets.
 - Sessions use `HttpOnly`, `Secure` cookies stored hashed, and API keys are stored hashed. Keys can't delete anything permanently or touch links.
 - Uploaded content is served with a sandbox policy. Only images, video and PDFs display in the browser, and everything else downloads.
@@ -222,10 +241,11 @@ Each backend feature has a `handler.go` for HTTP, a `service.go` for rules and a
 
 ## Good to know
 
+- **The name.** Tributary used to be called dextro. That's why the folder in your Drive, the database and the `DEXTRO_` settings still use the old name: changing them would lose track of data that's already there.
 - **A file lives whole in one account.** Free space adds up across accounts, but the largest file you can upload is limited by the account with the most room.
 - **Changes made by hand in Drive mostly aren't copied back.** Deletions are noticed, but renames and moves aren't.
-- **The trash is dextro's own.** It doesn't appear in Drive, and it only empties when you tell it to.
-- **Link expiry needs the server running.** Google has no expiry for public links, so dextro removes them itself. If the server is off at that moment, the link keeps working until it's back.
-- **Removing an account or user leaves their files in Drive.** dextro only forgets them. Deleting a user also leaves any Google links they made working.
+- **The trash is Tributary's own.** It doesn't appear in Drive, and it only empties when you tell it to.
+- **Link expiry needs the server running.** Google has no expiry for public links, so Tributary removes them itself. If the server is off at that moment, the link keeps working until it's back.
+- **Removing an account or user leaves their files in Drive.** Tributary only forgets them. Deleting a user also leaves any Google links they made working.
 - **Moves are one at a time.** Each file costs several Google requests, so moving thousands of small files takes hours. They run in the background, so you can close the browser.
 - **Zips take time for many files.** Google takes about a second to start sending each one.

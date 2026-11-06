@@ -619,7 +619,7 @@ func testSyncSaysWhy(t *testing.T, f *uploadFixture) {
 	}
 }
 
-// Drive lets dextro keep seeing a file it was given, so a listing still shows it.
+// Drive lets Tributary keep seeing a file it was given, so a listing still shows it.
 func testRemovedFileStaysRemoved(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	connection := f.link(t, user, "a@gmail.com", 1<<30)

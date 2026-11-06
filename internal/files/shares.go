@@ -79,7 +79,7 @@ func (s *Service) ListShares(ctx context.Context, userID uuid.UUID) (ShareList, 
 }
 
 // ShareFile makes a public link, or changes one. This is the only way anything in
-// dextro becomes public, and it's one file at a time, on its owner's say-so. The row is
+// Tributary becomes public, and it's one file at a time, on its owner's say-so. The row is
 // written before Google is asked, so a crash can't leave a public link nothing knows
 // about.
 func (s *Service) ShareFile(ctx context.Context, userID, id uuid.UUID, in ShareInput, ip string) (Share, error) {
@@ -98,7 +98,7 @@ func (s *Service) ShareFile(ctx context.Context, userID, id uuid.UUID, in ShareI
 	if err != nil {
 		return Share{}, err
 	}
-	// A person's own Drive file may already have a link they made, and removing dextro's
+	// A person's own Drive file may already have a link they made, and removing Tributary's
 	// would take theirs with it. Google's own sharing is the place for those.
 	if record.External {
 		return Share{}, ErrExternalFile

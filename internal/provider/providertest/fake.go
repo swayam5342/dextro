@@ -407,7 +407,7 @@ func (f *Fake) AccessToken(context.Context) (string, error) {
 	return "fake-access-token", f.CheckErr
 }
 
-// rootID stands in for dextro's own folder.
+// rootID stands in for Tributary's own folder.
 const rootID = "root"
 
 func (f *Fake) parent(id string) string {

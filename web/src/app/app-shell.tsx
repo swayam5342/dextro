@@ -35,10 +35,9 @@ import { ToastProvider } from "@/components/toast";
 import { DropZone, UploadPanel } from "@/features/files/components/upload-panel";
 import { treeFromPicked } from "@/features/files/folder-tree";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
+import { UsageCard } from "@/features/storage/components/usage-card";
 import { freeSpaceText, usableConnections } from "@/features/storage/pool";
-import { useFollowTransfers, connectionsQuery, poolQuery } from "@/features/storage/queries";
-import { formatBytes } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { connectionsQuery, poolQuery, useFollowTransfers } from "@/features/storage/queries";
 
 function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/links" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
   return (
@@ -55,7 +54,7 @@ function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/links" | "/
   );
 }
 
-/** Every account's level at a glance. This is what makes the accounts one pool. */
+/** What's taking up the pool, on every page. */
 function PoolMeter() {
   const { data: pool } = useQuery(poolQuery);
   if (!pool || pool.accounts.length === 0) {
@@ -65,38 +64,9 @@ function PoolMeter() {
       </Link>
     );
   }
-  const working = pool.accounts.filter((a) => a.available).length;
-  const accounts = working === 1 ? "1 account" : `${working} accounts`;
   return (
-    <Link to="/storage" className="mt-auto grid gap-2.5 rounded-2xl bg-card p-3.5 transition-colors hover:bg-accent" aria-label="Open storage">
-      <span className="flex h-[46px] gap-[5px]">
-        {pool.accounts.map((account) => {
-          const fill =
-            account.available && account.limit_bytes ? (account.used_bytes / account.limit_bytes) * 100 : 0;
-          return (
-            <span
-              key={account.connection.id}
-              title={account.connection.summary}
-              className={cn("relative flex-1 overflow-hidden rounded-[5px] bg-raised", !account.available && "hatched")}
-            >
-              <span className="absolute inset-x-0 bottom-0 bg-water" style={{ height: `${fill}%` }} />
-            </span>
-          );
-        })}
-      </span>
-      {pool.free_bytes === null || pool.limit_bytes === null ? (
-        <span>
-          <span className="block text-[15px] font-semibold">{formatBytes(pool.used_bytes)} used</span>
-          <span className="text-xs text-muted-foreground">across {accounts}</span>
-        </span>
-      ) : (
-        <span>
-          <span className="block text-[15px] font-semibold">{formatBytes(pool.free_bytes)} free</span>
-          <span className="text-xs text-muted-foreground">
-            of {formatBytes(pool.limit_bytes)} across {accounts}
-          </span>
-        </span>
-      )}
+    <Link to="/storage" className="mt-auto block rounded-2xl bg-card p-3.5 transition-colors hover:bg-accent">
+      <UsageCard />
     </Link>
   );
 }
@@ -321,7 +291,7 @@ function Frame() {
     <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_58px] md:grid-cols-[224px_minmax(0,1fr)] md:grid-rows-[64px_minmax(0,1fr)]">
       <Link to="/" search={{}} className="hidden items-center gap-2.5 border-r border-b px-5 text-[17px] font-semibold tracking-tight md:flex">
         <Mark className="size-6" />
-        dextro
+        Tributary
       </Link>
       <header className="flex min-w-0 items-center gap-3 border-b px-3 md:px-6">
         <SearchBox />

@@ -1,4 +1,4 @@
-// Command server runs dextro. This file only wires the pieces together.
+// Command server runs Tributary. This file only wires the pieces together.
 package main
 
 import (
@@ -9,12 +9,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swayam5342/dextro/internal/admin"
 	"github.com/swayam5342/dextro/internal/auth"
@@ -24,8 +22,6 @@ import (
 	"github.com/swayam5342/dextro/internal/httpx"
 	"github.com/swayam5342/dextro/internal/jobs"
 	"github.com/swayam5342/dextro/internal/platform"
-	"github.com/swayam5342/dextro/internal/provider/gdrive"
-	"github.com/swayam5342/dextro/internal/secrets"
 	"github.com/swayam5342/dextro/internal/storage"
 )
 
@@ -33,7 +29,7 @@ const shutdownTimeout = 15 * time.Second
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "dextro:", err)
+		fmt.Fprintln(os.Stderr, "tributary:", err)
 		os.Exit(1)
 	}
 }
@@ -59,9 +55,6 @@ func run() error {
 	}
 
 	authService := auth.NewService(auth.NewStore(pool))
-	if args := os.Args[1:]; len(args) > 0 {
-		return auth.RunCommand(ctx, authService, args, os.Stdout)
-	}
 
 	// Left nil when Google isn't configured, which turns its routes off.
 	var google auth.GoogleClient
@@ -69,25 +62,12 @@ func run() error {
 		google = auth.NewGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/api/v1/auth/google/callback")
 	}
 
-	storageService, err := newStorageService(cfg, pool)
+	storageService, err := storage.FromConfig(cfg, pool)
 	if err != nil {
 		return err
 	}
 	filesService := files.NewService(files.NewStore(pool), storageService)
 	settings := admin.NewStore(pool)
-	router := httpx.NewRouter(httpx.Deps{
-		Logger:         logger,
-		DB:             pool,
-		PublicOrigin:   cfg.PublicURL,
-		TrustedProxies: cfg.TrustedProxies,
-		Sessions:       authService,
-		APIKeys:        authService,
-		Auth:           auth.NewHandler(authService, google, logger),
-		Admin:          admin.NewHandler(admin.NewService(settings, storageService), logger),
-		Storage:        storage.NewHandler(storageService, logger, syncNewAccount(filesService)),
-		Files:          files.NewHandler(filesService, logger),
-	})
-
 	runner, err := jobs.Start(ctx, jobs.Deps{
 		Pool:     pool,
 		Logger:   logger,
@@ -100,6 +80,20 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	adminService := admin.NewService(settings, storageService, runner)
+	router := httpx.NewRouter(httpx.Deps{
+		Logger:         logger,
+		DB:             pool,
+		PublicOrigin:   cfg.PublicURL,
+		TrustedProxies: cfg.TrustedProxies,
+		Sessions:       authService,
+		APIKeys:        authService,
+		Auth:           auth.NewHandler(authService, google, logger),
+		Admin:          admin.NewHandler(adminService, logger),
+		Storage:        storage.NewHandler(storageService, logger, syncNewAccount(filesService)),
+		Files:          files.NewHandler(filesService, logger),
+	})
 
 	// There is no WriteTimeout or ReadTimeout because uploads and downloads can
 	// legitimately run for hours.
@@ -117,39 +111,12 @@ func run() error {
 	return errors.Join(serveErr, runner.Stop(stopCtx))
 }
 
-func projectNumber(clientID string) string {
-	number, _, _ := strings.Cut(clientID, "-")
-	return number
-}
-
 // syncNewAccount lets the storage feature, which files imports, trigger a sync.
 func syncNewAccount(service *files.Service) storage.AfterConnect {
 	return func(ctx context.Context, userID, connectionID uuid.UUID, ip string) error {
 		_, err := service.SyncConnection(ctx, userID, connectionID, ip)
 		return err
 	}
-}
-
-func newStorageService(cfg config.Config, pool *pgxpool.Pool) (*storage.Service, error) {
-	keyring, err := secrets.NewKeyring(cfg.EncryptionKeys, cfg.ActiveKeyID)
-	if err != nil {
-		return nil, err
-	}
-	// Both stay nil when Google isn't configured, which turns its routes off.
-	var drive *gdrive.Client
-	var driveAuth storage.DriveAuth
-	if cfg.GoogleEnabled() {
-		drive = gdrive.NewClient(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/api/v1/storage/google/callback")
-		driveAuth = drive
-	}
-	return storage.NewService(storage.Deps{
-		Store:     storage.NewStore(pool),
-		Keyring:   keyring,
-		OpenDrive: storage.NewOpenDrive(drive),
-		DriveAuth: driveAuth,
-		// The app ID is the Cloud project number, which starts every client ID.
-		Picker: storage.PickerConfig{APIKey: cfg.GooglePickerAPIKey, AppID: projectNumber(cfg.GoogleClientID)},
-	}), nil
 }
 
 // serve runs the server until ctx ends, then drains in-flight requests.

@@ -22,7 +22,7 @@ function expiryText(share: Share): string {
     return "No expiry";
   }
   if (Date.parse(share.expires_at) <= Date.now()) {
-    return "Past its expiry. dextro is still trying to remove it, so it may still work.";
+    return "Past its expiry. Tributary is still trying to remove it, so it may still work.";
   }
   return `Ends ${formatDate(share.expires_at)}`;
 }

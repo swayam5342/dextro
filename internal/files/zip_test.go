@@ -159,7 +159,7 @@ func testZipName(t *testing.T, f *uploadFixture) {
 	if err != nil {
 		t.Fatalf("PlanZip: %v", err)
 	}
-	if both.Name != "dextro.zip" {
+	if both.Name != "tributary.zip" {
 		t.Errorf("name = %q", both.Name)
 	}
 }

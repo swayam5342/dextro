@@ -32,6 +32,15 @@ type Update struct {
 	GoogleLinks    *bool
 }
 
+// ErrUnknownJob means there's no background job by that name.
+var ErrUnknownJob = errors.New("unknown job")
+
+// JobRunner starts background jobs. It's an interface because the jobs package imports
+// the features, and they import this one.
+type JobRunner interface {
+	RunNow(ctx context.Context, name string) error
+}
+
 // AccountHealth is what the status page needs from the storage feature.
 type AccountHealth interface {
 	Health(ctx context.Context) (storage.Health, error)
@@ -42,11 +51,25 @@ type AccountHealth interface {
 type Service struct {
 	store  *Store
 	health AccountHealth
+	jobs   JobRunner
 }
 
 // NewService returns a Service backed by store.
-func NewService(store *Store, health AccountHealth) *Service {
-	return &Service{store: store, health: health}
+func NewService(store *Store, health AccountHealth, jobs JobRunner) *Service {
+	return &Service{store: store, health: health, jobs: jobs}
+}
+
+// RunJob starts a background job now, and records who asked.
+func (s *Service) RunJob(ctx context.Context, actor uuid.UUID, ip, name string) error {
+	if err := s.jobs.RunNow(ctx, name); err != nil {
+		return err
+	}
+	return s.store.Audit().Record(ctx, audit.Event{
+		ActorID:  actor,
+		Action:   audit.ActionJobStarted,
+		IP:       ip,
+		Metadata: map[string]any{"job": name},
+	})
 }
 
 // Settings returns the current settings.

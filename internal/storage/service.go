@@ -1,4 +1,4 @@
-// Package storage manages the Google Drive accounts users link to dextro.
+// Package storage manages the Google Drive accounts users link to Tributary.
 package storage
 
 import (
@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/swayam5342/dextro/internal/audit"
+	"github.com/swayam5342/dextro/internal/config"
 	"github.com/swayam5342/dextro/internal/provider"
 	"github.com/swayam5342/dextro/internal/provider/gdrive"
 	"github.com/swayam5342/dextro/internal/secrets"
@@ -33,7 +35,7 @@ var (
 	ErrConnectionFailed   = errors.New("connection failed")
 	ErrConnectionNotFound = errors.New("connection not found")
 	// ErrConnectionHasLinks means removing an account would leave public links working
-	// with nothing in dextro to show them.
+	// with nothing in Tributary to show them.
 	ErrConnectionHasLinks = errors.New("connection has public links")
 	ErrPickerDisabled     = errors.New("picker isn't configured")
 )
@@ -332,4 +334,28 @@ func withSummary(r record) (Connection, error) {
 	connection := r.Connection
 	connection.Summary = settings.Email
 	return connection, nil
+}
+
+// FromConfig builds the service as the server and the admin's command line both need it.
+// Google's parts stay nil when it isn't configured, which turns its routes off.
+func FromConfig(cfg config.Config, db database) (*Service, error) {
+	keyring, err := secrets.NewKeyring(cfg.EncryptionKeys, cfg.ActiveKeyID)
+	if err != nil {
+		return nil, err
+	}
+	var drive *gdrive.Client
+	var driveAuth DriveAuth
+	if cfg.GoogleEnabled() {
+		drive = gdrive.NewClient(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/api/v1/storage/google/callback")
+		driveAuth = drive
+	}
+	// The app ID is the Cloud project number, which starts every client ID.
+	project, _, _ := strings.Cut(cfg.GoogleClientID, "-")
+	return NewService(Deps{
+		Store:     NewStore(db),
+		Keyring:   keyring,
+		OpenDrive: NewOpenDrive(drive),
+		DriveAuth: driveAuth,
+		Picker:    PickerConfig{APIKey: cfg.GooglePickerAPIKey, AppID: project},
+	}), nil
 }

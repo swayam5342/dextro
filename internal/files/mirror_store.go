@@ -12,7 +12,7 @@ import (
 	"github.com/swayam5342/dextro/internal/db/dbgen"
 )
 
-// folderObject ties a dextro folder to its folder in one account. objectID is empty
+// folderObject ties a Tributary folder to its folder in one account. objectID is empty
 // while it's waiting to be made there.
 type folderObject struct {
 	folderID     uuid.UUID
@@ -21,7 +21,7 @@ type folderObject struct {
 	stale        bool
 }
 
-// FolderObjectForOwner returns an account's folder for a dextro folder, or nothing
+// FolderObjectForOwner returns an account's folder for a Tributary folder, or nothing
 // if it has none yet.
 func (s *Store) FolderObjectForOwner(ctx context.Context, userID, folderID, connectionID uuid.UUID) (string, error) {
 	object, err := s.queries.GetFolderObjectForOwner(ctx, dbgen.GetFolderObjectForOwnerParams{
@@ -38,7 +38,7 @@ func (s *Store) FolderObjectForOwner(ctx context.Context, userID, folderID, conn
 	return object.String, nil
 }
 
-// SetFolderObject records an account's folder for a dextro folder.
+// SetFolderObject records an account's folder for a Tributary folder.
 func (s *Store) SetFolderObject(ctx context.Context, folderID, connectionID uuid.UUID, objectID string) error {
 	err := s.queries.SetFolderObject(ctx, dbgen.SetFolderObjectParams{
 		FolderID:     folderID,

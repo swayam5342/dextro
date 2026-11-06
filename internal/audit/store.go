@@ -27,6 +27,7 @@ const (
 	ActionSessionRevoked   = "auth.session_revoked"
 	ActionGoogleLinked     = "auth.google_linked"
 	ActionSettingsUpdated  = "settings.updated"
+	ActionJobStarted       = "job.started"
 	ActionStorageConnected = "storage.connected"
 	ActionStorageRemoved   = "storage.removed"
 	ActionStorageSynced    = "storage.synced"

@@ -24,6 +24,7 @@ const ACTIONS: Record<string, string> = {
   "user.password_reset": "Set a user's password",
   "user.role_changed": "Changed the admin",
   "settings.updated": "Changed server settings",
+  "job.started": "Ran a background job",
   "storage.connected": "Linked a storage account",
   "storage.removed": "Removed a storage account",
   "storage.synced": "Synced with Drive",

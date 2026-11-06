@@ -1,10 +1,8 @@
 package auth
 
 import (
-	"bytes"
 	"errors"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -298,18 +296,14 @@ func testDatabaseRefusesASecondAdmin(t *testing.T, f *fixture) {
 
 func testResetPasswordCommand(t *testing.T, f *fixture) {
 	admin := f.register(t, "admin@example.org")
-	var out bytes.Buffer
-	if err := RunCommand(f.ctx, f.service, []string{"reset-password", "Admin@Example.org"}, &out); err != nil {
-		t.Fatalf("RunCommand: %v", err)
-	}
-	match := regexp.MustCompile(`Temporary password for \S+: (\S+)`).FindStringSubmatch(out.String())
-	if match == nil {
-		t.Fatalf("output = %q", out.String())
+	password, err := f.service.ResetPasswordFromCLI(f.ctx, "Admin@Example.org")
+	if err != nil {
+		t.Fatalf("ResetPasswordFromCLI: %v", err)
 	}
 	if _, err := f.service.ResolveSession(f.ctx, admin.Token); err == nil {
 		t.Error("the old session still works")
 	}
-	issued, err := f.service.Login(f.ctx, "admin@example.org", match[1], client)
+	issued, err := f.service.Login(f.ctx, "admin@example.org", password, client)
 	if err != nil {
 		t.Fatalf("Login with the printed password: %v", err)
 	}
@@ -323,8 +317,7 @@ func testResetPasswordCommand(t *testing.T, f *fixture) {
 }
 
 func testResetPasswordCommandUnknownUser(t *testing.T, f *fixture) {
-	err := RunCommand(f.ctx, f.service, []string{"reset-password", "nobody@example.org"}, &bytes.Buffer{})
-	if !errors.Is(err, ErrUserNotFound) {
+	if _, err := f.service.ResetPasswordFromCLI(f.ctx, "nobody@example.org"); !errors.Is(err, ErrUserNotFound) {
 		t.Errorf("error = %v, want ErrUserNotFound", err)
 	}
 }

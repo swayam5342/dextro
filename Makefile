@@ -21,7 +21,7 @@ OAPI_CODEGEN := $(BIN)/oapi-codegen$(EXE)
 GOLANGCI_LINT := $(BIN)/golangci-lint$(EXE)
 WEB_DEPS := web/node_modules/.modules.yaml
 
-.PHONY: help tools generate check-generated build web-build lint test run run-web dev-web env up down migration clean
+.PHONY: help tools generate check-generated build web-build lint test run run-web dev-web env up down admin migration clean
 
 help: ## List the available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
@@ -51,8 +51,9 @@ check-generated: generate ## Fail if generated code is out of date
 web-build: $(WEB_DEPS) ## Type-check and build the frontend into web/dist
 	cd web && pnpm build
 
-build: web-build ## Build the frontend into web/dist and the Go server into bin/
-	CGO_ENABLED=0 go build -trimpath -o $(BIN)/dextro$(EXE) ./cmd/server
+build: web-build ## Build the frontend into web/dist, and the server and admin CLI into bin/
+	CGO_ENABLED=0 go build -trimpath -o $(BIN)/tributary$(EXE) ./cmd/server
+	CGO_ENABLED=0 go build -trimpath -o $(BIN)/tributary-cli$(EXE) ./cmd/cli
 
 lint: $(GOLANGCI_LINT) $(WEB_DEPS) ## Lint Go and TypeScript, and type-check the frontend
 	$(GOLANGCI_LINT) run ./...
@@ -89,8 +90,12 @@ up: env ## Build and start the whole stack
 down: ## Stop the stack and keep its data
 	$(COMPOSE) down
 
+admin: export MSYS_NO_PATHCONV=1
+admin: ## Run an admin command on the running stack: make admin cmd="users"
+	$(COMPOSE) exec api /tributary-cli $(or $(cmd),help)
+
 migration: $(GOOSE) ## Create a migration: make migration name=add_users
 	$(GOOSE) -dir internal/db/migrations create $(name) sql
 
 clean: ## Remove build output, keeping the tools in bin/
-	rm -rf $(BIN)/dextro$(EXE) web/dist
+	rm -rf $(BIN)/tributary$(EXE) $(BIN)/tributary-cli$(EXE) web/dist

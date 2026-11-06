@@ -17,8 +17,8 @@ func (s *Service) connectionLock(connectionID uuid.UUID) *sync.Mutex {
 	return lock.(*sync.Mutex)
 }
 
-// driveFolder returns an account's folder for a dextro folder, making it and any
-// parents that are missing. Empty means dextro's own folder, the top level.
+// driveFolder returns an account's folder for a Tributary folder, making it and any
+// parents that are missing. Empty means Tributary's own folder, the top level.
 func (s *Service) driveFolder(ctx context.Context, userID, connectionID uuid.UUID, stored provider.Provider, folderID *uuid.UUID) (string, error) {
 	if folderID == nil {
 		return "", nil
@@ -109,8 +109,8 @@ func (s *Service) mirrorFolderMove(ctx context.Context, userID, folderID uuid.UU
 }
 
 // changeFileInDrive runs a change on a file's object, unless it's someone's own Drive
-// file, which dextro doesn't touch. It comes first so that a change Drive refuses
-// isn't made in dextro either, and the two can't drift apart.
+// file, which Tributary doesn't touch. It comes first so that a change Drive refuses
+// isn't made in Tributary either, and the two can't drift apart.
 func (s *Service) changeFileInDrive(ctx context.Context, userID uuid.UUID, record fileRecord, change func(stored provider.Provider) error) error {
 	if record.External {
 		return nil
@@ -131,7 +131,7 @@ func (s *Service) changeFileInDrive(ctx context.Context, userID uuid.UUID, recor
 
 // trashDriveFolders sends a folder to each account's trash. Not deleted outright:
 // that would take its contents with it, including anything added by hand in Drive,
-// which dextro can't see.
+// which Tributary can't see.
 func (s *Service) trashDriveFolders(ctx context.Context, userID, folderID uuid.UUID) error {
 	rows, err := s.store.FolderObjectsForFolder(ctx, userID, folderID)
 	if err != nil {

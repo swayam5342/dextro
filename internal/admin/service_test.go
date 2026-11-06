@@ -17,7 +17,7 @@ func TestSettings(t *testing.T) {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	service := NewService(NewStore(pool), nil)
+	service := NewService(NewStore(pool), nil, nil)
 
 	var actor uuid.UUID
 	if err := pool.QueryRow(ctx, `INSERT INTO users (email) VALUES ('a@example.org') RETURNING id`).Scan(&actor); err != nil {

@@ -8,8 +8,7 @@ SET source_connection_id = EXCLUDED.source_connection_id,
     size = EXCLUDED.size,
     copied = 0,
     status = 'waiting',
-    failure = '',
-    updated_at = now()
+    failure = ''
 WHERE file_transfers.status = 'failed';
 
 -- Instance-wide on purpose: only the background job calls this.
@@ -22,12 +21,12 @@ LIMIT 1;
 
 -- name: SetFileTransferCopied :execrows
 UPDATE file_transfers
-SET copied = $2, updated_at = now()
+SET copied = $2
 WHERE id = $1;
 
 -- name: FailFileTransfer :exec
 UPDATE file_transfers
-SET status = 'failed', failure = $2, copied = 0, updated_at = now()
+SET status = 'failed', failure = $2, copied = 0
 WHERE id = $1;
 
 -- name: DeleteFileTransfer :execrows
@@ -41,7 +40,7 @@ DELETE FROM file_transfers WHERE user_id = $1 AND source_connection_id = $2;
 
 -- name: RetryFileTransfersForOwner :execrows
 UPDATE file_transfers
-SET status = 'waiting', failure = '', copied = 0, updated_at = now()
+SET status = 'waiting', failure = '', copied = 0
 WHERE user_id = $1 AND status = 'failed';
 
 -- name: ListFileTransfersForOwner :many

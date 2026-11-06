@@ -34,7 +34,7 @@ func TestStatus(t *testing.T) {
 	}
 	store := NewStore(pool)
 	health := storage.Health{Accounts: 3, UsedBytes: 42}
-	service := NewService(store, fakeHealth{health: health})
+	service := NewService(store, fakeHealth{health: health}, nil)
 
 	t.Run("a job that hasn't run isn't listed", func(t *testing.T) {
 		got, err := service.Status(ctx)
@@ -62,7 +62,7 @@ func TestStatus(t *testing.T) {
 	})
 
 	t.Run("a failure reading account health is an error", func(t *testing.T) {
-		failing := NewService(store, fakeHealth{err: errors.New("no")})
+		failing := NewService(store, fakeHealth{err: errors.New("no")}, nil)
 		if _, err := failing.Status(ctx); err == nil {
 			t.Error("error = nil")
 		}
@@ -76,7 +76,7 @@ func TestAuditLog(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	store := NewStore(pool)
-	service := NewService(store, nil)
+	service := NewService(store, nil, nil)
 
 	if _, err := pool.Exec(ctx, `INSERT INTO users (id, email) VALUES ('00000000-0000-0000-0000-000000000001', 'actor@example.org')`); err != nil {
 		t.Fatalf("seed user: %v", err)
@@ -150,6 +150,69 @@ func (adminOnly) ResolveSession(context.Context, string) (httpx.Principal, error
 	return httpx.Principal{IsAdmin: true}, nil
 }
 
+// fakeJobs knows one job.
+type fakeJobs struct{ started *[]string }
+
+func (f fakeJobs) RunNow(_ context.Context, name string) error {
+	if name != "file_sync" {
+		return ErrUnknownJob
+	}
+	*f.started = append(*f.started, name)
+	return nil
+}
+
+func TestRunJob(t *testing.T) {
+	pool := dbtest.Start(t)
+	ctx := context.Background()
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	store := NewStore(pool)
+	var started []string
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := httpx.NewRouter(httpx.Deps{
+		Logger:       logger,
+		DB:           pool,
+		PublicOrigin: "https://files.example.org",
+		Sessions:     adminOnly{},
+		Auth:         apigen.Unimplemented{},
+		Admin:        NewHandler(NewService(store, fakeHealth{}, fakeJobs{&started}), logger),
+		Storage:      apigen.Unimplemented{},
+		Files:        apigen.Unimplemented{},
+	})
+	post := func(name string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/jobs/"+name+"/run", nil)
+		req.Header.Set("Origin", "https://files.example.org")
+		req.AddCookie(&http.Cookie{Name: httpx.SessionCookieName, Value: "any"})
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if got := post("file_sync"); got != http.StatusAccepted {
+		t.Errorf("status = %d", got)
+	}
+	if len(started) != 1 {
+		t.Errorf("started = %v", started)
+	}
+	var events int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action = 'job.started' AND metadata->>'job' = 'file_sync'`).Scan(&events); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if events != 1 {
+		t.Errorf("%d audit events", events)
+	}
+	if got := post("nonsense"); got != http.StatusNotFound {
+		t.Errorf("unknown job: status = %d", got)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action = 'job.started'`).Scan(&events); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if events != 1 {
+		t.Errorf("%d audit events, a job that didn't start isn't one", events)
+	}
+}
+
 func TestAuditHandler(t *testing.T) {
 	pool := dbtest.Start(t)
 	ctx := context.Background()
@@ -167,7 +230,7 @@ func TestAuditHandler(t *testing.T) {
 		PublicOrigin: "https://files.example.org",
 		Sessions:     adminOnly{},
 		Auth:         apigen.Unimplemented{},
-		Admin:        NewHandler(NewService(store, fakeHealth{}), logger),
+		Admin:        NewHandler(NewService(store, fakeHealth{}, nil), logger),
 		Storage:      apigen.Unimplemented{},
 		Files:        apigen.Unimplemented{},
 	})

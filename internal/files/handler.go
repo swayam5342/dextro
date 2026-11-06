@@ -526,3 +526,13 @@ func toAPIFolders(folders []Folder) []apigen.Folder {
 	}
 	return body
 }
+
+// GetUsage implements apigen.ServerInterface.
+func (h *Handler) GetUsage(w http.ResponseWriter, r *http.Request) {
+	usage, err := h.service.Usage(r.Context(), userID(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, apigen.Usage{PhotoBytes: usage.Photo, VideoBytes: usage.Video, DocumentBytes: usage.Document})
+}

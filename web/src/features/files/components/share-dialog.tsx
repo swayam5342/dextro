@@ -78,7 +78,7 @@ export function ShareDialog({ fileId, name, onClose }: { fileId: string; name: s
           <DialogTitle className="truncate text-base font-semibold">Google link for {name}</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
             Anyone who has this link can open the file without signing in, until you remove it. Google serves the file,
-            so dextro can't see who opens it.
+            so Tributary can't see who opens it.
           </DialogDescription>
         </div>
         {share && (
@@ -123,7 +123,7 @@ export function ShareDialog({ fileId, name, onClose }: { fileId: string; name: s
             ))}
           </div>
           <p className="text-xs text-faint">
-            dextro ends the link itself, because Google can't. If this server is off at that moment, the link keeps
+            Tributary ends the link itself, because Google can't. If this server is off at that moment, the link keeps
             working until it's back.
           </p>
         </div>

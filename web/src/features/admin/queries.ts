@@ -87,6 +87,17 @@ export function useDeleteUser() {
   });
 }
 
+export function useRunJob() {
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const { error, response } = await api.POST("/api/v1/admin/jobs/{name}/run", { params: { path: { name } } });
+      if (!response.ok) {
+        throw toApiError(error);
+      }
+    },
+  });
+}
+
 export const statusQuery = queryOptions({
   queryKey: ["admin-status"],
   queryFn: async () => {

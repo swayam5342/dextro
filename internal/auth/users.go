@@ -19,6 +19,16 @@ const cliActor = "cli"
 // role moves with transfer-admin.
 var ErrOwnAccount = errors.New("not on your own account")
 
+// Errors for the command line.
+var (
+	// ErrAdminAccount means the only admin can't simply be deleted. The role has to move
+	// first, because there's exactly one.
+	ErrAdminAccount = errors.New("that's the admin's account; move the role with transfer-admin first")
+	// ErrNoAdmin means nobody has signed up yet. An account made here would close sign-up
+	// with no admin to run the server.
+	ErrNoAdmin = errors.New("no admin yet; create the first account in the app")
+)
+
 // ManagedUser is an account as the admin sees it. It carries nothing about what
 // the person stores.
 type ManagedUser struct {
@@ -154,6 +164,39 @@ func (s *Service) TransferAdmin(ctx context.Context, rawEmail string) error {
 			Metadata: map[string]any{"email": email, "role": RoleAdmin},
 		})
 	})
+}
+
+// CreateUserFromCLI adds an account and returns its random password, which the person
+// must replace when they first sign in.
+func (s *Service) CreateUserFromCLI(ctx context.Context, rawEmail string) (string, error) {
+	everyone, err := s.ListUsers(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(everyone) == 0 {
+		return "", ErrNoAdmin
+	}
+	password := rand.Text()
+	if _, err := s.CreateUser(ctx, uuid.Nil, rawEmail, password, Client{IP: cliActor}); err != nil {
+		return "", err
+	}
+	return password, nil
+}
+
+// DeleteUserFromCLI removes an account by its email.
+func (s *Service) DeleteUserFromCLI(ctx context.Context, rawEmail string) error {
+	email, ok := normalizeEmail(rawEmail)
+	if !ok {
+		return ErrUserNotFound
+	}
+	found, err := s.store.AccountForLogin(ctx, email)
+	if err != nil {
+		return err
+	}
+	if found.Role == RoleAdmin {
+		return ErrAdminAccount
+	}
+	return s.DeleteUser(ctx, uuid.Nil, found.ID, Client{IP: cliActor})
 }
 
 // ResetPasswordFromCLI gets someone back in when nobody can sign in, the admin

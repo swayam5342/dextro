@@ -1,23 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
+import { failureMessage } from "@/api/errors";
 import type { components } from "@/api/schema";
 import { FormError } from "@/components/field";
+import { useToast } from "@/components/toast";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatBytes, formatDateTime } from "@/lib/format";
 
-import { healthQuery, statusQuery } from "../queries";
+import { healthQuery, statusQuery, useRunJob } from "../queries";
 
 type JobRun = components["schemas"]["JobRun"];
 
 const JOBS = [
-  { name: "file_sync", label: "File sync", about: "Matches dextro to each account every 5 minutes." },
+  { name: "file_sync", label: "File sync", about: "Matches Tributary to each account every 5 minutes." },
   { name: "file_transfers", label: "File moves", about: "Moves files between accounts, checking every 30 seconds." },
   { name: "share_expiry", label: "Link expiry", about: "Ends Google links past their expiry, each minute." },
   { name: "quota_sync", label: "Quota sync", about: "Checks every linked account each hour." },
   { name: "session_cleanup", label: "Session cleanup", about: "Clears expired sign-ins each day." },
   { name: "upload_cleanup", label: "Upload cleanup", about: "Clears uploads left idle for a day, each hour." },
 ];
+
+/** A started job is running until its last finish moves on. */
+function isBusy(name: string, started: Record<string, string | undefined>, jobs: JobRun[] | undefined): boolean {
+  if (!(name in started)) {
+    return false;
+  }
+  return (jobs?.find((run) => run.name === name)?.finished_at ?? "") === started[name];
+}
 
 function Row({ title, about, children }: { title: string; about: string; children: ReactNode }) {
   return (
@@ -42,19 +53,54 @@ function DatabaseBadge() {
   return <Badge>Healthy</Badge>;
 }
 
-function JobRow({ label, about, run }: { label: string; about: string; run: JobRun | undefined }) {
+function JobRow({
+  label,
+  about,
+  run,
+  busy,
+  onRun,
+}: {
+  label: string;
+  about: string;
+  run: JobRun | undefined;
+  busy: boolean;
+  onRun: () => void;
+}) {
   const when = run ? `Last ran ${formatDateTime(run.finished_at)}` : about;
   return (
     <Row title={label} about={when}>
-      {!run && <Badge variant="secondary">Hasn't run yet</Badge>}
-      {run && (run.succeeded ? <Badge>Working</Badge> : <Badge variant="destructive">Failed</Badge>)}
+      <div className="flex shrink-0 items-center gap-2">
+        {!run && <Badge variant="secondary">Hasn't run yet</Badge>}
+        {run && (run.succeeded ? <Badge>Working</Badge> : <Badge variant="destructive">Failed</Badge>)}
+        <Button variant="soft" size="sm" disabled={busy} aria-label={`Run ${label} now`} onClick={onRun}>
+          {busy ? "Running…" : "Run now"}
+        </Button>
+      </div>
     </Row>
   );
 }
 
 export function StatusPage() {
-  const { data: status, isPending, isError } = useQuery(statusQuery);
+  // Each started job, and when it last finished at that moment. It's done when that changes.
+  const [started, setStarted] = useState<Record<string, string | undefined>>({});
+  const runJob = useRunJob();
+  const toast = useToast();
+  const { data: status, isPending, isError } = useQuery({
+    ...statusQuery,
+    refetchInterval: (query) => {
+      const jobs = query.state.data?.jobs;
+      return JOBS.some((job) => isBusy(job.name, started, jobs)) ? 1500 : false;
+    },
+  });
   const accounts = status?.accounts === 1 ? "1 account" : `${status?.accounts} accounts`;
+
+  function start(job: (typeof JOBS)[number]) {
+    const before = status?.jobs.find((run) => run.name === job.name)?.finished_at;
+    runJob.mutate(job.name, {
+      onSuccess: () => setStarted((current) => ({ ...current, [job.name]: before ?? "" })),
+      onError: (error) => toast({ message: failureMessage(error) }),
+    });
+  }
 
   return (
     <div className="max-w-2xl space-y-[18px]">
@@ -79,6 +125,8 @@ export function StatusPage() {
               label={job.label}
               about={job.about}
               run={status.jobs.find((run) => run.name === job.name)}
+              busy={isBusy(job.name, started, status.jobs)}
+              onRun={() => start(job)}
             />
           ))}
       </ul>
