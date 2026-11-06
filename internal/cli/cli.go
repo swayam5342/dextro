@@ -19,7 +19,7 @@ import (
 	"github.com/swayam5342/dextro/internal/files"
 )
 
-const usage = `usage: dextro <command>
+const usage = `usage: dextro-cli <command>
 
 Server
   status                       How the server, accounts and background jobs are doing
@@ -57,16 +57,19 @@ type Deps struct {
 	Files *files.Service
 }
 
+// NeedsNoServer says whether arguments only ask what the commands are.
+func NeedsNoServer(args []string) bool {
+	return len(args) == 0 || (len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h"))
+}
+
 // Run runs one command. An unknown command or the wrong arguments return the usage.
 func Run(ctx context.Context, d Deps, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return errUsage
+	if NeedsNoServer(args) {
+		_, err := io.WriteString(out, usage)
+		return err
 	}
 	name, rest := args[0], args[1:]
 	switch {
-	case (name == "help" || name == "--help" || name == "-h") && len(rest) == 0:
-		_, err := io.WriteString(out, usage)
-		return err
 	case name == "status" && len(rest) == 0:
 		return status(ctx, d, out)
 	case name == "sync" && len(rest) == 0:
@@ -80,7 +83,7 @@ func Run(ctx context.Context, d Deps, args []string, out io.Writer) error {
 Their files stay in Google Drive, and any Google links they made keep working.
 It can't be undone. To go ahead:
 
-  dextro delete-user %[1]s --yes
+  dextro-cli delete-user %[1]s --yes
 `, rest[0])
 		return err
 	case name == "delete-user" && len(rest) == 2 && rest[1] == "--yes":

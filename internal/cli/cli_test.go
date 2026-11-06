@@ -112,7 +112,6 @@ func testHelp(t *testing.T, f *fixture) {
 
 func testUsage(t *testing.T, f *fixture) {
 	for _, args := range [][]string{
-		{},
 		{"bogus"},
 		{"set-role", "a@example.org"},
 		{"transfer-admin"},

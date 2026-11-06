@@ -5,8 +5,10 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /dextro ./cmd/server
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /dextro-cli ./cmd/cli
 
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /dextro /dextro
+COPY --from=build /dextro-cli /dextro-cli
 EXPOSE 8080
 ENTRYPOINT ["/dextro"]
