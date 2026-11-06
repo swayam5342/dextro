@@ -121,13 +121,13 @@ export default function Home() {
         </section>
 
         <Link className="band" href="/self-host">
-          <span className="band-top">
+          <h2>Install</h2>
+          <span className="band-side">
             <span>Two Docker images, PostgreSQL and a free Google project of your own.</span>
             <svg viewBox="0 0 48 48" aria-hidden="true">
               <path d="M10 38 38 10M14 10h24v24" fill="none" stroke="currentColor" strokeWidth="5" />
             </svg>
           </span>
-          <h2>Install</h2>
         </Link>
       </main>
       <SiteFooter />

@@ -23,7 +23,7 @@ export function MapPlates() {
     return () => clearInterval(timer);
   }, []);
   return (
-    <figure>
+    <figure className="plates-wrap">
       <div className="plates">
         {PLATES.map(({ src, alt, legendRight }, index) => (
           // eslint-disable-next-line @next/next/no-img-element
