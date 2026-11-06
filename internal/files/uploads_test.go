@@ -311,7 +311,6 @@ func testChunkValidation(t *testing.T, f *uploadFixture) {
 		{"unknown length", 0, -1, ErrInvalidChunk},
 		{"past the end", 0, 2*align + 11, ErrInvalidChunk},
 		{"not a multiple of the alignment", 0, align + 1, ErrInvalidChunk},
-		{"over the largest chunk", 0, maxChunkBytes + align, ErrInvalidChunk},
 		{"not where the upload is", align, align, ErrOffsetMismatch},
 	}
 	for _, tt := range tests {
@@ -319,6 +318,10 @@ func testChunkValidation(t *testing.T, f *uploadFixture) {
 		if !errors.Is(err, tt.want) {
 			t.Errorf("%s: error = %v, want %v", tt.name, err, tt.want)
 		}
+	}
+	big := f.begin(t, user, 2*maxChunkBytes)
+	if _, err := f.service.PutUploadChunk(f.ctx, user, big.ID, 0, maxChunkBytes+align, strings.NewReader("")); !errors.Is(err, ErrInvalidChunk) {
+		t.Errorf("over the largest chunk: error = %v", err)
 	}
 }
 
@@ -383,10 +386,26 @@ func testReservationHoldsSpace(t *testing.T, f *uploadFixture) {
 	}
 }
 
+// gate holds every caller of Quota until all of them have arrived, so that they
+// all reach what comes next at the same moment.
+type gate struct {
+	provider.Provider
+	arrived *sync.WaitGroup
+}
+
+func (g gate) Quota(ctx context.Context) (provider.Quota, error) {
+	g.arrived.Done()
+	g.arrived.Wait()
+	return g.Provider.Quota(ctx)
+}
+
 func testConcurrentReservations(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	f.link(t, user, "a@gmail.com", 100)
 	const uploads = 8
+	var arrived sync.WaitGroup
+	arrived.Add(uploads)
+	f.wrap = func(p provider.Provider) provider.Provider { return gate{p, &arrived} }
 	errs := make([]error, uploads)
 	var wg sync.WaitGroup
 	for i := range uploads {

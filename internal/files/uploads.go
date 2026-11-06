@@ -281,9 +281,6 @@ func (s *Service) CancelUpload(ctx context.Context, userID, id uuid.UUID) error 
 	if err != nil {
 		return err
 	}
-	if r.File != nil {
-		return ErrUploadNotFound
-	}
 	if err := s.store.DeleteUnfinishedUploadForOwner(ctx, userID, id); err != nil {
 		return err
 	}

@@ -23,6 +23,8 @@ type Session = components["schemas"]["UploadSession"];
 const CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_RUNNING = 3;
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000];
+/** Worth another try. A full account (507) isn't: waiting won't make room. */
+const RETRY_STATUSES = new Set([0, 429, 500, 502, 503, 504]);
 
 export type UploadStatus =
   | "waiting"
@@ -94,7 +96,7 @@ class Stopped extends Error {}
 class Retryable extends Error {}
 
 function failureFrom(status: number, body: unknown): Error {
-  if (status === 0 || status === 429 || status >= 500) {
+  if (RETRY_STATUSES.has(status)) {
     return new Retryable("The connection was lost during the upload.");
   }
   return toApiError(body);

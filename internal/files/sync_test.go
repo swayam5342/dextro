@@ -160,13 +160,30 @@ func testSyncIsRepeatable(t *testing.T, f *uploadFixture) {
 	}
 }
 
+// listGate holds every listing until all of them have started, so that every sync
+// has read the same records before any of them adds one.
+type listGate struct {
+	provider.Provider
+	arrived *sync.WaitGroup
+}
+
+func (g listGate) List(ctx context.Context, token string) (provider.ObjectPage, error) {
+	g.arrived.Done()
+	g.arrived.Wait()
+	return g.Provider.List(ctx, token)
+}
+
 func testConcurrentSyncs(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	connection := f.link(t, user, "a@gmail.com", 1<<30)
 	f.stored(t, "a@gmail.com", "a.txt", "text/plain")
 	f.stored(t, "a@gmail.com", "b.txt", "text/plain")
+	const syncs = 6
+	var arrived sync.WaitGroup
+	arrived.Add(syncs)
+	f.wrap = func(p provider.Provider) provider.Provider { return listGate{p, &arrived} }
 	var wg sync.WaitGroup
-	for range 6 {
+	for range syncs {
 		wg.Go(func() {
 			if _, err := f.service.SyncConnection(f.ctx, user, connection, "job"); err != nil {
 				t.Errorf("SyncConnection: %v", err)
@@ -364,6 +381,14 @@ func testSyncIsScoped(t *testing.T, f *uploadFixture) {
 	}
 	if got := f.files(t, stranger) + f.files(t, owner); got != 0 {
 		t.Errorf("files = %d", got)
+	}
+	f.sync(t, owner, connection)
+	objects, err := NewStore(f.pool).ObjectsForConnection(f.ctx, stranger, connection)
+	if err != nil {
+		t.Fatalf("ObjectsForConnection: %v", err)
+	}
+	if len(objects) != 0 {
+		t.Errorf("a stranger read %d of someone's objects", len(objects))
 	}
 }
 
