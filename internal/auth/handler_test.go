@@ -16,10 +16,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/swayam5342/dextro/internal/admin"
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/db/dbtest"
-	"github.com/swayam5342/dextro/internal/httpx"
+	"github.com/swayam5342/tributary/internal/admin"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/httpx"
 )
 
 const testOrigin = "https://files.example.org"

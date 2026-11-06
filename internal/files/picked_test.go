@@ -8,10 +8,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/db/dbtest"
-	"github.com/swayam5342/dextro/internal/provider"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/provider"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 // picked puts a file in an account that Tributary didn't create, as someone's own

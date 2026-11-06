@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
 )
 
 const healthTimeout = 2 * time.Second

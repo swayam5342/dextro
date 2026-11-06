@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/swayam5342/dextro/internal/audit"
-	"github.com/swayam5342/dextro/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/audit"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
 )
 
 // ErrSettingNotFound means no value has been stored for the key.

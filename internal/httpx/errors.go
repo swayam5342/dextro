@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
 )
 
 // Stable error codes. Clients may depend on these, so don't rename them.

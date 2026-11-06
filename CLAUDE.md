@@ -2,7 +2,7 @@
 
 Self-hosted file storage gateway. Users link several Google Drive accounts, which work as one pool of storage, then upload, organize, preview and share files from one web app. Google Drive is the only storage: S3 was removed on purpose. It runs as two processes plus PostgreSQL: a Go API server with the migrations embedded, and a Node web server that serves the React build and proxies the API.
 
-The app was called dextro, and some names keep that on purpose. The Drive folder is found by its name, so changing it would lose sight of every stored file. The Compose project name is what the database volume is named after, so changing it would look like total data loss. The database name and user, the `DEXTRO_` settings, the `dxt_` key prefix, cookie names and browser storage keys stay too, because changing them would break what's already running. The Go module path follows the GitHub repo name. Everything a person reads says Tributary.
+The app was called dextro, and some names keep that on purpose. The Drive folder is found by its name, so changing it would lose sight of every stored file. The Compose project name is what the database volume is named after, so changing it would look like total data loss. The database name and user, the `DEXTRO_` settings, the `dxt_` key prefix, cookie names and browser storage keys stay too, because changing them would break what's already running. Everything a person reads says Tributary.
 
 ## Commands
 

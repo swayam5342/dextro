@@ -12,10 +12,10 @@ import (
 
 	"github.com/oapi-codegen/runtime/types"
 
-	"github.com/swayam5342/dextro/internal/httpx"
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
-	"github.com/swayam5342/dextro/internal/provider"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/httpx"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/provider"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 // Error codes the files API adds to the shared ones. Clients may depend on these.

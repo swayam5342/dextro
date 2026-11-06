@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
 )
 
 func TestRecord(t *testing.T) {

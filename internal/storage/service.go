@@ -11,11 +11,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/audit"
-	"github.com/swayam5342/dextro/internal/config"
-	"github.com/swayam5342/dextro/internal/provider"
-	"github.com/swayam5342/dextro/internal/provider/gdrive"
-	"github.com/swayam5342/dextro/internal/secrets"
+	"github.com/swayam5342/tributary/internal/audit"
+	"github.com/swayam5342/tributary/internal/config"
+	"github.com/swayam5342/tributary/internal/provider"
+	"github.com/swayam5342/tributary/internal/provider/gdrive"
+	"github.com/swayam5342/tributary/internal/secrets"
 )
 
 // ProviderKind says which service a connection uses.

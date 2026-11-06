@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/db/dbtest"
-	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/provider"
 )
 
 // inDrive finds an object by name in an account.

@@ -1,4 +1,4 @@
-module github.com/swayam5342/dextro
+module github.com/swayam5342/tributary
 
 go 1.27.0
 

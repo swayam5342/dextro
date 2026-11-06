@@ -3,8 +3,8 @@ package admin
 import (
 	"context"
 
-	"github.com/swayam5342/dextro/internal/audit"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/audit"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 // auditPageSize is how many events one page of the log shows.

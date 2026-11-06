@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
 )
 
 const testOrigin = "https://files.example.org"

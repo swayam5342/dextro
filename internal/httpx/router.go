@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime/types"
 
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
 )
 
 // AuthHandlers is the part of the API the auth feature implements.

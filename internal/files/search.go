@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
 )
 
 // searchEscaper makes a search literal, so typing % doesn't match everything.

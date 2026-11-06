@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/audit"
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/audit"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
 )
 
 const otherPassword = "a different long password"

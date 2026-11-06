@@ -29,4 +29,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/swayam5342/dextro
+        - github.com/swayam5342/tributary

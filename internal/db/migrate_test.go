@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/swayam5342/dextro/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
 )
 
 func tableExists(t *testing.T, pool *pgxpool.Pool, name string) bool {

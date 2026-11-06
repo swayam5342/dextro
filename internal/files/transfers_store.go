@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/swayam5342/dextro/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
 )
 
 // transferRecord is a queued move, with the owner the job needs to act for them.
