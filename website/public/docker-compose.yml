@@ -1,0 +1,69 @@
+# Tributary. Put this beside your .env file, then run: docker compose up -d
+name: tributary
+
+services:
+  # The address browsers use. It serves the app and passes API calls to the api service.
+  web:
+    image: swayam5342/tributary-web:0.1.0
+    environment:
+      DEXTRO_API_URL: http://api:8080
+    ports:
+      # Only this machine can reach it. Put your HTTPS proxy in front of this port.
+      - 127.0.0.1:${PORT:-3000}:3000
+    networks:
+      default:
+        # Fixed so the api service can trust the visitor's address from this one alone.
+        ipv4_address: 172.28.77.250
+    depends_on:
+      - api
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  api:
+    image: swayam5342/tributary-api:0.1.0
+    environment:
+      DEXTRO_DATABASE_URL: postgres://tributary:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/tributary?sslmode=disable
+      DEXTRO_PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
+      DEXTRO_TRUSTED_PROXIES: 172.28.77.250
+      DEXTRO_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      DEXTRO_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DEXTRO_GOOGLE_PICKER_API_KEY: ${GOOGLE_PICKER_API_KEY:-}
+      DEXTRO_ENCRYPTION_KEYS: ${ENCRYPTION_KEYS:?set ENCRYPTION_KEYS in .env}
+      DEXTRO_ENCRYPTION_KEY_ID: ${ENCRYPTION_KEY_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: tributary
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: tributary
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U tributary -d tributary]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.77.0/24
+
+volumes:
+  postgres-data:

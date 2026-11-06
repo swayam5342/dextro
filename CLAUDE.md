@@ -110,6 +110,10 @@ Node web server environment: `DEXTRO_API_URL` (default `http://localhost:8080`),
 - `web/server` is the production web server, using only Node's standard library. Browsers talk only to it, and it proxies `/api` and `/health` to Go, so everything stays on one origin: no CORS, and session cookies stay first-party. Don't point the browser straight at the Go server. The proxy streams request and response bodies and has no request timeout, because uploads pass through it.
 - The proxy overwrites `X-Forwarded-For` with the real client address. Only trust that header on the Go side from the proxy.
 - The UI's Content-Security-Policy lives in `web/server/app.mjs`. Go sets a stricter one on API responses.
+- `website/` is the public site, a Next.js app on Vercel with its own `package.json`, on TypeScript 5. It's separate from `dextro-site`, which holds the privacy and terms pages Google's consent screen links to. Its colours and font copy the app's, and it uses the app's name only.
+- `website/public/demo` is the real React app, built with `pnpm build:demo` and committed, because Vercel only builds that folder. It's why the router sets `basepath`. `website/demo-api/demo-api.js` replaces `fetch` and `XMLHttpRequest` with made-up data, so a new route the app calls needs adding there, and routing there has to match `internal/storage/routing.go`.
+- The API guide's samples are the files in `website/_examples`, read at build time. The leading underscore keeps `go build ./...` out of them. The guide's route table is a copy of `keyRoutes`, so widening what keys can reach means updating it too.
+- `website/public/docker-compose.yml` is what self-hosters run. It pins an image version, so bump it after publishing new images to Docker Hub as `swayam5342/tributary-api` and `swayam5342/tributary-web`. New installs name their database `tributary`. Only the dev stack keeps `dextro`.
 - After `shadcn add`, check the new components: the CLI once imported `cn` from a bogus npm package of that name and added it to `package.json`. `cn` is our helper in `@/lib/utils`.
 
 ## Conventions
