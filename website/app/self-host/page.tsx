@@ -149,11 +149,11 @@ export default function SelfHost() {
       <p>Database changes apply by themselves when the server starts.</p>
       <p>
         Your files are safe in Drive, but the trash, links, users and keys live in the database. The <code>backup</code> service copies it
-        into a <code>backups</code> folder once a day and keeps the last week. Copy that folder somewhere else too, along with your{" "}
+        into a <code>backups</code> folder once a day, starting an hour after it first runs, and keeps the last week. Copy that folder somewhere else too, along with your{" "}
         <code>.env</code>, because a backup on the same disk doesn't survive that disk.
       </p>
       <p>To restore one, start from an empty database:</p>
-      <CodeTabs samples={[{ label: "Shell", code: "docker compose down -v\ndocker compose up -d postgres\ngunzip -c backups/tributary-2026-11-07.sql.gz | docker compose exec -T postgres psql -U tributary tributary\ndocker compose up -d" }]} />
+      <CodeTabs samples={[{ label: "Shell", code: "docker compose down -v\ndocker compose up -d postgres\ngunzip -c backups/tributary-2026-11-07-0300.sql.gz | docker compose exec -T postgres psql -U tributary tributary\ndocker compose up -d" }]} />
       <p>
         With no backup at all, a sync still brings your files and folders back from Drive. The trash, users and keys don't come back.
       </p>
