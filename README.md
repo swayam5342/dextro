@@ -4,6 +4,17 @@ A self-hosted file manager that turns several Google Drive accounts into one poo
 
 Link your Drive accounts, then upload, organize, preview and share files from one web app. dextro keeps your files in your own Drive accounts, not on its own server.
 
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/media/files-light.webp">
+  <img alt="The dextro file browser, showing folders and a grid of photos, with the storage pool in the sidebar" src="docs/media/files-dark.webp">
+</picture>
+
+## See it in action
+
+![A tour of dextro: viewing a photo, uploading files, dragging a file into a folder, making a Google link, moving files between accounts, and switching to the light theme](docs/media/demo.gif)
+
+[Watch this as a full-quality video](docs/media/demo.mp4).
+
 ## What it does
 
 - **One pool from many accounts.** Uploads go to the account with the most free space, or to the one you pick. An account that can't be reached is skipped.
@@ -17,6 +28,25 @@ Link your Drive accounts, then upload, organize, preview and share files from on
 - **Accounts for other people.** One admin creates users, each with their own files and linked accounts.
 - **API keys.** Scripts can upload and read files with a scoped key.
 - **Light and dark themes.** Follows your device, or choose one.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img alt="Three accounts on the Storage page showing how full each one is, with files moving between them" src="docs/media/storage.webp"><br><b>Your pool.</b> See how full each account is, and follow files moving between them.</td>
+    <td width="50%"><img alt="The upload panel showing three files going up, each with its own progress" src="docs/media/uploading.webp"><br><b>Uploads.</b> Pause, resume, and pick up after a lost connection.</td>
+  </tr>
+  <tr>
+    <td><img alt="A large photo open in the viewer, with its details alongside" src="docs/media/viewer.webp"><br><b>Preview.</b> Images, video and PDFs open in the app.</td>
+    <td><img alt="The Google link dialog, with roles for viewer, commenter and editor, and a choice of expiry" src="docs/media/link.webp"><br><b>Google links.</b> Choose what people can do, and when the link ends.</td>
+  </tr>
+  <tr>
+    <td><img alt="Files in a list, with their size, the account each is stored in, and the date added" src="docs/media/list.webp"><br><b>List view.</b> Sort by name, date or size, and see which account holds each file.</td>
+    <td align="center"><img alt="The file browser on a phone" src="docs/media/phone.webp" width="240"><br><b>On your phone.</b> The whole app works on a small screen.</td>
+  </tr>
+</table>
+
+These show a demo with made-up accounts and [free sample photos](docs/media/CREDITS.md).
 
 ## How it works
 
