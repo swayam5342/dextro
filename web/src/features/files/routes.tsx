@@ -3,6 +3,7 @@ import { createRoute } from "@tanstack/react-router";
 import { authedRoute } from "@/features/auth/routes";
 
 import { FilesPage } from "./components/files-page";
+import { LinksPage } from "./components/links-page";
 import { TrashPage } from "./components/trash-page";
 
 export const filesRoute = createRoute({
@@ -22,4 +23,10 @@ export const trashRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/trash",
   component: TrashPage,
+});
+
+export const linksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/links",
+  component: LinksPage,
 });

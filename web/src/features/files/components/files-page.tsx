@@ -13,6 +13,7 @@ import {
   FolderPlus,
   FolderOpen,
   LayoutGrid,
+  Link2,
   List,
   MoreVertical,
   Pencil,
@@ -49,6 +50,7 @@ import {
   contentUrl,
   folderQuery,
   searchQuery,
+  sharesQuery,
   thumbnailUrl,
   useCreateFolder,
   useMove,
@@ -61,6 +63,7 @@ import {
 import { loadSort, nextSort, saveSort, sorted, SORTS, type SortField, type SortId } from "../sort";
 import { AccountDialog, MoveDialog, NameDialog } from "./dialogs";
 import { fileIcon } from "./file-icon";
+import { ShareDialog } from "./share-dialog";
 import { Viewer } from "./viewer";
 
 type File = components["schemas"]["File"];
@@ -71,6 +74,7 @@ type Action =
   | { type: "rename"; item: Item; name: string }
   | { type: "move"; items: Item[]; name: string }
   | { type: "account"; fileIds: string[]; name: string; from: string[] }
+  | { type: "share"; fileId: string; name: string }
   | { type: "new-folder" };
 
 /** Something being dragged, and the folder to put it back in. */
@@ -241,6 +245,15 @@ function SortHeading({
   );
 }
 
+/** Marks a file anyone with a link can open, so public files can't go unnoticed. */
+function LinkBadge({ className }: { className?: string }) {
+  return (
+    <span role="img" aria-label="Has a Google link" title="Has a Google link" className={cn("grid size-6 shrink-0 place-items-center rounded-full", className)}>
+      <Link2 className="size-3.5" />
+    </span>
+  );
+}
+
 function RightClickMenu({ entries }: { entries: MenuEntry[] }) {
   return (
     <ContextMenuContent>
@@ -378,9 +391,10 @@ function FileTile({
   selecting,
   entries,
   drag,
+  shared,
   onToggle,
   onOpen,
-}: TileProps<File> & { onOpen: () => void }) {
+}: TileProps<File> & { shared: boolean; onOpen: () => void }) {
   const [failed, setFailed] = useState(false);
   const [ratio, setRatio] = useState(1.3);
   const hasPicture = file.preview !== "none" && !failed;
@@ -440,6 +454,7 @@ function FileTile({
               {file.name}
             </span>
           )}
+          {shared && <LinkBadge className="pointer-events-none absolute right-2 bottom-2 bg-black/55 text-white" />}
           <PickButton
             name={file.name}
             selected={selected}
@@ -495,6 +510,7 @@ interface ListRowProps {
   entries: MenuEntry[];
   drag: HTMLAttributes<HTMLElement>;
   lit?: boolean;
+  shared?: boolean;
   onToggle: () => void;
 }
 
@@ -510,6 +526,7 @@ function ListRow({
   entries,
   drag,
   lit,
+  shared,
   onToggle,
 }: ListRowProps) {
   const cell = "border-t px-3 py-2 whitespace-nowrap text-muted-foreground group-hover:bg-[#0c0c0c]";
@@ -530,6 +547,7 @@ function ListRow({
                 />
               </span>
               {open}
+              {shared && <LinkBadge className="text-muted-foreground" />}
             </span>
           </td>
           <td className={cn(cell, "text-right")}>{size}</td>
@@ -562,6 +580,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   const { isPending, isError } = query ? search : folder;
   const data = query ? search.data && { path: [], ...search.data } : folder.data;
   const { data: connections } = useQuery(connectionsQuery);
+  const { data: links } = useQuery(sharesQuery);
 
   const [view, setView] = useState<View>(loadView);
   const [sort, setSort] = useState<SortId>(loadSort);
@@ -585,6 +604,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   const viewed = files[viewIndex];
   const accounts = new Map(connections?.map((c) => [c.id, c.summary]));
   const accountName = (id: string) => accounts.get(id) ?? "Unknown account";
+  const shares = new Map(links?.shares.map((share) => [share.file_id, share]));
   const canChangeAccount = (connections?.filter((connection) => !connection.draining).length ?? 0) > 1;
 
   useEffect(() => {
@@ -641,8 +661,10 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   }
 
   function announceTrash(items: Item[]) {
+    // The link is gone for good, and Undo won't bring it back, so this has to say.
+    const hadLink = items.some((item) => item.kind === "file" && shares.has(item.id));
     toast({
-      message: `Moved ${countOf(items)} to the trash`,
+      message: `Moved ${countOf(items)} to the trash${hadLink ? " and removed its Google link" : ""}`,
       action: { label: "Undo", run: () => void undoTrash(items) },
     });
   }
@@ -801,6 +823,12 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
 
   function fileEntries(file: File): MenuEntry[] {
     const item: Item = { kind: "file", id: file.id };
+    const shared = shares.has(file.id);
+    const linkEntry: MenuEntry = {
+      label: shared ? "Manage Google link" : "Get Google link",
+      icon: Link2,
+      run: () => setAction({ type: "share", fileId: file.id, name: file.name }),
+    };
     const toAccount: MenuEntry = {
       label: "Move to another account",
       icon: ArrowLeftRight,
@@ -812,7 +840,8 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
       { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: file.name }) },
       { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: file.name }) },
       // An added file is the person's own, and stays in the account it came from.
-      ...(canChangeAccount && !file.external ? [toAccount] : []),
+      ...(canChangeAccount && !file.external && !shared ? [toAccount] : []),
+      ...((links?.enabled || shared) && !file.external ? [linkEntry] : []),
       { label: "Move to trash", icon: Trash2, run: () => void moveToTrash([item]) },
     ];
   }
@@ -836,7 +865,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   const canMoveSelection =
     canChangeAccount &&
     selectedFiles.length === selected.length &&
-    !files.some((file) => file.external && chosen.has(itemKey({ kind: "file", id: file.id })));
+    !files.some((file) => (file.external || shares.has(file.id)) && chosen.has(itemKey({ kind: "file", id: file.id })));
   const countText = selected.length === 1 ? "1 selected" : `${selected.length} selected`;
 
   return (
@@ -977,6 +1006,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
                   selecting={selecting}
                   entries={fileEntries(file)}
                   drag={dragFrom(item)}
+                  shared={shares.has(file.id)}
                   onToggle={() => toggle(item)}
                   onOpen={() => setViewing(file.id)}
                 />
@@ -1045,6 +1075,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
                   selecting={selecting}
                   entries={fileEntries(file)}
                   drag={dragFrom(item)}
+                  shared={shares.has(file.id)}
                   onToggle={() => toggle(item)}
                 />
               );
@@ -1092,6 +1123,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
           onSubmit={(name) => rename.mutate({ item: action.item, name }, { onSuccess: close })}
         />
       )}
+      {action?.type === "share" && <ShareDialog fileId={action.fileId} name={action.name} onClose={close} />}
       {action?.type === "account" && (
         <AccountDialog
           fileIds={action.fileIds}

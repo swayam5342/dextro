@@ -11,6 +11,7 @@ import {
   Settings,
   Trash2,
   FolderUp,
+  Link2,
   Upload,
   UserRound,
   Users,
@@ -37,7 +38,7 @@ import { useFollowTransfers, connectionsQuery, poolQuery } from "@/features/stor
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
+function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/links" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
   return (
     <Link
       to={to}
@@ -135,6 +136,7 @@ function Sidebar() {
       <nav aria-label="Main" className="flex flex-col gap-0.5">
         <NavLink to="/" icon={Folder} label="Files" />
         <NavLink to="/trash" icon={Trash2} label="Trash" />
+        <NavLink to="/links" icon={Link2} label="Links" />
         <NavLink to="/storage" icon={Database} label="Storage" />
       </nav>
       {user?.role === "admin" && (
@@ -290,7 +292,7 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
 }
 
 function MobileTabs() {
-  const tab = (to: "/" | "/trash" | "/storage" | "/account", Icon: LucideIcon, label: string) => (
+  const tab = (to: "/" | "/trash" | "/links" | "/storage" | "/account", Icon: LucideIcon, label: string) => (
     <Link
       to={to}
       search={{}}
@@ -303,9 +305,10 @@ function MobileTabs() {
     </Link>
   );
   return (
-    <nav aria-label="Main" className="grid grid-cols-4 border-t bg-background md:hidden">
+    <nav aria-label="Main" className="grid grid-cols-5 border-t bg-background md:hidden">
       {tab("/", Folder, "Files")}
       {tab("/trash", Trash2, "Trash")}
+      {tab("/links", Link2, "Links")}
       {tab("/storage", Database, "Storage")}
       {tab("/account", UserRound, "Account")}
     </nav>

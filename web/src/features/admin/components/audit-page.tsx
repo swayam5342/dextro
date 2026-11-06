@@ -34,6 +34,10 @@ const ACTIONS: Record<string, string> = {
   "api_key.created": "Created an API key",
   "api_key.revoked": "Revoked an API key",
   "file.deleted": "Deleted a file forever",
+  "file.shared": "Made a Google link",
+  "file.share_changed": "Changed a Google link",
+  "file.unshared": "Removed a Google link",
+  "file.share_expired": "A Google link expired",
   "folder.deleted": "Deleted a folder forever",
 };
 

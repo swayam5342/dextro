@@ -15,7 +15,7 @@ import {
   registerRoute,
   signInRoute,
 } from "@/features/auth/routes";
-import { filesRoute, trashRoute } from "@/features/files/routes";
+import { filesRoute, linksRoute, trashRoute } from "@/features/files/routes";
 import { storageRoute } from "@/features/storage/routes";
 
 import { rootRoute } from "./root-route";
@@ -31,6 +31,7 @@ export const router = createRouter({
     authedRoute.addChildren([
       filesRoute,
       trashRoute,
+      linksRoute,
       storageRoute,
       accountRoute,
       adminSettingsRoute,

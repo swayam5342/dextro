@@ -39,6 +39,30 @@ function UploadLimit({ current }: { current: number }) {
   );
 }
 
+function GoogleLinks({ enabled }: { enabled: boolean }) {
+  const update = useUpdateSettings();
+  return (
+    <section aria-label="Google links" className="space-y-3 rounded-2xl bg-card p-4">
+      <div>
+        <h2 className="font-semibold">Google links are {enabled ? "on" : "off"}</h2>
+        <p className="text-sm text-muted-foreground">
+          People can make a public Google link for a file, which anyone who has it can open without signing in. Turning
+          this off stops new links, and links that exist keep working until their owner removes them.
+        </p>
+      </div>
+      <FormError message={update.error?.message} />
+      <Button
+        variant="outline"
+        className="bg-raised hover:bg-[#3a3a3a]"
+        disabled={update.isPending}
+        onClick={() => update.mutate({ google_links_enabled: !enabled })}
+      >
+        {enabled ? "Turn off Google links" : "Turn on Google links"}
+      </Button>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const { data: settings, isPending, isError } = useQuery(settingsQuery);
 
@@ -48,6 +72,7 @@ export function SettingsPage() {
       {isPending && <p className="text-sm text-muted-foreground">Loading settings…</p>}
       {isError && <FormError message="Settings couldn't be loaded. Reload the page to try again." />}
       {settings && <UploadLimit current={settings.max_upload_bytes} />}
+      {settings && <GoogleLinks enabled={settings.google_links_enabled} />}
     </div>
   );
 }

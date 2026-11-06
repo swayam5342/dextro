@@ -5,6 +5,7 @@ import { toApiError } from "@/api/errors";
 
 const FILES_KEY = "files";
 const TRASH_KEY = "trash";
+const SHARES_KEY = "shares";
 
 /** Which kind of item an action applies to, and its ID. */
 export interface Item {
@@ -51,13 +52,25 @@ export const trashQuery = queryOptions({
   },
 });
 
-/** Anything that changes files can change both the folder views and the trash. */
+export const sharesQuery = queryOptions({
+  queryKey: [SHARES_KEY],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/shares");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
+/** Anything that changes files can change the folder views, the trash and the links. */
 function useRefresh() {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: [FILES_KEY] }),
       queryClient.invalidateQueries({ queryKey: [TRASH_KEY] }),
+      queryClient.invalidateQueries({ queryKey: [SHARES_KEY] }),
     ]);
 }
 
@@ -156,6 +169,33 @@ export function useDeleteForever() {
         item.kind === "file"
           ? await api.DELETE("/api/v1/files/{id}", { params })
           : await api.DELETE("/api/v1/folders/{id}", { params });
+      if (!response.ok) {
+        throw toApiError(error);
+      }
+    },
+    onSuccess: refresh,
+  });
+}
+
+export function useSaveShare() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: async ({ fileId, ...body }: { fileId: string; role: "viewer" | "commenter" | "editor"; expires_at: string | null }) => {
+      const { data, error } = await api.PUT("/api/v1/files/{id}/share", { params: { path: { id: fileId } }, body });
+      if (!data) {
+        throw toApiError(error);
+      }
+      return data;
+    },
+    onSuccess: refresh,
+  });
+}
+
+export function useRemoveShare() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: async (fileId: string) => {
+      const { error, response } = await api.DELETE("/api/v1/files/{id}/share", { params: { path: { id: fileId } } });
       if (!response.ok) {
         throw toApiError(error);
       }

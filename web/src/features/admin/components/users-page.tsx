@@ -142,7 +142,7 @@ function DeleteUserDialog({ user, onClose }: { user: ManagedUser; onClose: () =>
           <DialogTitle className="truncate text-base font-semibold">Delete {user.email}?</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
             Their linked accounts and dextro's records of their files go for good. The files themselves stay in
-            their Google Drive. This can't be undone.
+            their Google Drive. This can't be undone. Any Google links they made keep working, and dextro can't end them afterwards.
           </DialogDescription>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
