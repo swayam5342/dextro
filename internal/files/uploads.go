@@ -40,6 +40,8 @@ type BeginUploadInput struct {
 	ContentType  string
 	Size         int64
 	LastModified int64
+	// Busy is the accounts this client already has enough uploads going to.
+	Busy []uuid.UUID
 }
 
 // UploadSession is an upload sent in chunks, as its owner sees it. File is set once
@@ -85,6 +87,7 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 		ContentType:  contentType,
 		Size:         in.Size,
 		LastModified: in.LastModified,
+		Busy:         in.Busy,
 	})
 	if err != nil {
 		return UploadSession{}, err

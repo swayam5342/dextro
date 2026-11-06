@@ -951,6 +951,17 @@ func TestChunkedUploadHandlers(t *testing.T) {
 		t.Errorf("done = %s", rec.Body)
 	}
 
+	spreader := f.user(t)
+	busy := f.link(t, spreader, "c@gmail.com", 100)
+	idle := f.link(t, spreader, "d@gmail.com", 100)
+	if _, err := f.storage.SetRouting(ctx, spreader, storage.RouteRoundRobin, []uuid.UUID{busy, idle}, ""); err != nil {
+		t.Fatalf("SetRouting: %v", err)
+	}
+	passed := decode[apigen.UploadSession](t, do(spreader, http.MethodPost, "/api/v1/uploads", `{"name":"d.txt","size":3,"busy_connection_ids":["`+busy.String()+`"]}`))
+	if passed.ConnectionId != idle {
+		t.Errorf("went to %s, want the account that isn't busy", passed.ConnectionId)
+	}
+
 	expiring := decode[apigen.UploadSession](t, do(owner, http.MethodPost, "/api/v1/uploads", `{"name":"b.txt","size":3}`))
 	f.account("a@gmail.com").ExpireSessions()
 	wantCode(do(owner, http.MethodGet, "/api/v1/uploads/"+expiring.Id.String(), ""), http.StatusGone, "upload_expired")

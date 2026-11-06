@@ -42,6 +42,9 @@ func (h *Handler) BeginUpload(w http.ResponseWriter, r *http.Request) {
 	if body.LastModified != nil {
 		in.LastModified = *body.LastModified
 	}
+	if body.BusyConnectionIds != nil {
+		in.Busy = *body.BusyConnectionIds
+	}
 	session, err := h.service.BeginUpload(r.Context(), userID(r), in)
 	if err != nil {
 		h.fail(w, r, err)

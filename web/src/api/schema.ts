@@ -207,6 +207,8 @@ export interface components {
       folder_id?: string | null;
       /** The account to use. Left out, the user's upload routing chooses. */
       connection_id?: string | null;
+      /** Accounts already handling enough uploads, which round robin takes last. */
+      busy_connection_ids?: string[];
       /** The file's modified time in milliseconds. */
       last_modified?: number;
     };

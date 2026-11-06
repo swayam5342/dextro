@@ -151,6 +151,63 @@ func testRoundRobinSharesParallelUploads(t *testing.T, f *fixture) {
 	}
 }
 
+// reserveAvoiding records where an upload goes when some accounts are busy.
+func (f *fixture) reserveAvoiding(t *testing.T, userID uuid.UUID, busy ...Connection) uuid.UUID {
+	t.Helper()
+	r := reservation(1024)
+	for _, account := range busy {
+		r.Busy = append(r.Busy, account.ID)
+	}
+	chosen, err := f.service.Reserve(f.ctx, userID, nil, r)
+	if err != nil {
+		t.Fatalf("Reserve: %v", err)
+	}
+	return chosen.ConnectionID
+}
+
+// A slow account fills up with uploads, and must not take the rest of them too.
+func testRoundRobinPassesOverBusy(t *testing.T, f *fixture) {
+	userID := f.user(t)
+	a := f.linked(t, userID, "a@example.org", 15*gib, 0)
+	b := f.linked(t, userID, "b@example.org", 15*gib, 0)
+	c := f.linked(t, userID, "c@example.org", 15*gib, 0)
+	f.route(t, userID, RouteRoundRobin)
+	got := []uuid.UUID{
+		f.reserveAvoiding(t, userID, a),
+		f.reserveAvoiding(t, userID, a),
+		f.reserveAvoiding(t, userID, a),
+	}
+	wantAccounts(t, got, b, c, b)
+}
+
+// Busy only means later. The upload still has to go somewhere.
+func testRoundRobinUsesBusyWhenNothingElseCan(t *testing.T, f *fixture) {
+	userID := f.user(t)
+	a := f.linked(t, userID, "a@example.org", 15*gib, 0)
+	b := f.linked(t, userID, "b@example.org", 15*gib, 0)
+	full := f.linked(t, userID, "full@example.org", 15*gib, 15*gib)
+	f.route(t, userID, RouteRoundRobin)
+	if got := f.reserveAvoiding(t, userID, a, b); got != a.ID {
+		t.Errorf("with the free account full, went to %s, want the next turn", got)
+	}
+	if got := f.reserveAvoiding(t, userID, a, b, full); got != b.ID {
+		t.Errorf("with every account busy, went to %s, want the next turn", got)
+	}
+}
+
+// The other modes are promises about where files end up, so being busy can't change them.
+func testOnlyRoundRobinPassesOverBusy(t *testing.T, f *fixture) {
+	userID := f.user(t)
+	a := f.linked(t, userID, "a@example.org", 15*gib, 0)
+	f.linked(t, userID, "b@example.org", 15*gib, 7*gib)
+	for _, mode := range []RoutingMode{RouteMostSpace, RoutePriority} {
+		f.route(t, userID, mode)
+		if got := f.reserveAvoiding(t, userID, a); got != a.ID {
+			t.Errorf("%s: went to %s, want a", mode, got)
+		}
+	}
+}
+
 func testPriorityUsesTheOrder(t *testing.T, f *fixture) {
 	userID := f.user(t)
 	a := f.linked(t, userID, "a@example.org", 15*gib, 0)

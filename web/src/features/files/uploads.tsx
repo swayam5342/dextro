@@ -23,10 +23,22 @@ type Folder = components["schemas"]["Folder"];
 
 /** A multiple of 256 KiB, which Drive insists on for every piece but the last. */
 const CHUNK_BYTES = 8 * 1024 * 1024;
-const MAX_RUNNING = 3;
+/** Per account, so a slow one only ever holds up its own uploads. */
+const MAX_PER_ACCOUNT = 3;
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000];
 /** Worth another try. A full account (507) isn't: waiting won't make room. */
 const RETRY_STATUSES = new Set([0, 429, 500, 502, 503, 504]);
+
+/**
+ * How many run at once across every account. Over HTTP/1.1 a browser opens 6 connections
+ * to a site, and more uploads than that would leave pictures and pages waiting behind
+ * them. HTTP/2 and 3 share one connection, which a proxy with HTTPS usually gives.
+ */
+function maxRunning(): number {
+  const [page] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+  return ["h2", "h3"].includes(page?.nextHopProtocol ?? "") ? 12 : 4;
+}
+const MAX_RUNNING = maxRunning();
 
 export type UploadStatus =
   | "preparing"
@@ -99,6 +111,8 @@ interface Job {
   stopping?: "pause" | "cancel";
   /** Paused by a lost connection, so it can pick up again by itself. */
   pausedByNetwork?: boolean;
+  /** The account it's counted against while it sends. */
+  slot?: string;
 }
 
 /** Means the upload was paused or cancelled, which is nobody's error. */
@@ -150,7 +164,7 @@ function transfer<T>(job: Job, open: (request: XMLHttpRequest) => void, body: Bl
   });
 }
 
-async function beginSession(job: Job, file: File): Promise<Session> {
+async function beginSession(job: Job, file: File, busy: string[]): Promise<Session> {
   try {
     const { data, error, response } = await api.POST("/api/v1/uploads", {
       body: {
@@ -159,6 +173,7 @@ async function beginSession(job: Job, file: File): Promise<Session> {
         content_type: file.type || undefined,
         folder_id: job.folderId ?? null,
         connection_id: job.connectionId ?? null,
+        busy_connection_ids: busy,
         last_modified: job.lastModified,
       },
     });
@@ -247,6 +262,9 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
   const jobs = useRef(new Map<number, Job>());
   const queue = useRef<number[]>([]);
   const running = useRef(0);
+  /** How many uploads each account has going, and who's waiting for one to finish. */
+  const sending = useRef(new Map<string, number>());
+  const waiting = useRef(new Set<() => void>());
 
   const update = useCallback((id: number, change: Partial<Upload>) => {
     setUploads((current) => current.map((u) => (u.id === id ? { ...u, ...change } : u)));
@@ -261,6 +279,38 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
         resolve();
       };
     });
+  }, []);
+
+  /** Waits for the account to have room, because the file is already bound to it. */
+  const takeSlot = useCallback(async (job: Job, account: string) => {
+    for (;;) {
+      if (job.stopping) {
+        throw new Stopped();
+      }
+      const count = sending.current.get(account) ?? 0;
+      if (count < MAX_PER_ACCOUNT) {
+        sending.current.set(account, count + 1);
+        job.slot = account;
+        update(job.id, { status: "uploading" });
+        return;
+      }
+      update(job.id, { status: "waiting" });
+      await new Promise<void>((resolve) => {
+        job.wake = resolve;
+        waiting.current.add(resolve);
+      });
+    }
+  }, [update]);
+
+  const leaveSlot = useCallback((job: Job) => {
+    if (!job.slot) {
+      return;
+    }
+    sending.current.set(job.slot, (sending.current.get(job.slot) ?? 1) - 1);
+    job.slot = undefined;
+    const woken = [...waiting.current];
+    waiting.current.clear();
+    woken.forEach((wake) => wake());
   }, []);
 
   const sendEmpty = useCallback(async (job: Job, file: File) => {
@@ -295,14 +345,19 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
           throw new Stopped();
         }
         if (!job.sessionId) {
-          const session = await beginSession(job, file);
+          const busy = [...sending.current].filter(([, count]) => count >= MAX_PER_ACCOUNT).map(([account]) => account);
+          const session = await beginSession(job, file, busy);
           job.sessionId = session.id;
+          job.connectionId = session.connection_id;
           update(job.id, { connectionId: session.connection_id });
           // Cancelled while this was starting, so nobody else knows to give the space back.
           if (job.stopping === "cancel") {
             void api.DELETE("/api/v1/uploads/{id}", { params: { path: { id: session.id } } });
           }
           continue;
+        }
+        if (job.connectionId && !job.slot) {
+          await takeSlot(job, job.connectionId);
         }
         if (!inSync) {
           const session = await readSession(job.sessionId);
@@ -347,7 +402,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
         inSync = job.sessionId === undefined;
       }
     }
-  }, [update, wait]);
+  }, [takeSlot, update, wait]);
 
   const start = useCallback(async (job: Job) => {
     const file = job.file;
@@ -356,7 +411,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
     }
     update(job.id, { status: "uploading", error: undefined });
     try {
-      await (job.size === 0 ? sendEmpty(job, file) : sendChunks(job, file));
+      await (job.size === 0 ? sendEmpty(job, file) : sendChunks(job, file).finally(() => leaveSlot(job)));
       update(job.id, { status: "done", loaded: job.size });
       jobs.current.delete(job.id);
       await Promise.all([
@@ -375,7 +430,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
       const failure = error instanceof ApiError ? error : toApiError(error);
       update(job.id, { status: "failed", error: failure.message });
     }
-  }, [queryClient, refresh, sendChunks, sendEmpty, update]);
+  }, [leaveSlot, queryClient, refresh, sendChunks, sendEmpty, update]);
 
   const pump = useCallback(() => {
     while (running.current < MAX_RUNNING) {

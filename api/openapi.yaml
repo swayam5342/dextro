@@ -2033,6 +2033,14 @@ components:
           format: uuid
           nullable: true
           description: The account to use. Left out, the user's upload routing chooses.
+        busy_connection_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: >
+            Accounts this client already has enough uploads going to. Round robin
+            takes them last. The other routing modes ignore this.
         last_modified:
           type: integer
           format: int64

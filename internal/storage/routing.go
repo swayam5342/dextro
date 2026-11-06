@@ -104,16 +104,31 @@ func inOrder[T any](items []T, order []uuid.UUID, id func(T) uuid.UUID) {
 }
 
 // arrange puts accounts in the order an upload should try them. If the account round
-// robin used last can't be used now, the turn starts again from the top.
-func arrange(accounts []probed, routing Routing) []probed {
+// robin used last can't be used now, the turn starts again from the top. Round robin
+// takes busy accounts last, so a slow one can't collect every upload. The other modes
+// promise where files end up, so being busy doesn't change them.
+func arrange(accounts []probed, routing Routing, busy []uuid.UUID) []probed {
 	if routing.Mode == RouteMostSpace {
 		slices.SortStableFunc(accounts, moreRoomFirst)
 		return accounts
 	}
 	inOrder(accounts, routing.Order, func(p probed) uuid.UUID { return p.record.ID })
-	if routing.Mode == RouteRoundRobin && routing.Last != nil {
-		last := slices.IndexFunc(accounts, func(p probed) bool { return p.record.ID == *routing.Last })
-		return slices.Concat(accounts[last+1:], accounts[:last+1])
+	if routing.Mode != RouteRoundRobin {
+		return accounts
 	}
+	if routing.Last != nil {
+		last := slices.IndexFunc(accounts, func(p probed) bool { return p.record.ID == *routing.Last })
+		accounts = slices.Concat(accounts[last+1:], accounts[:last+1])
+	}
+	isBusy := func(p probed) bool { return slices.Contains(busy, p.record.ID) }
+	slices.SortStableFunc(accounts, func(a, b probed) int {
+		switch {
+		case isBusy(a) == isBusy(b):
+			return 0
+		case isBusy(a):
+			return 1
+		}
+		return -1
+	})
 	return accounts
 }

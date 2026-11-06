@@ -493,6 +493,9 @@ type NewTransfers struct {
 
 // NewUpload defines model for NewUpload.
 type NewUpload struct {
+	// BusyConnectionIds Accounts this client already has enough uploads going to. Round robin takes them last. The other routing modes ignore this.
+	BusyConnectionIds *[]openapi_types.UUID `json:"busy_connection_ids,omitempty"`
+
 	// ConnectionId The account to use. Left out, the user's upload routing chooses.
 	ConnectionId *openapi_types.UUID `json:"connection_id,omitempty"`
 	ContentType  *string             `json:"content_type,omitempty"`

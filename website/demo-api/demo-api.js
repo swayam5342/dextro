@@ -90,7 +90,7 @@
   const routingBody = () => ({ mode: state.routing.mode, order: routingOrder(), last_connection_id: state.routing.last });
 
   /** Picks an account the way the server does, or says why it can't. */
-  function choose(picked, size) {
+  function choose(picked, size, busy = []) {
     if (picked) {
       const chosen = accounts.find((a) => a.id === picked);
       return chosen && free(chosen) >= size ? chosen : null;
@@ -106,6 +106,9 @@
       if (mode === "round_robin" && last) {
         const at = tries.findIndex((a) => a.id === last);
         tries = [...tries.slice(at + 1), ...tries.slice(0, at + 1)];
+      }
+      if (mode === "round_robin") {
+        tries = [...tries.filter((a) => !busy.includes(a.id)), ...tries.filter((a) => busy.includes(a.id))];
       }
     }
     const chosen = tries.find((a) => free(a) >= size);
@@ -303,7 +306,7 @@
 
     ["GET", /^\/api\/v1\/uploads$/, () => ok([])],
     ["POST", /^\/api\/v1\/uploads$/, (_, body) => {
-      const chosen = choose(body.connection_id, body.size);
+      const chosen = choose(body.connection_id, body.size, body.busy_connection_ids);
       if (!chosen) return { status: 507, body: { error: { code: "storage_full", message: "No account has room for this file.", request_id: "demo" } } };
       const upload = {
         id: newId(), connection_id: chosen.id, folder_id: body.folder_id ?? null, name: body.name, size: body.size,

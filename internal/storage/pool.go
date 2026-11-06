@@ -119,13 +119,13 @@ func moreRoomFirst(a, b probed) int {
 // and accounts that can't be reached are passed over so one expired token doesn't
 // stop every upload. Space held for uploads and moves doesn't count as free.
 func (s *Service) Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64) (Chosen, error) {
-	return s.claim(ctx, userID, preferred, size, func(*Store, uuid.UUID) error { return nil })
+	return s.claim(ctx, userID, preferred, size, nil, func(*Store, uuid.UUID) error { return nil })
 }
 
 // claim chooses an account and runs hold in the same transaction. Asking Google is
 // slow, so it happens first, and only the choosing takes turns. Taking turns is also
 // what stops uploads started together from reading the same round robin position.
-func (s *Service) claim(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64, hold func(tx *Store, connectionID uuid.UUID) error) (Chosen, error) {
+func (s *Service) claim(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64, busy []uuid.UUID, hold func(tx *Store, connectionID uuid.UUID) error) (Chosen, error) {
 	candidates, err := s.candidates(ctx, userID, preferred)
 	if err != nil {
 		return Chosen{}, err
@@ -143,7 +143,7 @@ func (s *Service) claim(ctx context.Context, userID uuid.UUID, preferred *uuid.U
 		if err != nil {
 			return err
 		}
-		if chosen, err = pick(candidates, reserved, size, routing); err != nil {
+		if chosen, err = pick(candidates, reserved, size, routing, busy); err != nil {
 			return err
 		}
 		// An account the user picked isn't a turn.
@@ -168,12 +168,15 @@ type Reservation struct {
 	ContentType  string
 	Size         int64
 	LastModified int64
+	// Busy is the accounts the uploader already has enough going to. Round robin takes
+	// them last.
+	Busy []uuid.UUID
 }
 
 // Reserve chooses an account as Choose does and holds the space on it, so that two
 // uploads can't both count on the same room.
 func (s *Service) Reserve(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, r Reservation) (Chosen, error) {
-	return s.claim(ctx, userID, preferred, r.Size, func(tx *Store, connectionID uuid.UUID) error {
+	return s.claim(ctx, userID, preferred, r.Size, r.Busy, func(tx *Store, connectionID uuid.UUID) error {
 		return tx.CreateUploadSession(ctx, userID, connectionID, r)
 	})
 }
@@ -319,8 +322,8 @@ func withReserved(candidates []probed, reserved map[uuid.UUID]int64) []probed {
 }
 
 // pick takes the first account with room, in the order routing tries them.
-func pick(candidates []probed, reserved map[uuid.UUID]int64, size int64, routing Routing) (Chosen, error) {
-	for _, account := range arrange(withReserved(candidates, reserved), routing) {
+func pick(candidates []probed, reserved map[uuid.UUID]int64, size int64, routing Routing, busy []uuid.UUID) (Chosen, error) {
+	for _, account := range arrange(withReserved(candidates, reserved), routing, busy) {
 		if hasRoom(account.quota, size) {
 			return Chosen{ConnectionID: account.record.ID, Provider: account.provider}, nil
 		}
