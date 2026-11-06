@@ -124,7 +124,6 @@ func TestService(t *testing.T) {
 		{"a user links one google account", testLinkGoogleTwice},
 		{"relinking the same google account is harmless", testLinkGoogleSameAgain},
 		{"registration status", testRegistrationOpen},
-		{"the transfer command", testRunCommandTransfersAdmin},
 		{"creating a user", testCreateUser},
 		{"creating a user refuses bad input", testCreateUserValidates},
 		{"listing users", testListUsers},

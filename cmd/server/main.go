@@ -18,6 +18,7 @@ import (
 
 	"github.com/swayam5342/dextro/internal/admin"
 	"github.com/swayam5342/dextro/internal/auth"
+	"github.com/swayam5342/dextro/internal/cli"
 	"github.com/swayam5342/dextro/internal/config"
 	"github.com/swayam5342/dextro/internal/db"
 	"github.com/swayam5342/dextro/internal/files"
@@ -59,9 +60,6 @@ func run() error {
 	}
 
 	authService := auth.NewService(auth.NewStore(pool))
-	if args := os.Args[1:]; len(args) > 0 {
-		return auth.RunCommand(ctx, authService, args, os.Stdout)
-	}
 
 	// Left nil when Google isn't configured, which turns its routes off.
 	var google auth.GoogleClient
@@ -75,6 +73,10 @@ func run() error {
 	}
 	filesService := files.NewService(files.NewStore(pool), storageService)
 	settings := admin.NewStore(pool)
+	adminService := admin.NewService(settings, storageService)
+	if args := os.Args[1:]; len(args) > 0 {
+		return cli.Run(ctx, cli.Deps{Auth: authService, Admin: adminService, Files: filesService}, args, os.Stdout)
+	}
 	router := httpx.NewRouter(httpx.Deps{
 		Logger:         logger,
 		DB:             pool,
@@ -83,7 +85,7 @@ func run() error {
 		Sessions:       authService,
 		APIKeys:        authService,
 		Auth:           auth.NewHandler(authService, google, logger),
-		Admin:          admin.NewHandler(admin.NewService(settings, storageService), logger),
+		Admin:          admin.NewHandler(adminService, logger),
 		Storage:        storage.NewHandler(storageService, logger, syncNewAccount(filesService)),
 		Files:          files.NewHandler(filesService, logger),
 	})
