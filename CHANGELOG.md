@@ -4,7 +4,7 @@
 
 - WebDAV, so the pool can be mounted as a drive or used with rclone.
 
-## Unreleased
+## 0.1.2 (7 November 2026)
 
 ### Added
 
