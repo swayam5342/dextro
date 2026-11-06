@@ -28,7 +28,7 @@
 
   const folder = (id, name, parent, days) => ({ id, name, parent_id: parent, trashed_at: null, created_at: earlier(days), updated_at: earlier(days) });
   const folders = [
-    folder("survey", "Mississippi survey", null, 40),
+    folder("survey", "Ganga survey", null, 40),
     folder("satellite", "Satellite pictures", null, 38),
     folder("work", "Work", null, 30),
     folder("invoices", "Invoices", "work", 20),
@@ -39,11 +39,12 @@
     trashed_at: null, created_at: earlier(days), updated_at: earlier(days),
   });
   const files = [
-    file("plate-05", "Meander belt, sheet 5.jpg", 41 * MB, "image/jpeg", "image", "north", "survey", 40),
-    file("plate-07", "Meander belt, sheet 7.jpg", 44 * MB, "image/jpeg", "image", "south", "survey", 40),
-    file("plate-10", "Meander belt, sheet 10.jpg", 39 * MB, "image/jpeg", "image", "creek", "survey", 40),
-    file("naryn", "Naryn and Kara Darya.jpg", 6 * MB, "image/jpeg", "image", "south", "satellite", 38),
-    file("amazon", "Amazon River.jpg", 5 * MB, "image/jpeg", "image", "creek", "satellite", 38),
+    file("rennell-1786", "Rennell, Bengal and Oude 1786.jpg", 41 * MB, "image/jpeg", "image", "north", "survey", 40),
+    file("rennell-survey", "Rennell, An Actual Survey.jpg", 44 * MB, "image/jpeg", "image", "south", "survey", 40),
+    file("ganga-course", "Course of the Ganges, dry season.jpg", 22 * MB, "image/jpeg", "image", "creek", "survey", 40),
+    file("tieffenthaler", "Tieffenthaler, Ganga and Ghaghara 1784.jpg", 39 * MB, "image/jpeg", "image", "creek", "survey", 40),
+    file("delta", "Ganga delta from space.jpg", 6 * MB, "image/jpeg", "image", "south", "satellite", 38),
+    file("plain", "Indo-Gangetic plain.jpg", 5 * MB, "image/jpeg", "image", "creek", "satellite", 38),
     file("tour", "Tributary tour.mp4", 2.6 * MB, "video/mp4", "video", "north", null, 12),
     file("budget", "Budget 2026.xlsx", 340 * 1024, "application/vnd.ms-excel", "none", "south", "work", 9),
     file("notes", "Meeting notes.docx", 88 * 1024, "application/msword", "none", "north", "work", 6),

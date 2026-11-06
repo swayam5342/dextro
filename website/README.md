@@ -37,4 +37,4 @@ The samples in the API guide are the files in `_examples`, which the page reads 
 
 ## Pictures
 
-The maps are Harold N. Fisk's 1944 survey for the US Army Corps of Engineers, and the demo's satellite pictures are from NASA. All are public domain. `demo-api/credits.json` lists each one with its source.
+The maps of the Ganga are by James Rennell and Joseph Tieffenthaler, and the satellite pictures are from NASA. All are public domain. [CREDITS.md](CREDITS.md) lists each one with its source.

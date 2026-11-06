@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-const PLATES: { src: string; alt: string; legendRight?: boolean }[] = [
-  { src: "/media/plate-07-wide.webp", alt: "A 1944 map of the Mississippi, its old courses looping across the valley in pink, green and blue" },
-  { src: "/media/plate-05-wide.webp", alt: "Another sheet of the same map, where the river's past channels cross and braid", legendRight: true },
-  { src: "/media/plate-10-wide.webp", alt: "A third sheet, with old river bends drawn in layers of colour" },
+const PLATES = [
+  { src: "/media/ganga-rennell-1786.webp", alt: "James Rennell's 1786 map of the Ganga plain, tinted pink, running down to the Bay of Bengal" },
+  { src: "/media/ganga-actual-survey.webp", alt: "Rennell's hand-coloured survey of Bengal and Bihar, with the Ganga and its tributaries drawn across each province" },
+  { src: "/media/ganga-delta.webp", alt: "The Ganga delta from space, its channels spreading through dark mangrove forest to the sea" },
 ];
 
 /** The survey maps change slowly, like light in a room. */
@@ -25,14 +25,14 @@ export function MapPlates() {
   return (
     <figure className="plates-wrap">
       <div className="plates">
-        {PLATES.map(({ src, alt, legendRight }, index) => (
+        {PLATES.map(({ src, alt }, index) => (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={src} src={src} alt={index === shown ? alt : ""} width={1920} height={1080} loading="lazy" className={index === shown ? "on" : undefined} style={legendRight ? { transformOrigin: "0 50%" } : undefined} />
+          <img key={src} src={src} alt={index === shown ? alt : ""} width={1600} height={800} loading="lazy" className={index === shown ? "on" : undefined} />
         ))}
       </div>
       <figcaption className="plates-caption">
-        <span>Harold Fisk's 1944 survey of the Mississippi. Every colour is a course the river once ran.</span>
-        <span>US Army Corps of Engineers, public domain</span>
+        <span>James Rennell's surveys of the Ganga from 1776 and 1786, and its delta seen from space.</span>
+        <span>Rennell and NASA, public domain</span>
       </figcaption>
     </figure>
   );

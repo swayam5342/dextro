@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const PICTURES = new Set(["plate-05", "plate-07", "plate-10", "naryn", "amazon", "tour"]);
+const PICTURES = new Set(["rennell-1786", "rennell-survey", "ganga-course", "tieffenthaler", "delta", "plain"]);
 
 /** Relative, because behind a proxy the server doesn't know the address people used. */
 function redirect(location: string) {
@@ -13,11 +13,11 @@ function redirect(location: string) {
  */
 export async function GET(_: Request, { params }: { params: Promise<{ id: string; kind: string }> }) {
   const { id, kind } = await params;
-  if (id === "tour" && kind === "content") {
-    return redirect("/demo/media/tour.mp4");
+  if (id === "tour") {
+    return redirect(kind === "content" ? "/media/demo.mp4" : "/media/files-dark.webp");
   }
   if (PICTURES.has(id) && (kind === "content" || kind === "thumbnail")) {
-    return redirect(`/demo/media/${id}.webp`);
+    return redirect(`/media/demo/${id}.webp`);
   }
   if (kind === "content") {
     return new NextResponse("This is a made-up file from the Tributary demo.\n", {

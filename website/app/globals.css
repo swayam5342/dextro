@@ -308,9 +308,6 @@ h2 {
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  /* Past the map's legend, so the river fills the frame. */
-  transform: scale(1.2);
-  transform-origin: 100% 50%;
   transition: opacity 1600ms ease;
 }
 

@@ -50,8 +50,8 @@ export default function Home() {
               Many into one
             </h2>
             <p data-rise style={step(1)}>
-              A tributary is a small river that joins a larger one. Each Google account gives you 15 GB free, so three accounts
-              hold 45 GB. Tributary shows them as one place to put things.
+              A tributary is a small river that joins a larger one, the way the Yamuna and the Kosi join the Ganga. Each Google
+              account gives you 15 GB free, so three accounts hold 45 GB. Tributary shows them as one place to put things.
             </p>
           </div>
           <div data-rise style={step(2)}>

@@ -20,7 +20,6 @@ rmSync(join(out, "drive-picker.html"), { force: true });
 rmSync(join(out, "drive-picker.js"), { force: true });
 
 cpSync(join(site, "demo-api", "demo-api.js"), join(out, "demo-api.js"));
-cpSync(join(site, "demo-api", "media"), join(out, "media"), { recursive: true });
 
 const page = join(out, "index.html");
 const html = readFileSync(page, "utf8");

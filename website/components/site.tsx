@@ -71,7 +71,7 @@ export function SiteFooter() {
         </div>
       </div>
       <p className="footer-credit">
-        Maps: Harold N. Fisk, US Army Corps of Engineers, 1944, public domain. Satellite pictures in the demo: NASA, public domain.
+        Maps: James Rennell and Joseph Tieffenthaler, 1776 to 1812, public domain. Satellite pictures: NASA, public domain.
       </p>
     </footer>
   );
