@@ -3,19 +3,18 @@ import { Check } from "lucide-react";
 import { useRef, useState } from "react";
 
 import type { components } from "@/api/schema";
+import { Choice } from "@/components/choice";
 import { FormError } from "@/components/field";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 import { sharesQuery, useRemoveShare, useSaveShare } from "../queries";
 
 type Share = components["schemas"]["Share"];
 type Role = Share["role"];
 
-const SOFT = "bg-raised hover:bg-[#3a3a3a]";
 const DAY_MS = 86_400_000;
 
 const ROLES: { id: Role; label: string; text: string }[] = [
@@ -46,27 +45,9 @@ export function CopyButton({ text, fallback, label }: { text: string; fallback?:
   }
 
   return (
-    <Button variant="outline" size="sm" className={SOFT} aria-label={label} onClick={() => void copy()}>
+    <Button variant="soft" size="sm" aria-label={label} onClick={() => void copy()}>
       {copied ? "Copied" : "Copy"}
     </Button>
-  );
-}
-
-function Choice({
-  chosen,
-  onClick,
-  children,
-  className,
-}: {
-  chosen: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <button type="button" aria-pressed={chosen} onClick={onClick} className={cn("hover:bg-raised", chosen && "bg-raised", className)}>
-      {children}
-    </button>
   );
 }
 
@@ -166,7 +147,7 @@ export function ShareDialog({ fileId, name, onClose }: { fileId: string; name: s
             </Button>
           )}
           <DialogClose asChild>
-            <Button variant="outline" className={SOFT}>
+            <Button variant="soft">
               {share ? "Done" : "Cancel"}
             </Button>
           </DialogClose>

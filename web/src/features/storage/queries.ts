@@ -1,8 +1,10 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { api } from "@/api/client";
+import type { components } from "@/api/schema";
 import { toApiError } from "@/api/errors";
+import { sharesQuery, useRefreshFiles } from "@/features/files/queries";
 
 export const connectionsQuery = queryOptions({
   queryKey: ["storage-connections"],
@@ -28,6 +30,12 @@ export const poolQuery = queryOptions({
   },
 });
 
+type TransferQueue = components["schemas"]["TransferQueue"];
+
+function isMoving(queue: TransferQueue | undefined): boolean {
+  return Boolean(queue && (queue.waiting > 0 || queue.removing > 0));
+}
+
 export const transfersQuery = queryOptions({
   queryKey: ["transfers"],
   queryFn: async () => {
@@ -38,38 +46,43 @@ export const transfersQuery = queryOptions({
     return data;
   },
   // Only while something's moving. Moves run in the background, so nothing else says.
-  refetchInterval: (query) => {
-    const queue = query.state.data;
-    return queue && (queue.waiting > 0 || queue.removing > 0) ? 3000 : false;
-  },
+  refetchInterval: (query) => (isMoving(query.state.data) ? 3000 : false),
 });
 
-/** Everything a move can change. */
+/** Everything a change to an account can touch. */
 function useRefreshAccounts() {
   const queryClient = useQueryClient();
-  return useCallback(
-    () =>
-      Promise.all(
-        [["files"], ["trash"], connectionsQuery.queryKey, poolQuery.queryKey, transfersQuery.queryKey].map((queryKey) =>
-          queryClient.invalidateQueries({ queryKey }),
-        ),
-      ),
-    [queryClient],
-  );
+  const refreshFiles = useRefreshFiles();
+  return () =>
+    Promise.all([
+      refreshFiles(),
+      ...[connectionsQuery, poolQuery, transfersQuery, sharesQuery].map(({ queryKey }) => queryClient.invalidateQueries({ queryKey })),
+    ]);
 }
 
-/** Files change account in the background, so what's on screen follows the queue. */
+/**
+ * Files change account in the background, so what's on screen follows the queue. This
+ * runs on every page, so it asks less often than the Storage page does. Reading the pool
+ * asks Google about every account, so that waits until the moves are done.
+ */
 export function useFollowTransfers() {
-  const { data } = useQuery(transfersQuery);
-  const refresh = useRefreshAccounts();
-  const left = data ? data.waiting + data.removing : undefined;
+  const queryClient = useQueryClient();
+  const refreshFiles = useRefreshFiles();
+  const { data: left } = useQuery({
+    ...transfersQuery,
+    select: (queue) => queue.waiting + queue.removing,
+    refetchInterval: (query) => (isMoving(query.state.data) ? 10_000 : false),
+  });
   const previous = useRef(left);
   useEffect(() => {
     if (left !== undefined && previous.current !== undefined && left < previous.current) {
-      void refresh();
+      void refreshFiles();
+      if (left === 0) {
+        void queryClient.invalidateQueries({ queryKey: poolQuery.queryKey });
+      }
     }
     previous.current = left;
-  }, [left, refresh]);
+  }, [left, queryClient, refreshFiles]);
 }
 
 export function useTransferFiles() {
@@ -157,7 +170,7 @@ export function useTestConnection(id: string) {
 }
 
 export function useSyncConnection(id: string) {
-  const queryClient = useQueryClient();
+  const refresh = useRefreshAccounts();
   return useMutation({
     mutationFn: async () => {
       const { data, error } = await api.POST("/api/v1/storage/connections/{id}/sync", {
@@ -168,17 +181,12 @@ export function useSyncConnection(id: string) {
       }
       return data;
     },
-    onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["files"] }),
-        queryClient.invalidateQueries({ queryKey: ["trash"] }),
-        queryClient.invalidateQueries({ queryKey: poolQuery.queryKey }),
-      ]),
+    onSuccess: refresh,
   });
 }
 
 export function useRemoveConnection(id: string) {
-  const queryClient = useQueryClient();
+  const refresh = useRefreshAccounts();
   return useMutation({
     mutationFn: async () => {
       const { error, response } = await api.DELETE("/api/v1/storage/connections/{id}", {
@@ -188,13 +196,7 @@ export function useRemoveConnection(id: string) {
         throw toApiError(error);
       }
     },
-    onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: connectionsQuery.queryKey }),
-        queryClient.invalidateQueries({ queryKey: poolQuery.queryKey }),
-        queryClient.invalidateQueries({ queryKey: transfersQuery.queryKey }),
-        queryClient.invalidateQueries({ queryKey: ["files"] }),
-      ]),
+    onSuccess: refresh,
   });
 }
 

@@ -32,7 +32,7 @@ export function ConfirmDialog({ title, text, action, safe, pending, error, onCon
         <FormError message={error} />
         <div className="flex justify-end gap-2">
           <DialogClose asChild>
-            <Button variant="outline" className="bg-raised hover:bg-[#3a3a3a]">
+            <Button variant="soft">
               Cancel
             </Button>
           </DialogClose>

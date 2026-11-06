@@ -30,10 +30,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { meQuery, useLogout } from "@/features/auth/queries";
+import { ThemeButton } from "@/components/theme-button";
 import { ToastProvider } from "@/components/toast";
 import { DropZone, UploadPanel } from "@/features/files/components/upload-panel";
 import { treeFromPicked } from "@/features/files/folder-tree";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
+import { freeSpaceText, usableConnections } from "@/features/storage/pool";
 import { useFollowTransfers, connectionsQuery, poolQuery } from "@/features/storage/queries";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -44,8 +46,8 @@ function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/links" | "/
       to={to}
       search={{}}
       activeOptions={{ exact: to === "/", includeSearch: false }}
-      className="flex h-9 items-center gap-3 rounded-[10px] px-2.5 text-sm text-[#bbb] transition-colors hover:bg-accent"
-      activeProps={{ className: "bg-card font-medium text-white" }}
+      className="flex h-9 items-center gap-3 rounded-[10px] px-2.5 text-sm text-nav transition-colors hover:bg-accent"
+      activeProps={{ className: "bg-card font-medium text-foreground" }}
     >
       <Icon className="size-[18px] shrink-0" />
       {label}
@@ -109,7 +111,7 @@ function UserRow() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex w-full items-center gap-2.5 rounded-xl p-2 text-left hover:bg-accent">
-        <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-[#1d3a4d] text-[13px] font-semibold text-[#bfe6ff]">
+        <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-avatar text-[13px] font-semibold text-avatar-foreground">
           {user.email.charAt(0).toUpperCase()}
         </span>
         <span className="min-w-0 leading-tight">
@@ -203,7 +205,7 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
   const picker = useRef<HTMLInputElement>(null);
   const folderPicker = useRef<HTMLInputElement | null>(null);
   // An account being emptied takes nothing new.
-  const usable = connections?.filter((c) => !c.draining) ?? [];
+  const usable = usableConnections(connections);
   const hasAccounts = usable.length > 0;
   const chosen = usable.find((c) => c.id === target);
 
@@ -220,19 +222,8 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
     event.target.value = "";
     const name = picked[0]?.webkitRelativePath.split("/")[0];
     if (name) {
-      void addTree(name, Promise.resolve(treeFromPicked(picked)), folderId);
+      void addTree(name, treeFromPicked(picked), folderId);
     }
-  }
-
-  function freeSpace(id: string): string | undefined {
-    const account = pool?.accounts.find((a) => a.connection.id === id);
-    if (!account?.available) {
-      return account ? "Can't be reached" : undefined;
-    }
-    if (account.limit_bytes === null) {
-      return "No limit";
-    }
-    return `${formatBytes(Math.max(account.limit_bytes - account.used_bytes - account.reserved_bytes, 0))} free`;
   }
 
   return (
@@ -281,7 +272,7 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
           {usable.map((connection) => (
             <DropdownMenuItem key={connection.id} onSelect={() => setTarget(connection.id)}>
               <span className="min-w-0 flex-1 truncate">{connection.summary}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{freeSpace(connection.id)}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{freeSpaceText(pool?.accounts.find((a) => a.connection.id === connection.id))}</span>
               {target === connection.id && <Check className="text-water" />}
             </DropdownMenuItem>
           ))}
@@ -297,8 +288,8 @@ function MobileTabs() {
       to={to}
       search={{}}
       activeOptions={{ exact: to === "/", includeSearch: false }}
-      className="grid content-center justify-items-center gap-0.5 text-[11px] text-[#bbb]"
-      activeProps={{ className: "text-white" }}
+      className="grid content-center justify-items-center gap-0.5 text-[11px] text-nav"
+      activeProps={{ className: "text-foreground" }}
     >
       <Icon className="size-[18px]" />
       {label}
@@ -323,7 +314,7 @@ function Frame() {
   const folderId = pathname === "/" ? folder : undefined;
   const chosen = connections?.find((c) => c.id === target);
   const hint = chosen ? `Goes to ${chosen.summary}` : "Goes to the account with the most free space";
-  const canDrop = connections?.some((c) => !c.draining) ?? false;
+  const canDrop = usableConnections(connections).length > 0;
   useFollowTransfers();
 
   return (
@@ -335,6 +326,7 @@ function Frame() {
       <header className="flex min-w-0 items-center gap-3 border-b px-3 md:px-6">
         <SearchBox />
         <span className="hidden flex-1 md:block" />
+        <ThemeButton />
         <UploadButton folderId={folderId} />
       </header>
       <Sidebar />

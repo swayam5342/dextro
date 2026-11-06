@@ -16,12 +16,23 @@ function destination(upload: Upload, emails: Map<string, string>): string {
   return account ? `To ${account}` : "To the account with the most free space";
 }
 
-function RowButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+export function RowButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
       className="grid size-6 place-items-center rounded-full hover:bg-raised hover:text-foreground"
       aria-label={label}
+      disabled={disabled}
       onClick={onClick}
     >
       {children}
@@ -84,7 +95,7 @@ function Row({ upload, emails }: { upload: Upload; emails: Map<string, string> }
       {upload.status === "needs-file" && (
         <>
           <input ref={picker} type="file" hidden aria-label={`Choose ${upload.name} again`} onChange={handlePick} />
-          <Button variant="outline" size="sm" className="bg-raised hover:bg-[#3a3a3a]" onClick={() => picker.current?.click()}>
+          <Button variant="soft" size="sm" onClick={() => picker.current?.click()}>
             Pick the file again to continue
           </Button>
         </>
@@ -124,7 +135,7 @@ export function UploadPanel() {
   return (
     <section
       aria-label="Uploads"
-      className="fixed right-4 bottom-[74px] z-30 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-card shadow-[0_12px_32px_rgba(0,0,0,0.7)] md:right-5 md:bottom-5"
+      className="fixed right-4 bottom-[74px] z-30 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-card shadow-float md:right-5 md:bottom-5"
     >
       <header className="flex items-center gap-2 py-2 pr-2 pl-4 font-semibold">
         <span className="flex-1">{title}</span>
@@ -201,7 +212,7 @@ export function DropZone({ folderId, hint }: { folderId: string | undefined; hin
     return null;
   }
   return (
-    <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-black/80">
+    <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-scrim-strong">
       <div className="text-center">
         <UploadIcon className="mx-auto size-11 text-water" />
         <p className="mt-3 text-xl font-semibold">Drop to upload</p>

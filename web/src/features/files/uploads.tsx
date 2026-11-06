@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -16,7 +16,7 @@ import type { components } from "@/api/schema";
 import { poolQuery } from "@/features/storage/queries";
 
 import { foldersToMake, type FolderTree } from "./folder-tree";
-import { useRefreshFiles } from "./queries";
+import { createFolder, folderQuery, useRefreshFiles } from "./queries";
 
 type Session = components["schemas"]["UploadSession"];
 type Folder = components["schemas"]["Folder"];
@@ -57,7 +57,7 @@ interface UploadsValue {
   setTarget: (connectionId: string) => void;
   add: (files: File[], folderId: string | undefined) => void;
   /** Recreates a folder from the computer, then uploads what's in it. */
-  addTree: (name: string, tree: Promise<FolderTree>, folderId: string | undefined) => Promise<void>;
+  addTree: (name: string, tree: FolderTree | Promise<FolderTree>, folderId: string | undefined) => Promise<void>;
   pause: (id: number) => void;
   resume: (id: number) => void;
   /** Gives an upload from before a reload its file back. */
@@ -176,36 +176,24 @@ async function readSession(id: string): Promise<Session> {
   }
 }
 
-async function foldersIn(parent: string | undefined): Promise<Folder[]> {
-  const { data, error } = await api.GET("/api/v1/files", {
-    params: { query: parent ? { folder_id: parent } : {} },
-  });
-  if (!data) {
-    throw toApiError(error);
-  }
-  return data.folders;
-}
-
 /**
  * Makes a tree's folders and says which is which, by path. A folder that's already
  * there is used, so uploading the rest of a folder doesn't make a second copy of it.
  */
-async function makeFolders(tree: FolderTree, root: string | undefined) {
+async function makeFolders(queryClient: QueryClient, tree: FolderTree, root: string | undefined) {
   const ids = new Map<string, string | undefined>([["", root]]);
   const listings = new Map<string | undefined, Folder[]>();
   for (const path of foldersToMake(tree)) {
     const name = path.at(-1) ?? "";
     const parent = ids.get(path.slice(0, -1).join("/"));
-    const siblings = listings.get(parent) ?? (await foldersIn(parent));
+    const siblings = listings.get(parent) ?? [...(await queryClient.fetchQuery(folderQuery(parent))).folders];
     listings.set(parent, siblings);
     let folder = siblings.find((other) => other.name === name);
     if (!folder) {
-      const { data, error } = await api.POST("/api/v1/folders", { body: { name, parent_id: parent ?? null } });
-      if (!data) {
-        throw toApiError(error);
-      }
-      folder = data;
+      folder = await createFolder({ name, parent_id: parent ?? null });
       siblings.push(folder);
+      // Nothing can be in it yet, so there's no need to ask.
+      listings.set(folder.id, []);
     }
     ids.set(path.join("/"), folder.id);
   }
@@ -402,20 +390,20 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
     queueFiles(files.map((file) => ({ file, folderId })));
   }, [queueFiles]);
 
-  const addTree = useCallback(async (name: string, tree: Promise<FolderTree>, folderId: string | undefined) => {
+  const addTree = useCallback(async (name: string, tree: FolderTree | Promise<FolderTree>, folderId: string | undefined) => {
     nextId.current += 1;
     const row = nextId.current;
     setUploads((current) => [...current, { id: row, name, loaded: 0, total: 0, status: "preparing" }]);
     try {
       const read = await tree;
-      const ids = await makeFolders(read, folderId);
+      const ids = await makeFolders(queryClient, read, folderId);
       setUploads((current) => current.filter((u) => u.id !== row));
       queueFiles(read.files.map(({ file, dirs }) => ({ file, folderId: ids.get(dirs.join("/")) })));
       await refresh();
     } catch (error) {
       update(row, { status: "failed", error: failureMessage(error) });
     }
-  }, [queueFiles, refresh, update]);
+  }, [queryClient, queueFiles, refresh, update]);
 
   const pause = useCallback((id: number) => {
     const job = jobs.current.get(id);

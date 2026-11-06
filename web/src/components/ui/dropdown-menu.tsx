@@ -17,7 +17,7 @@ function DropdownMenuContent({
         align="end"
         sideOffset={6}
         className={cn(
-          "z-50 min-w-52 rounded-xl bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.6)]",
+          "z-50 min-w-52 rounded-xl bg-popover p-1.5 shadow-menu",
           className
         )}
         {...props}
@@ -34,7 +34,7 @@ function DropdownMenuItem({
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       className={cn(
-        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none select-none focus:bg-[#3a3a3a] [&_svg]:size-[18px] [&_svg]:shrink-0",
+        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none select-none focus:bg-raised-hover [&_svg]:size-[18px] [&_svg]:shrink-0",
         className
       )}
       {...props}
@@ -55,7 +55,7 @@ function DropdownMenuLabel({
 }
 
 function DropdownMenuSeparator() {
-  return <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-[#3a3a3a]" />
+  return <DropdownMenuPrimitive.Separator className="mx-1 my-1.5 h-px bg-raised-hover" />
 }
 
 export {

@@ -2,15 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronLeft, Folder } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { Choice } from "@/components/choice";
 import { Field, FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { freeSpaceText, usableConnections } from "@/features/storage/pool";
 import { connectionsQuery, poolQuery, useTransferFiles } from "@/features/storage/queries";
-import { formatBytes } from "@/lib/format";
 
 import { folderQuery, useMove, type Item } from "../queries";
-
-const CANCEL_STYLE = "bg-raised hover:bg-[#3a3a3a]";
 
 interface NameDialogProps {
   title: string;
@@ -56,7 +55,7 @@ export function NameDialog({
           <FormError message={error} />
           <div className="flex justify-end gap-2">
             <DialogClose asChild>
-              <Button type="button" variant="outline" className={CANCEL_STYLE}>
+              <Button type="button" variant="soft">
                 Cancel
               </Button>
             </DialogClose>
@@ -88,22 +87,8 @@ export function AccountDialog({ fileIds, name, from, onDone, onClose }: AccountD
   const [target, setTarget] = useState<string>();
   // Where they all already are isn't a choice. Files from several accounts can go to any.
   const here = from.length === 1 ? from[0] : undefined;
-  const accounts = connections?.filter((connection) => !connection.draining && connection.id !== here) ?? [];
+  const accounts = usableConnections(connections).filter((connection) => connection.id !== here);
   const chosen = accounts.find((account) => account.id === target);
-
-  function freeSpace(id: string): string {
-    const account = pool?.accounts.find((a) => a.connection.id === id);
-    if (!account) {
-      return "";
-    }
-    if (!account.available) {
-      return "Can't be reached";
-    }
-    if (account.limit_bytes === null) {
-      return "No limit";
-    }
-    return `${formatBytes(Math.max(account.limit_bytes - account.used_bytes - account.reserved_bytes, 0))} free`;
-  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -117,22 +102,21 @@ export function AccountDialog({ fileIds, name, from, onDone, onClose }: AccountD
         <ul className="-mx-2.5 max-h-60 overflow-y-auto">
           {accounts.map((account) => (
             <li key={account.id}>
-              <button
-                type="button"
-                aria-pressed={account.id === target}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-raised"
+              <Choice
+                chosen={account.id === target}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm"
                 onClick={() => setTarget(account.id)}
               >
                 <span className="min-w-0 flex-1 truncate">{account.summary}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{freeSpace(account.id)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{freeSpaceText(pool?.accounts.find((a) => a.connection.id === account.id))}</span>
                 {account.id === target && <Check className="size-4" />}
-              </button>
+              </Choice>
             </li>
           ))}
         </ul>
         <div className="flex justify-end gap-2">
           <DialogClose asChild>
-            <Button variant="outline" className={CANCEL_STYLE}>
+            <Button variant="soft">
               Cancel
             </Button>
           </DialogClose>
@@ -220,7 +204,7 @@ export function MoveDialog({ items, name, onDone, onClose }: MoveDialogProps) {
         <FormError message={move.error?.message} />
         <div className="flex justify-end gap-2">
           <DialogClose asChild>
-            <Button type="button" variant="outline" className={CANCEL_STYLE}>
+            <Button type="button" variant="soft">
               Cancel
             </Button>
           </DialogClose>

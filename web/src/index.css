@@ -2,42 +2,9 @@
 @import "@fontsource/instrument-sans/400.css";
 @import "@fontsource/instrument-sans/500.css";
 @import "@fontsource/instrument-sans/600.css";
+@import "./theme.css";
 
-/* One true-black ground. Elevation is a step in lightness, and colour goes on
-   people's files and on storage levels, never on the chrome. */
-:root {
-  color-scheme: dark;
-  --background: #000;
-  --foreground: #fff;
-  --card: #111;
-  --card-foreground: #fff;
-  --popover: #2a2a2a;
-  --primary: #fff;
-  --primary-foreground: #000;
-  --secondary: #111;
-  --secondary-foreground: #fff;
-  --muted: #111;
-  --muted-foreground: #b4b4b4;
-  --faint: #8f8f8f;
-  --accent: #1b1b1b;
-  --accent-foreground: #fff;
-  --raised: #2a2a2a;
-  --destructive: #e5566f;
-  --destructive-soft: #2c1a20;
-  --border: #1c1c1c;
-  --input: #2a2a2a;
-  --ring: #4cb3f0;
-  --water: #4cb3f0;
-  --water-deep: #1c4a66;
-  --radius: 0.625rem;
-  --row: 190px;
-}
-
-@media (max-width: 860px) {
-  :root {
-    --row: 112px;
-  }
-}
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 @theme inline {
   --font-sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -56,6 +23,22 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-raised: var(--raised);
+  --color-raised-hover: var(--raised-hover);
+  --color-row-hover: var(--row-hover);
+  --color-well: var(--well);
+  --color-nav: var(--nav);
+  --color-primary-hover: var(--primary-hover);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-avatar: var(--avatar);
+  --color-avatar-foreground: var(--avatar-foreground);
+  --color-scrim: var(--scrim);
+  --color-scrim-strong: var(--scrim-strong);
+  --color-on-media: var(--on-media);
+  --color-on-media-ink: var(--on-media-ink);
+  --color-media-scrim: var(--media-scrim);
+  --color-media-fade: var(--media-fade);
+  --shadow-menu: var(--elevation-menu);
+  --shadow-float: var(--elevation-float);
   --color-destructive: var(--destructive);
   --color-destructive-soft: var(--destructive-soft);
   --color-border: var(--border);
@@ -91,7 +74,7 @@
 
 /* A broken account has no level to show, so it gets a hatch instead of water. */
 .hatched {
-  background: repeating-linear-gradient(135deg, #2a2a2a 0 4px, #161616 4px 8px);
+  background: repeating-linear-gradient(135deg, var(--hatch-light) 0 4px, var(--hatch-dark) 4px 8px);
 }
 
 /* The level of an account, or the progress of an upload. */

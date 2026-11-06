@@ -21,13 +21,12 @@ type ManagedUser = components["schemas"]["ManagedUser"];
 
 type Action = { type: "add" } | { type: "password"; user: ManagedUser } | { type: "delete"; user: ManagedUser };
 
-const SOFT_BUTTON = "bg-raised hover:bg-[#3a3a3a]";
 const TEMPORARY_HINT = "At least 12 characters. Give it to them yourself; they replace it when they sign in.";
 
 function Cancel() {
   return (
     <DialogClose asChild>
-      <Button type="button" variant="outline" className={SOFT_BUTTON}>
+      <Button type="button" variant="soft">
         Cancel
       </Button>
     </DialogClose>

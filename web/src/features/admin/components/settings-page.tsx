@@ -32,7 +32,7 @@ function UploadLimit({ current }: { current: number }) {
       />
       <FormError message={update.error?.message} />
       {update.isSuccess && <p className="text-sm">Upload limit saved.</p>}
-      <Button type="submit" variant="outline" className="bg-raised hover:bg-[#3a3a3a]" disabled={update.isPending}>
+      <Button type="submit" variant="soft" disabled={update.isPending}>
         Save upload limit
       </Button>
     </form>
@@ -52,8 +52,7 @@ function GoogleLinks({ enabled }: { enabled: boolean }) {
       </div>
       <FormError message={update.error?.message} />
       <Button
-        variant="outline"
-        className="bg-raised hover:bg-[#3a3a3a]"
+        variant="soft"
         disabled={update.isPending}
         onClick={() => update.mutate({ google_links_enabled: !enabled })}
       >

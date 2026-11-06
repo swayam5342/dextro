@@ -58,9 +58,8 @@ export function LinksPage() {
               </span>
               <CopyButton text={share.url} label={`Copy the link to ${share.name}`} />
               <Button
-                variant="outline"
+                variant="soft"
                 size="sm"
-                className="bg-raised hover:bg-[#3a3a3a]"
                 aria-label={`Manage the link to ${share.name}`}
                 onClick={() => setManaging(share)}
               >

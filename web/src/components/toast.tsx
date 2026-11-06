@@ -1,9 +1,9 @@
 import { X } from "lucide-react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 const VISIBLE_MS = 6000;
 
-export interface ToastInput {
+interface ToastInput {
   message: string;
   action?: { label: string; run: () => void };
 }
@@ -48,10 +48,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [toast, held, dismiss]);
 
-  const value = useMemo(() => show, [show]);
-
   return (
-    <ToastContext.Provider value={value}>
+    <ToastContext.Provider value={show}>
       {children}
       {/* Above the viewer, and clickable while a dialog has switched the page's pointer events off. */}
       <div
@@ -67,13 +65,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             onMouseLeave={() => setHeld(false)}
             onFocus={() => setHeld(true)}
             onBlur={() => setHeld(false)}
-            className="pointer-events-auto flex max-w-full items-center gap-1 rounded-2xl bg-raised py-1.5 pr-1.5 pl-4 text-sm shadow-[0_12px_32px_rgba(0,0,0,0.7)]"
+            className="pointer-events-auto flex max-w-full items-center gap-1 rounded-2xl bg-raised py-1.5 pr-1.5 pl-4 text-sm shadow-float"
           >
             <span className="min-w-0 py-1 pr-2">{toast.message}</span>
             {toast.action && (
               <button
                 type="button"
-                className="shrink-0 rounded-full px-3 py-1 font-semibold hover:bg-[#3a3a3a]"
+                className="shrink-0 rounded-full px-3 py-1 font-semibold hover:bg-raised-hover"
                 onClick={() => {
                   dismiss();
                   toast.action?.run();
@@ -85,7 +83,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <button
               type="button"
               aria-label="Dismiss"
-              className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[#3a3a3a] hover:text-foreground"
+              className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-raised-hover hover:text-foreground"
               onClick={dismiss}
             >
               <X className="size-4" />

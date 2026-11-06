@@ -1,3 +1,5 @@
+import { recall, remember } from "@/lib/remember";
+
 const SORT_KEY = "dextro.sort";
 
 export const SORTS = [
@@ -21,22 +23,13 @@ interface Sortable {
 /** Numbers in names count as numbers, so "Day 2" comes before "Day 10". */
 const names = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
-/** A remembered convenience, so it does without storage when the browser refuses it. */
 export function loadSort(): SortId {
-  try {
-    const saved = localStorage.getItem(SORT_KEY);
-    return SORTS.find((sort) => sort.id === saved)?.id ?? "name-asc";
-  } catch {
-    return "name-asc";
-  }
+  const saved = recall(SORT_KEY);
+  return SORTS.find((sort) => sort.id === saved)?.id ?? "name-asc";
 }
 
 export function saveSort(sort: SortId) {
-  try {
-    localStorage.setItem(SORT_KEY, sort);
-  } catch {
-    // It just won't be remembered.
-  }
+  remember(SORT_KEY, sort);
 }
 
 /** What a column heading does: flips its own sort, or starts with the useful end. */

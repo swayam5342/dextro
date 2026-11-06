@@ -1,4 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 
 import { api } from "@/api/client";
 import { toApiError } from "@/api/errors";
@@ -11,6 +12,10 @@ const SHARES_KEY = "shares";
 export interface Item {
   kind: "file" | "folder";
   id: string;
+}
+
+export function itemKey(item: Item): string {
+  return `${item.kind}:${item.id}`;
 }
 
 export function folderQuery(folderId: string | undefined) {
@@ -54,6 +59,8 @@ export const trashQuery = queryOptions({
 
 export const sharesQuery = queryOptions({
   queryKey: [SHARES_KEY],
+  // A folder opens often and this list changes rarely. What changes it refreshes it.
+  staleTime: 30_000,
   queryFn: async () => {
     const { data, error } = await api.GET("/api/v1/shares");
     if (!data) {
@@ -63,37 +70,41 @@ export const sharesQuery = queryOptions({
   },
 });
 
-/** Anything that changes files can change the folder views, the trash and the links. */
-function useRefresh() {
+/** Anything that changes files can change both the folder views and the trash. */
+export function useRefreshFiles() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: [FILES_KEY] }),
-      queryClient.invalidateQueries({ queryKey: [TRASH_KEY] }),
-      queryClient.invalidateQueries({ queryKey: [SHARES_KEY] }),
-    ]);
+  return useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [FILES_KEY] }),
+        queryClient.invalidateQueries({ queryKey: [TRASH_KEY] }),
+      ]),
+    [queryClient],
+  );
 }
 
-export function useRefreshFiles() {
-  return useRefresh();
+/** For changes that also reach the Links page: a new name, or a file that's gone. */
+function useRefreshFilesAndLinks() {
+  const queryClient = useQueryClient();
+  const refreshFiles = useRefreshFiles();
+  return () => Promise.all([refreshFiles(), queryClient.invalidateQueries({ queryKey: [SHARES_KEY] })]);
+}
+
+export async function createFolder(body: { name: string; parent_id: string | null }) {
+  const { data, error } = await api.POST("/api/v1/folders", { body });
+  if (!data) {
+    throw toApiError(error);
+  }
+  return data;
 }
 
 export function useCreateFolder() {
-  const refresh = useRefresh();
-  return useMutation({
-    mutationFn: async (body: { name: string; parent_id: string | null }) => {
-      const { data, error } = await api.POST("/api/v1/folders", { body });
-      if (!data) {
-        throw toApiError(error);
-      }
-      return data;
-    },
-    onSuccess: refresh,
-  });
+  const refresh = useRefreshFiles();
+  return useMutation({ mutationFn: createFolder, onSuccess: refresh });
 }
 
 export function useRename() {
-  const refresh = useRefresh();
+  const refresh = useRefreshFilesAndLinks();
   return useMutation({
     mutationFn: async ({ item, name }: { item: Item; name: string }) => {
       const params = { path: { id: item.id } };
@@ -110,7 +121,7 @@ export function useRename() {
 }
 
 export function useMove() {
-  const refresh = useRefresh();
+  const refresh = useRefreshFiles();
   return useMutation({
     mutationFn: async ({ item, target }: { item: Item; target: string | null }) => {
       const params = { path: { id: item.id } };
@@ -127,7 +138,7 @@ export function useMove() {
 }
 
 export function useMoveToTrash() {
-  const refresh = useRefresh();
+  const refresh = useRefreshFilesAndLinks();
   return useMutation({
     mutationFn: async (item: Item) => {
       const params = { path: { id: item.id } };
@@ -144,7 +155,7 @@ export function useMoveToTrash() {
 }
 
 export function useRestore() {
-  const refresh = useRefresh();
+  const refresh = useRefreshFiles();
   return useMutation({
     mutationFn: async (item: Item) => {
       const params = { path: { id: item.id } };
@@ -161,7 +172,7 @@ export function useRestore() {
 }
 
 export function useDeleteForever() {
-  const refresh = useRefresh();
+  const refresh = useRefreshFilesAndLinks();
   return useMutation({
     mutationFn: async (item: Item) => {
       const params = { path: { id: item.id } };
@@ -178,7 +189,7 @@ export function useDeleteForever() {
 }
 
 export function useSaveShare() {
-  const refresh = useRefresh();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ fileId, ...body }: { fileId: string; role: "viewer" | "commenter" | "editor"; expires_at: string | null }) => {
       const { data, error } = await api.PUT("/api/v1/files/{id}/share", { params: { path: { id: fileId } }, body });
@@ -187,12 +198,12 @@ export function useSaveShare() {
       }
       return data;
     },
-    onSuccess: refresh,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [SHARES_KEY] }),
   });
 }
 
 export function useRemoveShare() {
-  const refresh = useRefresh();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (fileId: string) => {
       const { error, response } = await api.DELETE("/api/v1/files/{id}/share", { params: { path: { id: fileId } } });
@@ -200,12 +211,12 @@ export function useRemoveShare() {
         throw toApiError(error);
       }
     },
-    onSuccess: refresh,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [SHARES_KEY] }),
   });
 }
 
 export function useEmptyTrash() {
-  const refresh = useRefresh();
+  const refresh = useRefreshFilesAndLinks();
   return useMutation({
     mutationFn: async () => {
       const { error, response } = await api.DELETE("/api/v1/trash");

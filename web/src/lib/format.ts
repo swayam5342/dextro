@@ -29,3 +29,8 @@ export function formatDateTime(iso: string): string {
     minute: "2-digit",
   });
 }
+
+/** "1 file" or "3 files". */
+export function count(n: number, noun: string): string {
+  return n === 1 ? `1 ${noun}` : `${n} ${noun}s`;
+}

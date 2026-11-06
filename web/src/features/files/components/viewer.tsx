@@ -94,7 +94,7 @@ export function Viewer({ file, previous, next, accountName, trashError, onShow, 
               event.preventDefault();
             }
           }}
-          className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_auto] bg-black outline-none md:grid-cols-[minmax(0,1fr)_300px] md:grid-rows-[56px_minmax(0,1fr)]"
+          className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)_auto] bg-background outline-none md:grid-cols-[minmax(0,1fr)_300px] md:grid-rows-[56px_minmax(0,1fr)]"
         >
           <div className="col-span-full flex min-w-0 items-center gap-2 border-b px-4">
             <DialogTitle className="min-w-0 flex-1 truncate text-sm font-medium">{file.name}</DialogTitle>
