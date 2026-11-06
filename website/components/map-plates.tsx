@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 const PLATES = [
   { src: "/media/ganga-rennell-1786.webp", alt: "James Rennell's 1786 map of the Ganga plain, tinted pink, running down to the Bay of Bengal" },
   { src: "/media/ganga-actual-survey.webp", alt: "Rennell's hand-coloured survey of Bengal and Bihar, with the Ganga and its tributaries drawn across each province" },
-  { src: "/media/ganga-delta.webp", alt: "The Ganga delta from space, its channels spreading through dark mangrove forest to the sea" },
+  { src: "/media/ganga-course.webp", alt: "A hand-drawn map of the Ganga in the dry season, its channels winding around sandy islands" },
 ];
 
 /** The survey maps change slowly, like light in a room. */
@@ -31,8 +31,8 @@ export function MapPlates() {
         ))}
       </div>
       <figcaption className="plates-caption">
-        <span>James Rennell's surveys of the Ganga from 1776 and 1786, and its delta seen from space.</span>
-        <span>Rennell and NASA, public domain</span>
+        <span>James Rennell's surveys of the Ganga, from 1776 to 1812.</span>
+        <span>Public domain</span>
       </figcaption>
     </figure>
   );

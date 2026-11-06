@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const PICTURES = new Set(["rennell-1786", "rennell-survey", "ganga-course", "tieffenthaler", "delta", "plain"]);
+const PICTURES = new Set(["rennell-1786", "rennell-survey", "ganga-course", "tieffenthaler"]);
 
 /** Relative, because behind a proxy the server doesn't know the address people used. */
 function redirect(location: string) {

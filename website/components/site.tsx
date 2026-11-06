@@ -71,7 +71,7 @@ export function SiteFooter() {
         </div>
       </div>
       <p className="footer-credit">
-        Maps: James Rennell and Joseph Tieffenthaler, 1776 to 1812, public domain. Satellite pictures: NASA, public domain.
+        Maps of the Ganga: James Rennell and Joseph Tieffenthaler, 1776 to 1812, public domain.
       </p>
     </footer>
   );
