@@ -62,6 +62,7 @@ type FilesHandlers interface {
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.PutUploadChunkParams)
 	SyncConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	DownloadZip(w http.ResponseWriter, r *http.Request, params apigen.DownloadZipParams)
+	GetUsage(w http.ResponseWriter, r *http.Request)
 	ListShares(w http.ResponseWriter, r *http.Request)
 	PutShare(w http.ResponseWriter, r *http.Request, id types.UUID)
 	DeleteShare(w http.ResponseWriter, r *http.Request, id types.UUID)

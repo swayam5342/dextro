@@ -665,6 +665,13 @@ type UploadSession struct {
 	Size     int64 `json:"size"`
 }
 
+// Usage defines model for Usage.
+type Usage struct {
+	DocumentBytes int64 `json:"document_bytes"`
+	PhotoBytes    int64 `json:"photo_bytes"`
+	VideoBytes    int64 `json:"video_bytes"`
+}
+
 // User defines model for User.
 type User struct {
 	CreatedAt    time.Time `json:"created_at"`
@@ -996,6 +1003,9 @@ type ServerInterface interface {
 	// PutUploadChunk Send the next piece of an upload
 	// (PUT /api/v1/uploads/{id}/chunk)
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id Id, params PutUploadChunkParams)
+	// GetUsage See how much of your storage each kind of file takes
+	// (GET /api/v1/usage)
+	GetUsage(w http.ResponseWriter, r *http.Request)
 	// DownloadZip Download files and folders as one zip
 	// (GET /api/v1/zip)
 	DownloadZip(w http.ResponseWriter, r *http.Request, params DownloadZipParams)
@@ -1389,6 +1399,12 @@ func (_ Unimplemented) GetUpload(w http.ResponseWriter, r *http.Request, id Id) 
 // PutUploadChunk Send the next piece of an upload
 // (PUT /api/v1/uploads/{id}/chunk)
 func (_ Unimplemented) PutUploadChunk(w http.ResponseWriter, r *http.Request, id Id, params PutUploadChunkParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetUsage See how much of your storage each kind of file takes
+// (GET /api/v1/usage)
+func (_ Unimplemented) GetUsage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2880,6 +2896,20 @@ func (siw *ServerInterfaceWrapper) PutUploadChunk(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetUsage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUsage(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DownloadZip operation middleware
 func (siw *ServerInterfaceWrapper) DownloadZip(w http.ResponseWriter, r *http.Request) {
 
@@ -3194,6 +3224,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/usage", wrapper.GetUsage)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/shares", wrapper.ListShares)

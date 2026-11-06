@@ -54,6 +54,11 @@ export interface components {
       /** Being emptied, so new files stay out of it. */
       draining: boolean;
     };
+    Usage: {
+      photo_bytes: number;
+      video_bytes: number;
+      document_bytes: number;
+    };
     /** A public Google link on one file. */
     Share: {
       file_id: string;
@@ -500,6 +505,9 @@ export interface paths {
   };
   "/api/v1/folders/{id}/restore": {
     post: PathOperation;
+  };
+  "/api/v1/usage": {
+    get: Operation<{ 200: JsonBody<Schemas["Usage"]> }>;
   };
   "/api/v1/shares": {
     get: Operation<{ 200: JsonBody<Schemas["ShareList"]> }>;

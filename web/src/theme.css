@@ -50,6 +50,13 @@
   --hatch-light: #2a2a2a;
   --hatch-dark: #161616;
 
+  /* What's taking up the pool, by kind of file */
+  --usage-photo: #7ed957;
+  --usage-video: #f5c542;
+  --usage-document: #4cc9f0;
+  --usage-other: #a78bfa;
+  --usage-free: #ff8a3d;
+
   /* The round initial next to your email */
   --avatar: #1d3a4d;
   --avatar-foreground: #bfe6ff;
@@ -97,6 +104,12 @@
   --water-ink: #0d3a55;
   --hatch-light: #f2f2f2;
   --hatch-dark: #e0e0e0;
+
+  --usage-photo: #3f9a22;
+  --usage-video: #c29100;
+  --usage-document: #0a8fb8;
+  --usage-other: #7c5cd6;
+  --usage-free: #d9661a;
 
   --avatar: #d3e9f7;
   --avatar-foreground: #0d3a55;

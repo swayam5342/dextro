@@ -91,6 +91,13 @@ type UploadInput struct {
 	Body         io.Reader
 }
 
+// Usage is how much of a user's storage each kind of file takes, in bytes.
+type Usage struct {
+	Photo    int64
+	Video    int64
+	Document int64
+}
+
 // Providers opens a user's linked accounts.
 type Providers interface {
 	Provider(ctx context.Context, userID, connectionID uuid.UUID) (provider.Provider, error)
@@ -319,6 +326,11 @@ func deleteObject(ctx context.Context, stored provider.Provider, id string) erro
 		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
 	}
 	return nil
+}
+
+// Usage adds up a user's files by kind.
+func (s *Service) Usage(ctx context.Context, userID uuid.UUID) (Usage, error) {
+	return s.store.UsageForOwner(ctx, userID)
 }
 
 // liveFile returns a file that isn't in the trash.

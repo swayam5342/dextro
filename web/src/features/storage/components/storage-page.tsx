@@ -13,7 +13,7 @@ import { useUploads } from "@/features/files/uploads";
 import { count, formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { room, usableConnections } from "../pool";
+import { room, syncText, usableConnections } from "../pool";
 import {
   connectionsQuery,
   poolQuery,
@@ -27,6 +27,7 @@ import {
   useSyncConnection,
   useTestConnection,
 } from "../queries";
+import { UsageCard } from "./usage-card";
 
 type AccountFiles = components["schemas"]["AccountFiles"];
 type Connection = components["schemas"]["Connection"];
@@ -39,20 +40,6 @@ const REDIRECT_MESSAGES: Record<string, string> = {
   google_cancelled: "Linking the account was cancelled.",
   google_failed: "The account wasn't linked. Try again.",
 };
-
-function syncText({ added, removed }: { added: number; removed: number }): string {
-  if (added === 0 && removed === 0) {
-    return "Already up to date.";
-  }
-  const parts = [];
-  if (added > 0) {
-    parts.push(added === 1 ? "1 file found" : `${added} files found`);
-  }
-  if (removed > 0) {
-    parts.push(removed === 1 ? "1 file gone from Drive" : `${removed} files gone from Drive`);
-  }
-  return `${parts.join(", ")}.`;
-}
 
 /** Google's picker runs in its own popup, which has its own security policy. */
 function openPicker(connectionId: string) {
@@ -421,6 +408,7 @@ export function StoragePage({
       <FormError message={message ?? connect.error?.message} />
       {connected === "google" && <p>Account linked.</p>}
       {added && <p role="status">{added}</p>}
+      <UsageCard className="rounded-[14px] bg-card p-3.5 md:hidden" />
       <Accounts pool={pool} queue={queue} />
       <Moves queue={queue} />
       {config?.google_enabled ? (

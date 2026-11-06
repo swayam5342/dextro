@@ -8,7 +8,7 @@ export const THEMES = [
   { id: "dark", label: "Dark" },
 ] as const;
 
-export type ThemeChoice = (typeof THEMES)[number]["id"];
+type ThemeChoice = (typeof THEMES)[number]["id"];
 
 /** The same key as public/theme.js, which applies the choice before the page paints. */
 const THEME_KEY = "dextro.theme";

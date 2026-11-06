@@ -12,6 +12,7 @@ import {
   Link2,
   List,
   Pencil,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -22,8 +23,8 @@ import type { components } from "@/api/schema";
 import { FormError } from "@/components/field";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
-import { usableConnections } from "@/features/storage/pool";
-import { connectionsQuery } from "@/features/storage/queries";
+import { syncText, usableConnections } from "@/features/storage/pool";
+import { connectionsQuery, useSyncAccounts } from "@/features/storage/queries";
 import { count, formatBytes, formatDate } from "@/lib/format";
 import { recall, remember } from "@/lib/remember";
 import { cn } from "@/lib/utils";
@@ -105,6 +106,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
   const rename = useRename();
   const trash = useMoveToTrash();
   const restore = useRestore();
+  const sync = useSyncAccounts();
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -146,6 +148,13 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
     setAction(null);
     rename.reset();
     createFolder.reset();
+  }
+
+  function handleSync() {
+    sync.mutate(undefined, {
+      onSuccess: (result) => toast({ message: syncText(result) }),
+      onError: (error) => toast({ message: failureMessage(error) }),
+    });
   }
 
   function changeView(next: View) {
@@ -381,6 +390,12 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
             <Button variant="outline" aria-label="New folder" onClick={() => setAction({ type: "new-folder" })}>
               <FolderPlus />
               <span className="hidden sm:inline">New folder</span>
+            </Button>
+          )}
+          {!query && !noAccounts && (
+            <Button variant="outline" aria-label="Sync with Drive" disabled={sync.isPending} onClick={handleSync}>
+              <RefreshCw className={cn(sync.isPending && "motion-safe:animate-spin")} />
+              <span className="hidden sm:inline">Sync</span>
             </Button>
           )}
           <SortMenu sort={sort} onSort={changeSort} />

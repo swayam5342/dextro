@@ -176,17 +176,6 @@ func (q *Queries) GetUserForLogin(ctx context.Context, email string) (User, erro
 	return i, err
 }
 
-const getUserIDByEmail = `-- name: GetUserIDByEmail :one
-SELECT id FROM users WHERE email = $1
-`
-
-func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getUserIDByEmail, email)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
-}
-
 const listUsersForAdmin = `-- name: ListUsersForAdmin :many
 SELECT u.id, u.email, u.role, u.password_hash, u.must_change_password, u.created_at,
        EXISTS (

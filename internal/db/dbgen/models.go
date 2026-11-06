@@ -68,7 +68,6 @@ type FileTransfer struct {
 	Status             string
 	Failure            string
 	CreatedAt          time.Time
-	UpdatedAt          time.Time
 }
 
 type Folder struct {

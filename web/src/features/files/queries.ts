@@ -7,6 +7,7 @@ import { toApiError } from "@/api/errors";
 const FILES_KEY = "files";
 const TRASH_KEY = "trash";
 const SHARES_KEY = "shares";
+const USAGE_KEY = "usage";
 
 /** Which kind of item an action applies to, and its ID. */
 export interface Item {
@@ -57,6 +58,17 @@ export const trashQuery = queryOptions({
   },
 });
 
+export const usageQuery = queryOptions({
+  queryKey: [USAGE_KEY],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/usage");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
 export const sharesQuery = queryOptions({
   queryKey: [SHARES_KEY],
   // A folder opens often and this list changes rarely. What changes it refreshes it.
@@ -78,6 +90,7 @@ export function useRefreshFiles() {
       Promise.all([
         queryClient.invalidateQueries({ queryKey: [FILES_KEY] }),
         queryClient.invalidateQueries({ queryKey: [TRASH_KEY] }),
+        queryClient.invalidateQueries({ queryKey: [USAGE_KEY] }),
       ]),
     [queryClient],
   );

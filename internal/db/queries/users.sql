@@ -55,9 +55,6 @@ UPDATE users SET role = 'user', updated_at = now() WHERE role = 'admin';
 -- name: PromoteUserByEmail :execrows
 UPDATE users SET role = 'admin', updated_at = now() WHERE email = $1;
 
--- name: GetUserIDByEmail :one
-SELECT id FROM users WHERE email = $1;
-
 -- name: GetIdentityUserID :one
 SELECT user_id
 FROM user_identities

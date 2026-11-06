@@ -169,17 +169,36 @@ export function useTestConnection(id: string) {
   });
 }
 
+async function syncConnection(id: string) {
+  const { data, error } = await api.POST("/api/v1/storage/connections/{id}/sync", { params: { path: { id } } });
+  if (!data) {
+    throw toApiError(error);
+  }
+  return data;
+}
+
 export function useSyncConnection(id: string) {
   const refresh = useRefreshAccounts();
+  return useMutation({ mutationFn: () => syncConnection(id), onSuccess: refresh });
+}
+
+/** Syncs every account at once. One that fails doesn't stop the others. */
+export function useSyncAccounts() {
+  const refresh = useRefreshAccounts();
+  const { data: connections } = useQuery(connectionsQuery);
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await api.POST("/api/v1/storage/connections/{id}/sync", {
-        params: { path: { id } },
-      });
-      if (!data) {
-        throw toApiError(error);
+      const results = await Promise.allSettled((connections ?? []).map(({ id }) => syncConnection(id)));
+      const total = { added: 0, removed: 0, failed: 0 };
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          total.added += result.value.added;
+          total.removed += result.value.removed;
+        } else {
+          total.failed += 1;
+        }
       }
-      return data;
+      return total;
     },
     onSuccess: refresh,
   });

@@ -171,3 +171,15 @@ WHERE user_id = sqlc.arg(user_id)
 -- name: DeleteFileForObjectForOwner :execrows
 DELETE FROM files
 WHERE user_id = $1 AND id = $2 AND connection_id = $3 AND object_id = $4;
+
+-- Trashed files count, because they still take up room in their accounts.
+-- name: GetFileUsageForOwner :one
+SELECT coalesce(sum(size) FILTER (WHERE content_type LIKE 'image/%'), 0)::bigint AS photo_bytes,
+       coalesce(sum(size) FILTER (WHERE content_type LIKE 'video/%'), 0)::bigint AS video_bytes,
+       coalesce(sum(size) FILTER (WHERE content_type LIKE 'text/%'
+           OR content_type IN ('application/pdf', 'application/rtf', 'application/msword', 'application/epub+zip')
+           OR content_type LIKE 'application/vnd.ms-%'
+           OR content_type LIKE 'application/vnd.oasis.opendocument.%'
+           OR content_type LIKE 'application/vnd.openxmlformats-officedocument.%'), 0)::bigint AS document_bytes
+FROM files
+WHERE user_id = $1;

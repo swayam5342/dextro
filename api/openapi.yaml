@@ -767,6 +767,23 @@ paths:
                 $ref: "#/components/schemas/AuditPage"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/usage:
+    get:
+      operationId: getUsage
+      summary: See how much of your storage each kind of file takes
+      description: >
+        From dextro's own records, so it costs no Google requests. Files in the trash
+        count, because they still take up room in their accounts.
+      tags: [files]
+      responses:
+        "200":
+          description: The total for each kind of file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usage"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/shares:
     get:
       operationId: listShares
@@ -1336,6 +1353,19 @@ components:
         draining:
           type: boolean
           description: Being emptied, so new files stay out of it.
+    Usage:
+      type: object
+      required: [photo_bytes, video_bytes, document_bytes]
+      properties:
+        photo_bytes:
+          type: integer
+          format: int64
+        video_bytes:
+          type: integer
+          format: int64
+        document_bytes:
+          type: integer
+          format: int64
     Share:
       type: object
       description: A public Google link on one file.

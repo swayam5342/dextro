@@ -32,8 +32,7 @@ SET source_connection_id = EXCLUDED.source_connection_id,
     size = EXCLUDED.size,
     copied = 0,
     status = 'waiting',
-    failure = '',
-    updated_at = now()
+    failure = ''
 WHERE file_transfers.status = 'failed'
 `
 
@@ -148,7 +147,7 @@ func (q *Queries) DeletePendingRemoval(ctx context.Context, id uuid.UUID) error 
 
 const failFileTransfer = `-- name: FailFileTransfer :exec
 UPDATE file_transfers
-SET status = 'failed', failure = $2, copied = 0, updated_at = now()
+SET status = 'failed', failure = $2, copied = 0
 WHERE id = $1
 `
 
@@ -288,7 +287,7 @@ func (q *Queries) ListDuePendingRemovals(ctx context.Context) ([]PendingRemoval,
 }
 
 const listFileTransfersForOwner = `-- name: ListFileTransfersForOwner :many
-SELECT t.id, t.user_id, t.file_id, t.source_connection_id, t.target_connection_id, t.size, t.copied, t.status, t.failure, t.created_at, t.updated_at, f.name
+SELECT t.id, t.user_id, t.file_id, t.source_connection_id, t.target_connection_id, t.size, t.copied, t.status, t.failure, t.created_at, f.name
 FROM file_transfers t
 JOIN files f ON f.id = t.file_id
 WHERE t.user_id = $1
@@ -307,7 +306,6 @@ type ListFileTransfersForOwnerRow struct {
 	Status             string
 	Failure            string
 	CreatedAt          time.Time
-	UpdatedAt          time.Time
 	Name               string
 }
 
@@ -331,7 +329,6 @@ func (q *Queries) ListFileTransfersForOwner(ctx context.Context, userID uuid.UUI
 			&i.Status,
 			&i.Failure,
 			&i.CreatedAt,
-			&i.UpdatedAt,
 			&i.Name,
 		); err != nil {
 			return nil, err
@@ -398,7 +395,7 @@ func (q *Queries) ListWaitingTransferFilesForOwner(ctx context.Context, userID u
 }
 
 const nextFileTransfer = `-- name: NextFileTransfer :one
-SELECT id, user_id, file_id, source_connection_id, target_connection_id, size, copied, status, failure, created_at, updated_at
+SELECT id, user_id, file_id, source_connection_id, target_connection_id, size, copied, status, failure, created_at
 FROM file_transfers
 WHERE status = 'waiting'
 ORDER BY created_at, id
@@ -420,14 +417,13 @@ func (q *Queries) NextFileTransfer(ctx context.Context) (FileTransfer, error) {
 		&i.Status,
 		&i.Failure,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const retryFileTransfersForOwner = `-- name: RetryFileTransfersForOwner :execrows
 UPDATE file_transfers
-SET status = 'waiting', failure = '', copied = 0, updated_at = now()
+SET status = 'waiting', failure = '', copied = 0
 WHERE user_id = $1 AND status = 'failed'
 `
 
@@ -441,7 +437,7 @@ func (q *Queries) RetryFileTransfersForOwner(ctx context.Context, userID uuid.UU
 
 const setFileTransferCopied = `-- name: SetFileTransferCopied :execrows
 UPDATE file_transfers
-SET copied = $2, updated_at = now()
+SET copied = $2
 WHERE id = $1
 `
 

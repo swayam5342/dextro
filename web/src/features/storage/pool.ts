@@ -1,5 +1,5 @@
 import type { components } from "@/api/schema";
-import { formatBytes } from "@/lib/format";
+import { count, formatBytes } from "@/lib/format";
 
 type Connection = components["schemas"]["Connection"];
 type PoolAccount = components["schemas"]["PoolAccount"];
@@ -28,4 +28,19 @@ export function freeSpaceText(account: PoolAccount | undefined): string | undefi
     return "No limit";
   }
   return `${formatBytes(room(account))} free`;
+}
+
+/** What a sync did, in words. */
+export function syncText({ added, removed, failed = 0 }: { added: number; removed: number; failed?: number }): string {
+  const parts = [];
+  if (added > 0) {
+    parts.push(`${count(added, "file")} found`);
+  }
+  if (removed > 0) {
+    parts.push(`${count(removed, "file")} gone from Drive`);
+  }
+  if (failed > 0) {
+    parts.push(`${count(failed, "account")} couldn't be checked`);
+  }
+  return parts.length === 0 ? "Already up to date." : `${parts.join(", ")}.`;
 }
