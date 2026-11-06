@@ -231,10 +231,10 @@ func transferAdmin(ctx context.Context, d Deps, email string, out io.Writer) err
 
 func links(ctx context.Context, d Deps, args []string, out io.Writer) error {
 	if len(args) == 1 {
-		if args[0] != "on" && args[0] != "off" {
+		if args[0] != "on" && args[0] != "off" { //nolint:gosec // Only one argument gets here.
 			return errUsage
 		}
-		on := args[0] == "on"
+		on := args[0] == "on" //nolint:gosec // Only one argument gets here.
 		if _, err := d.Admin.UpdateSettings(ctx, noActor, cliActor, admin.Update{GoogleLinks: &on}); err != nil {
 			return fmt.Errorf("save setting: %w", err)
 		}
@@ -249,7 +249,7 @@ func links(ctx context.Context, d Deps, args []string, out io.Writer) error {
 
 func uploadLimit(ctx context.Context, d Deps, args []string, out io.Writer) error {
 	if len(args) == 1 {
-		size, err := strconv.ParseFloat(args[0], 64)
+		size, err := strconv.ParseFloat(args[0], 64) //nolint:gosec // Only one argument gets here.
 		if err != nil {
 			return errUsage
 		}
