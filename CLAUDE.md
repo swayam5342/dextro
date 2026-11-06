@@ -15,6 +15,7 @@ The app was called dextro, and some names keep that on purpose. The Drive folder
 | `make lint` | golangci-lint, oxlint and `tsc` |
 | `make test` | Go and web server tests; Docker must be running for the Postgres tests |
 | `make env` | Create `.env` with random secrets |
+| `make cert` | Make a self-signed certificate for the `https` profile, in `certs/` |
 | `make up` / `make down` | Start or stop the stack with Docker Compose |
 | `make run` / `make run-web` | Run the Go server or the Node web server locally |
 | `make dev-web` | Vite dev server, proxying the API to `localhost:8080` |
@@ -27,7 +28,7 @@ The app is at <http://127.0.0.1:3000>. The Go API is also directly on <http://12
 
 Go server environment: `DEXTRO_DATABASE_URL` (required), `DEXTRO_PUBLIC_URL` (required; the address browsers use, and the only `Origin` allowed to change data, so opening the app on `localhost` when this says `127.0.0.1` fails), `DEXTRO_LISTEN_ADDR` (default `:8080`), `DEXTRO_LOG_LEVEL` (default `info`), `DEXTRO_TRUSTED_PROXIES` (addresses or CIDR ranges whose `X-Forwarded-For` is believed; default none), `DEXTRO_GOOGLE_CLIENT_ID` and `DEXTRO_GOOGLE_CLIENT_SECRET` (set both or neither; without them Google sign-in and Drive are off), `DEXTRO_GOOGLE_PICKER_API_KEY` (optional; turns on Add from Drive), `DEXTRO_ENCRYPTION_KEYS` (required; comma-separated `id:base64` entries of 32 random bytes), `DEXTRO_ENCRYPTION_KEY_ID` (which key new values use; required with several keys). With `make dev-web`, set `DEXTRO_PUBLIC_URL` to the Vite address.
 
-Compose reads `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PICKER_API_KEY`, `ENCRYPTION_KEYS` and `ENCRYPTION_KEY_ID` from `.env`. It pins the `web` service to `172.30.0.250` so that only it is a trusted proxy. If an old `dextro_default` network exists, run `make down` first so Compose can recreate it.
+Compose reads `COMPOSE_PROFILES`, `TRUSTED_PROXIES`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PICKER_API_KEY`, `ENCRYPTION_KEYS` and `ENCRYPTION_KEY_ID` from `.env`. It pins the `web` service to `172.30.0.250` so that only it is a trusted proxy. If an old `dextro_default` network exists, run `make down` first so Compose can recreate it.
 
 `make env` adds `ENCRYPTION_KEYS` to an existing `.env` if it's missing. Back that value up: without it, every storage connection has to be set up again. To rotate, add a new key after a comma and point `ENCRYPTION_KEY_ID` at it. Keep the old key listed, because existing values still need it.
 
@@ -36,6 +37,8 @@ Google's redirect URIs are `<PUBLIC_URL>/api/v1/auth/google/callback` (sign-in) 
 To test against a throwaway stack while the dev stack is up, use a Compose override with its own ports and subnet, and check it's really running before sending it anything. Registering on the dev stack by accident creates a real account there.
 
 There is one admin. `make admin cmd="help"` lists the admin commands, which run through `tributary-cli`, a second program in the image, built from `cmd/cli`, with the commands in `internal/cli`: `status`, `sync`, `users`, `create-user`, `delete-user`, `reset-password`, `transfer-admin`, `links` and `upload-limit`. `make admin` also sets `MSYS_NO_PATHCONV=1`, which plain `docker compose exec api /tributary-cli ...` needs in Git Bash, or the path gets rewritten into a Windows one. The commands show accounts and counts, never files, and audit as `cli` with no actor. `create-user` refuses on an empty server, because that would close sign-up with no admin.
+
+The `https` Compose profile adds nginx on <https://127.0.0.1>, because browsers only use HTTP/2 over HTTPS, and that's what raises the overall upload limit. It needs `make cert`, then `COMPOSE_PROFILES=https` and `PUBLIC_URL=https://127.0.0.1` in `.env`, and Google's redirect URIs for the new address. With it on, port 3000 still answers but changes are refused, because the `Origin` no longer matches `PUBLIC_URL`. nginx must never buffer: `proxy_request_buffering` and `proxy_buffering` stay off, or rule 7 is broken on the way in. Its address is pinned to `172.30.0.251`, which the web service trusts by default.
 
 Session cookies are always `Secure`. Chrome accepts them on `http://127.0.0.1`, but anywhere else, such as a LAN address, needs HTTPS or login won't stick.
 

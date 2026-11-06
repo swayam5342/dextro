@@ -11,6 +11,10 @@
 - Uploads are now limited to 3 per account rather than 3 in total, so a slow account only holds up its own files. Up to 4 run at once over plain HTTP, and up to 12 behind a proxy with HTTP/2.
 - Round robin passes over an account that already has 3 uploads going, while another has room.
 
+### Added
+
+- An optional nginx service for HTTPS with HTTP/2, in the `https` Compose profile, with `make cert` for a local certificate.
+
 ## 0.1.2 (7 November 2026)
 
 ### Added

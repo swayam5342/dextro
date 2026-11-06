@@ -114,7 +114,8 @@ export default function SelfHost() {
       <p>
         Sign-in cookies only work over HTTPS, apart from on <code>127.0.0.1</code>, so a plain address on your network won't keep you signed
         in. Put a reverse proxy such as Caddy or nginx in front of port 3000, then set <code>PUBLIC_URL</code> to the address people use,
-        such as <code>https://files.example.com</code>, and update Google's redirect addresses to match.
+        such as <code>https://files.example.com</code>, and update Google's redirect addresses to match. If the proxy
+        speaks HTTP/2, up to 12 uploads can run at once instead of 4, with at most 3 going to each account.
       </p>
       <p>
         The compose file already trusts a proxy on the same machine, so the rate limits and the audit log see your visitors' real addresses.

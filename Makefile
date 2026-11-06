@@ -88,6 +88,10 @@ env: ## Create .env with random secrets, or add any missing from an existing one
 		echo "added ENCRYPTION_KEYS to .env"; \
 	}
 
+cert: ## Make a self-signed certificate for the https profile
+	@mkdir -p certs
+	MSYS_NO_PATHCONV=1 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 		-keyout certs/tributary.key -out certs/tributary.crt -subj "/CN=Tributary on this computer" 		-addext "subjectAltName=IP:127.0.0.1,DNS:localhost" -addext "basicConstraints=critical,CA:FALSE" 		-addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=serverAuth"
+
 up: env ## Build and start the whole stack
 	$(COMPOSE) up --build
 
