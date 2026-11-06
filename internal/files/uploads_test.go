@@ -986,8 +986,8 @@ func TestChunkedUploadHandlers(t *testing.T) {
 
 	// Someone else's key doesn't find this person's upload.
 	theirs := decode[apigen.UploadSession](t, do(owner, http.MethodPost, "/api/v1/uploads", `{"name":"d.txt","size":3}`))
-	stranger := f.user(t).String() + ":files:write"
-	if code := withKey(stranger, http.MethodGet, "/api/v1/uploads/"+theirs.Id.String()); code != http.StatusNotFound {
+	someoneElse := f.user(t).String() + ":files:write"
+	if code := withKey(someoneElse, http.MethodGet, "/api/v1/uploads/"+theirs.Id.String()); code != http.StatusNotFound {
 		t.Errorf("a stranger's key: status = %d, want 404", code)
 	}
 }

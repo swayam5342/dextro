@@ -62,17 +62,17 @@ type Deps struct {
 
 // NeedsNoServer says whether arguments only ask what the commands are.
 func NeedsNoServer(args []string) bool {
-	return len(args) == 0 || (len(args) == 1 && (args[0] == "version" || args[0] == "help" || args[0] == "--help" || args[0] == "-h"))
+	return len(args) == 0 || (len(args) == 1 && slices.Contains([]string{"version", "help", "-h", "--help"}, args[0]))
 }
 
 // Run runs one command. An unknown command or the wrong arguments return the usage.
 func Run(ctx context.Context, d Deps, args []string, out io.Writer) error {
-	if slices.Equal(args, []string{"version"}) {
-		_, err := fmt.Fprintln(out, version.Version)
-		return err
-	}
 	if NeedsNoServer(args) {
-		_, err := io.WriteString(out, usage)
+		text := usage
+		if slices.Equal(args, []string{"version"}) {
+			text = version.Version + "\n"
+		}
+		_, err := io.WriteString(out, text)
 		return err
 	}
 	name, rest := args[0], args[1:]
