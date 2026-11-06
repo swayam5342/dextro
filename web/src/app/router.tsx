@@ -9,6 +9,7 @@ import {
 } from "@/features/admin/routes";
 import {
   accountRoute,
+  aliasRoutes,
   authedRoute,
   changePasswordRoute,
   registerRoute,
@@ -26,6 +27,7 @@ export const router = createRouter({
     signInRoute,
     registerRoute,
     changePasswordRoute,
+    ...aliasRoutes,
     authedRoute.addChildren([
       filesRoute,
       trashRoute,

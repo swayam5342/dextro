@@ -318,6 +318,7 @@ func toRecord(row dbgen.File) fileRecord {
 			Name:         row.Name,
 			Size:         row.Size,
 			ContentType:  row.ContentType,
+			External:     row.External,
 			TrashedAt:    row.TrashedAt,
 			CreatedAt:    row.CreatedAt,
 			UpdatedAt:    row.UpdatedAt,
@@ -369,6 +370,7 @@ func (s *Store) ImportFile(ctx context.Context, userID uuid.UUID, r fileRecord) 
 		Name:         r.Name,
 		Size:         r.Size,
 		ContentType:  r.ContentType,
+		External:     r.External,
 	})
 	if err != nil {
 		return false, fmt.Errorf("import file: %w", err)

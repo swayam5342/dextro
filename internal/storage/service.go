@@ -32,6 +32,7 @@ const (
 var (
 	ErrConnectionFailed   = errors.New("connection failed")
 	ErrConnectionNotFound = errors.New("connection not found")
+	ErrPickerDisabled     = errors.New("picker isn't configured")
 )
 
 // Connection is a linked account as its owner sees it. It holds no credentials,
@@ -71,6 +72,8 @@ type Deps struct {
 	OpenDrive OpenDrive
 	// DriveAuth is nil when Google isn't configured.
 	DriveAuth DriveAuth
+	// Picker is empty when the picker isn't configured.
+	Picker PickerConfig
 }
 
 // Service holds the rules for linked accounts.
@@ -79,11 +82,12 @@ type Service struct {
 	keyring   *secrets.Keyring
 	openDrive OpenDrive
 	driveAuth DriveAuth
+	picker    PickerConfig
 }
 
 // NewService returns a Service.
 func NewService(d Deps) *Service {
-	return &Service{store: d.Store, keyring: d.Keyring, openDrive: d.OpenDrive, driveAuth: d.DriveAuth}
+	return &Service{store: d.Store, keyring: d.Keyring, openDrive: d.OpenDrive, driveAuth: d.DriveAuth, picker: d.Picker}
 }
 
 // DriveEnabled reports whether Google Drive can be connected.
@@ -230,6 +234,50 @@ func (s *Service) OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string
 		return "", fmt.Errorf("decrypt upload %s: %w", id, err)
 	}
 	return string(address), nil
+}
+
+// PickerConfig is what Google's picker needs from this server's Cloud project.
+type PickerConfig struct {
+	APIKey string
+	AppID  string
+}
+
+// PickerAccess is what the browser needs to run Google's picker on one account.
+type PickerAccess struct {
+	AccessToken  string
+	DeveloperKey string
+	AppID        string
+}
+
+// PickerEnabled reports whether files can be added with Google's picker.
+func (s *Service) PickerEnabled() bool {
+	return s.picker.APIKey != "" && s.picker.AppID != ""
+}
+
+// OpenPicker hands the browser a short-lived token for one account, because the
+// picker runs there. That's a credential leaving the server, so it's recorded.
+func (s *Service) OpenPicker(ctx context.Context, userID, id uuid.UUID, ip string) (PickerAccess, error) {
+	if !s.PickerEnabled() {
+		return PickerAccess{}, ErrPickerDisabled
+	}
+	opened, err := s.Provider(ctx, userID, id)
+	if err != nil {
+		return PickerAccess{}, err
+	}
+	token, err := opened.AccessToken(ctx)
+	if err != nil {
+		return PickerAccess{}, fmt.Errorf("%w: %w", ErrConnectionFailed, err)
+	}
+	err = s.store.Audit().Record(ctx, audit.Event{
+		ActorID:  userID,
+		Action:   audit.ActionPickerOpened,
+		IP:       ip,
+		Metadata: map[string]any{"connection_id": id.String()},
+	})
+	if err != nil {
+		return PickerAccess{}, err
+	}
+	return PickerAccess{AccessToken: token, DeveloperKey: s.picker.APIKey, AppID: s.picker.AppID}, nil
 }
 
 // Test checks that a connection still works.

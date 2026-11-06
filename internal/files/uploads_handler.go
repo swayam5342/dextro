@@ -117,3 +117,17 @@ func (h *Handler) SyncConnection(w http.ResponseWriter, r *http.Request, id type
 	}
 	httpx.WriteJSON(w, http.StatusOK, apigen.SyncResult{Added: result.Added, Removed: result.Removed})
 }
+
+// ImportPicked implements apigen.ServerInterface.
+func (h *Handler) ImportPicked(w http.ResponseWriter, r *http.Request, id types.UUID) {
+	var body apigen.PickedFiles
+	if !httpx.DecodeJSON(w, r, &body) {
+		return
+	}
+	result, err := h.service.ImportPicked(r.Context(), userID(r), id, body.FileIds, httpx.ClientIP(r.Context()))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, apigen.ImportResult{Added: result.Added, Skipped: result.Skipped})
+}

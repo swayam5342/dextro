@@ -44,6 +44,24 @@ export const signInRoute = createRoute({
   },
 });
 
+/** Sends a common way of writing an address to the real page, whose rules then apply. */
+function alias(path: string, to: "/sign-in" | "/register") {
+  return createRoute({
+    getParentRoute: () => rootRoute,
+    path,
+    beforeLoad: () => {
+      throw redirect({ to });
+    },
+  });
+}
+
+export const aliasRoutes = [
+  alias("/login", "/sign-in"),
+  alias("/signin", "/sign-in"),
+  alias("/signup", "/register"),
+  alias("/sign-up", "/register"),
+];
+
 export const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/register",

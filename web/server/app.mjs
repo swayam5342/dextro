@@ -17,6 +17,25 @@ const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join("; ");
 
+// The popup that runs Google's picker. Its script and frames come from Google, so it
+// gets its own policy and the rest of the app keeps the strict one above. Referrers
+// are on here because Google checks them against the API key's allowed sites.
+const PICKER_PATH = "/drive-picker.html";
+const PICKER_REFERRER_POLICY = "strict-origin-when-cross-origin";
+const PICKER_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' https://apis.google.com",
+  "style-src 'self' 'unsafe-inline' https://*.google.com https://*.gstatic.com",
+  "img-src 'self' data: https:",
+  "font-src https://fonts.gstatic.com",
+  "frame-src https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com",
+  "connect-src 'self' https://*.googleapis.com https://*.google.com",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -162,9 +181,10 @@ export async function createApp({ root, apiUrl, logger = console }) {
       return;
     }
 
-    res.setHeader("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+    const isPicker = pathname === PICKER_PATH;
+    res.setHeader("Content-Security-Policy", isPicker ? PICKER_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY);
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Referrer-Policy", "same-origin");
+    res.setHeader("Referrer-Policy", isPicker ? PICKER_REFERRER_POLICY : "same-origin");
     serveStatic(req, res, resolvedRoot, index, pathname).catch((error) => {
       logger.error(`serve ${pathname}: ${error.message}`);
       res.destroy();

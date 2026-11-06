@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -116,6 +117,11 @@ func run() error {
 	return errors.Join(serveErr, runner.Stop(stopCtx))
 }
 
+func projectNumber(clientID string) string {
+	number, _, _ := strings.Cut(clientID, "-")
+	return number
+}
+
 // syncNewAccount lets the storage feature, which files imports, trigger a sync.
 func syncNewAccount(service *files.Service) storage.AfterConnect {
 	return func(ctx context.Context, userID, connectionID uuid.UUID, ip string) error {
@@ -141,6 +147,8 @@ func newStorageService(cfg config.Config, pool *pgxpool.Pool) (*storage.Service,
 		Keyring:   keyring,
 		OpenDrive: storage.NewOpenDrive(drive),
 		DriveAuth: driveAuth,
+		// The app ID is the Cloud project number, which starts every client ID.
+		Picker: storage.PickerConfig{APIKey: cfg.GooglePickerAPIKey, AppID: projectNumber(cfg.GoogleClientID)},
 	}), nil
 }
 

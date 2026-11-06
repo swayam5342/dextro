@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 import type { components } from "@/api/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -42,6 +42,20 @@ function syncText({ added, removed }: { added: number; removed: number }): strin
     parts.push(removed === 1 ? "1 file gone from Drive" : `${removed} files gone from Drive`);
   }
   return `${parts.join(", ")}.`;
+}
+
+/** Google's picker runs in its own popup, which has its own security policy. */
+function openPicker(connectionId: string) {
+  window.open(`/drive-picker.html?connection=${encodeURIComponent(connectionId)}`, "dextro-picker", "popup,width=1000,height=720");
+}
+
+function addedText({ added, skipped }: { added: number; skipped: number }): string {
+  const files = added === 1 ? "1 file added." : `${added} files added.`;
+  if (skipped === 0) {
+    return files;
+  }
+  const others = skipped === 1 ? "1 was skipped" : `${skipped} were skipped`;
+  return `${files} ${others}: Google Docs can't be added, and nor can files that are already here.`;
 }
 
 /** How much room an account has. No limit is the most room there is. */
@@ -98,10 +112,12 @@ function Tank({
   connection,
   account,
   isNext,
+  pickerEnabled,
 }: {
   connection: Connection;
   account: PoolAccount | undefined;
   isNext: boolean;
+  pickerEnabled: boolean;
 }) {
   const test = useTestConnection(connection.id);
   const remove = useRemoveConnection(connection.id);
@@ -136,6 +152,11 @@ function Tank({
       <FormError message={sync.error ? "This account couldn't be checked, so nothing changed." : undefined} />
       <FormError message={test.error ? "This account couldn't be reached. Link it again to repair it." : undefined} />
       <div className="mt-auto flex flex-wrap gap-2">
+        {pickerEnabled && !broken && (
+          <Button variant="outline" size="sm" className={SOFT_BUTTON} onClick={() => openPicker(connection.id)}>
+            Add from Drive
+          </Button>
+        )}
         <Button variant="outline" size="sm" className={SOFT_BUTTON} disabled={sync.isPending} onClick={() => sync.mutate()}>
           {sync.isPending ? "Syncing…" : "Sync"}
         </Button>
@@ -196,6 +217,7 @@ function Accounts({ pool }: { pool: Pool | undefined }) {
           connection={connection}
           account={pool?.accounts.find((a) => a.connection.id === connection.id)}
           isNext={connection.id === next}
+          pickerEnabled={pool?.picker_enabled ?? false}
         />
       ))}
     </ul>
@@ -212,6 +234,21 @@ export function StoragePage({
   const { data: config } = useQuery(authConfigQuery);
   const { data: pool } = useQuery(poolQuery);
   const connect = useConnectGoogleDrive();
+  const queryClient = useQueryClient();
+  const [added, setAdded] = useState<string>();
+
+  // The popup says what it added as it closes.
+  useEffect(() => {
+    function handleMessage(event: MessageEvent<{ type?: string; added: number; skipped: number }>) {
+      if (event.origin !== window.location.origin || event.data?.type !== "dextro-files-added") {
+        return;
+      }
+      setAdded(addedText(event.data));
+      void queryClient.invalidateQueries({ queryKey: ["files"] });
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [queryClient]);
   const message = redirectError
     ? (REDIRECT_MESSAGES[redirectError] ?? REDIRECT_MESSAGES.google_failed)
     : undefined;
@@ -231,6 +268,7 @@ export function StoragePage({
       </div>
       <FormError message={message ?? connect.error?.message} />
       {connected === "google" && <p>Account linked.</p>}
+      {added && <p role="status">{added}</p>}
       <Accounts pool={pool} />
       {config?.google_enabled ? (
         <p className="max-w-[60ch] text-xs text-faint">

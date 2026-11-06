@@ -48,9 +48,11 @@ type File struct {
 	Name         string
 	Size         int64
 	ContentType  string
-	TrashedAt    *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// External marks someone's own Drive file. Deleting it leaves it in Drive.
+	External  bool
+	TrashedAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // Folder is a folder as its owner sees it. Folders exist only in dextro.
@@ -357,12 +359,15 @@ func (s *Service) DeleteFile(ctx context.Context, userID, id uuid.UUID, ip strin
 // fails, the record stays so the delete can be tried again; an object that's
 // already gone counts as success, which is what makes a retry safe.
 func (s *Service) destroy(ctx context.Context, userID uuid.UUID, record fileRecord, ip string) error {
-	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
-	}
-	if err := stored.Delete(ctx, record.objectID); err != nil && !errors.Is(err, provider.ErrObjectNotFound) {
-		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	// Someone's own Drive file isn't dextro's to delete, so only the record goes.
+	if !record.External {
+		stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		}
+		if err := stored.Delete(ctx, record.objectID); err != nil && !errors.Is(err, provider.ErrObjectNotFound) {
+			return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		}
 	}
 	return s.store.InTx(ctx, func(tx *Store) error {
 		if err := tx.DeleteFileForOwner(ctx, userID, record.ID); err != nil {

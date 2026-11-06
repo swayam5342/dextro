@@ -33,6 +33,7 @@ const (
 	codeStorageFull         = "storage_full"
 	codeNoThumbnail         = "no_thumbnail"
 	codeInvalidChunk        = "invalid_chunk"
+	codeInvalidImport       = "invalid_import"
 	codeOffsetMismatch      = "offset_mismatch"
 	codeUploadExpired       = "upload_expired"
 )
@@ -421,6 +422,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidSearch, "Enter something to search for.")
 	case errors.Is(err, ErrInvalidUpload):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidUpload, "An upload needs a name and a size.")
+	case errors.Is(err, ErrInvalidImport):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidImport, "Pick between 1 and 100 files.")
 	case errors.Is(err, ErrInvalidChunk):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidChunk, "This piece of the file isn't valid.")
 	case errors.Is(err, ErrOffsetMismatch):
@@ -448,6 +451,7 @@ func toAPIFile(f File) apigen.File {
 		Name:         f.Name,
 		Size:         f.Size,
 		ContentType:  f.ContentType,
+		External:     f.External,
 		Preview:      previewOf(f.ContentType),
 		ConnectionId: f.ConnectionID,
 		FolderId:     f.FolderID,

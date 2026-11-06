@@ -102,6 +102,27 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 	})
 
+	t.Run("an object can be described", func(t *testing.T) {
+		object := put(t, "details.txt", "hello")
+		got, err := p.Describe(ctx, object.ID)
+		if err != nil {
+			t.Fatalf("Describe: %v", err)
+		}
+		if got.Name != "details.txt" || got.Size != 5 || got.ContentType != "text/plain" {
+			t.Errorf("object = %+v", got)
+		}
+		if _, err := p.Describe(ctx, "no-such-object"); !errors.Is(err, provider.ErrObjectNotFound) {
+			t.Errorf("error = %v, want ErrObjectNotFound", err)
+		}
+	})
+
+	t.Run("an access token is available", func(t *testing.T) {
+		token, err := p.AccessToken(ctx)
+		if err != nil || token == "" {
+			t.Errorf("token = %q, error = %v", token, err)
+		}
+	})
+
 	t.Run("a listing says what type an object is", func(t *testing.T) {
 		object := put(t, "typed.txt", "hello")
 		for _, listed := range listAll(t) {

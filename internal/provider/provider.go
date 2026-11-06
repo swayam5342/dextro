@@ -119,6 +119,12 @@ type Provider interface {
 	// Exists asks about one object directly. Something in the account's trash counts
 	// as gone. Unlike a listing, this doesn't lag behind a change.
 	Exists(ctx context.Context, id string) (bool, error)
+	// Describe returns one object's details, or ErrObjectNotFound if it's gone or in
+	// the account's trash.
+	Describe(ctx context.Context, id string) (Object, error)
+	// AccessToken returns a short-lived token for the account, for Google's picker to
+	// run with in the browser. It's a secret: it must never be logged or stored.
+	AccessToken(ctx context.Context) (string, error)
 	// List returns one page of objects. An empty token starts from the beginning.
 	List(ctx context.Context, pageToken string) (ObjectPage, error)
 	// BeginResumable starts an upload sent in chunks. The result is the session's

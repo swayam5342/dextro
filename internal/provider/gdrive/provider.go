@@ -175,11 +175,12 @@ func (c *Client) service(source oauth2.TokenSource) (*drive.Service, *http.Clien
 
 // Open returns a Provider for one connected account.
 func (c *Client) Open(_ context.Context, s Settings, cr Credentials) (*Provider, error) {
-	service, httpClient, err := c.service(c.tokenSource(cr.RefreshToken))
+	source := c.tokenSource(cr.RefreshToken)
+	service, httpClient, err := c.service(source)
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{service: service, httpClient: httpClient, folderID: s.FolderID, pageSize: defaultPageSize}, nil
+	return &Provider{service: service, httpClient: httpClient, source: source, folderID: s.FolderID, pageSize: defaultPageSize}, nil
 }
 
 // Provider is dextro's folder in one Drive account. It never touches a file's
@@ -187,6 +188,7 @@ func (c *Client) Open(_ context.Context, s Settings, cr Credentials) (*Provider,
 type Provider struct {
 	service    *drive.Service
 	httpClient *http.Client
+	source     oauth2.TokenSource
 	folderID   string
 	pageSize   int64
 }
@@ -292,6 +294,30 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("delete file: %w", err)
 	}
 	return nil
+}
+
+// Describe implements provider.Provider.
+func (p *Provider) Describe(ctx context.Context, id string) (provider.Object, error) {
+	file, err := p.service.Files.Get(id).Fields(fileFields + ",trashed").Context(ctx).Do()
+	if isNotFound(err) {
+		return provider.Object{}, provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return provider.Object{}, fmt.Errorf("find file: %w", err)
+	}
+	if file.Trashed {
+		return provider.Object{}, provider.ErrObjectNotFound
+	}
+	return toObject(file), nil
+}
+
+// AccessToken implements provider.Provider.
+func (p *Provider) AccessToken(context.Context) (string, error) {
+	token, err := p.source.Token()
+	if err != nil {
+		return "", fmt.Errorf("get access token: %w", err)
+	}
+	return token.AccessToken, nil
 }
 
 // Exists implements provider.Provider.

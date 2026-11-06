@@ -15,14 +15,19 @@ interface TrashRowProps {
   name: string;
   detail: string;
   icon: LucideIcon;
+  /** Someone's own Drive file, which stays in Drive. */
+  external?: boolean;
 }
 
-function TrashRow({ item, name, detail, icon: Icon }: TrashRowProps) {
+function TrashRow({ item, name, detail, icon: Icon, external = false }: TrashRowProps) {
   const restore = useRestore();
   const destroy = useDeleteForever();
   const [confirming, setConfirming] = useState(false);
   const busy = restore.isPending || destroy.isPending;
   const what = item.kind === "folder" ? "This folder and everything in it" : "This file";
+  const warning = external
+    ? "This removes it from dextro. The file stays in your Google Drive."
+    : `${what} will also be removed from your storage account. This can't be undone.`;
 
   return (
     <li className="space-y-2 border-t py-2.5 first:border-t-0">
@@ -39,16 +44,16 @@ function TrashRow({ item, name, detail, icon: Icon }: TrashRowProps) {
             Restore
           </Button>
           <Button variant="destructive" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
-            Delete forever
+            {external ? "Remove from dextro" : "Delete forever"}
           </Button>
         </div>
       </div>
       <FormError message={restore.error?.message} />
       {confirming && (
         <ConfirmDialog
-          title={`Delete ${name} forever?`}
-          text={`${what} will also be removed from your storage account. This can't be undone.`}
-          action="Delete forever"
+          title={external ? `Remove ${name} from dextro?` : `Delete ${name} forever?`}
+          text={warning}
+          action={external ? "Remove from dextro" : "Delete forever"}
           pending={destroy.isPending}
           error={destroy.error?.message}
           onConfirm={() => destroy.mutate(item, { onSuccess: () => setConfirming(false) })}
@@ -101,13 +106,14 @@ export function TrashPage() {
             name={file.name}
             detail={`${formatBytes(file.size)}, added ${formatDate(file.created_at)}`}
             icon={fileIcon(file.content_type)}
+            external={file.external}
           />
         ))}
       </ul>
       {confirming && (
         <ConfirmDialog
           title="Empty the trash?"
-          text="Everything in it will also be removed from your storage accounts. This can't be undone."
+          text="Files dextro stored will also be removed from your storage accounts, and files you added from Drive stay in Drive. This can't be undone."
           action="Empty trash"
           pending={empty.isPending}
           error={empty.error?.message}

@@ -44,6 +44,7 @@ type File struct {
 	TrashedAt    *time.Time
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	External     bool
 }
 
 type Folder struct {

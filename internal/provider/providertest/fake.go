@@ -335,3 +335,22 @@ func (f *Fake) Unlist(id string) {
 	}
 	f.unlisted[id] = true
 }
+
+// Describe implements provider.Provider.
+func (f *Fake) Describe(_ context.Context, id string) (provider.Object, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ExistsErr != nil {
+		return provider.Object{}, f.ExistsErr
+	}
+	object, ok := f.objects[id]
+	if !ok || f.hidden[id] {
+		return provider.Object{}, provider.ErrObjectNotFound
+	}
+	return object.Object, nil
+}
+
+// AccessToken implements provider.Provider.
+func (f *Fake) AccessToken(context.Context) (string, error) {
+	return "fake-access-token", f.CheckErr
+}

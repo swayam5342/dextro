@@ -920,6 +920,50 @@ paths:
                 $ref: "#/components/schemas/SyncResult"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/storage/connections/{id}/picker:
+    post:
+      operationId: openPicker
+      summary: Get what Google's picker needs to run in the browser
+      description: >
+        The access token is short-lived and limited to drive.file, and only the
+        popup that runs the picker should hold it. API keys can't use this.
+      tags: [storage]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: What the picker needs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PickerAccess"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/connections/{id}/import:
+    post:
+      operationId: importPicked
+      summary: Add files chosen in Google's picker
+      description: >
+        The files stay where they are in Drive, and deleting them forever only
+        removes them from dextro.
+      tags: [storage]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PickedFiles"
+      responses:
+        "200":
+          description: What happened to the files.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/storage/connections/{id}/test:
     post:
       operationId: testConnection
@@ -1107,8 +1151,11 @@ components:
           type: string
     File:
       type: object
-      required: [id, name, size, content_type, preview, connection_id, folder_id, trashed_at, created_at, updated_at]
+      required: [id, name, size, content_type, preview, connection_id, folder_id, trashed_at, created_at, updated_at, external]
       properties:
+        external:
+          type: boolean
+          description: Someone's own Drive file, which deleting forever leaves in Drive.
         id:
           type: string
           format: uuid
@@ -1293,8 +1340,11 @@ components:
           description: Null if the account has no limit, or can't be reached.
     Pool:
       type: object
-      required: [accounts, used_bytes, limit_bytes, free_bytes]
+      required: [accounts, used_bytes, limit_bytes, free_bytes, picker_enabled]
       properties:
+        picker_enabled:
+          type: boolean
+          description: Whether files can be added with Google's picker.
         accounts:
           type: array
           items:
@@ -1512,6 +1562,33 @@ components:
           type: integer
         removed:
           type: integer
+    PickerAccess:
+      type: object
+      required: [access_token, developer_key, app_id]
+      properties:
+        access_token:
+          type: string
+        developer_key:
+          type: string
+        app_id:
+          type: string
+    PickedFiles:
+      type: object
+      required: [file_ids]
+      properties:
+        file_ids:
+          type: array
+          items:
+            type: string
+    ImportResult:
+      type: object
+      required: [added, skipped]
+      properties:
+        added:
+          type: integer
+        skipped:
+          type: integer
+          description: Files that were already added, have no bytes to download, or are gone.
     Error:
       type: object
       description: Body of every error response.

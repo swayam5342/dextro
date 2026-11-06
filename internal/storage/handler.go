@@ -36,6 +36,7 @@ const (
 // Error codes the storage API adds to the shared ones. Clients may depend on these.
 const (
 	codeConnectionFailed = "connection_failed"
+	codePickerDisabled   = "picker_disabled"
 )
 
 // Codes sent to the UI in the error query parameter after a Google redirect.
@@ -85,7 +86,9 @@ func (h *Handler) GetPool(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, toAPIPool(pool))
+	body := toAPIPool(pool)
+	body.PickerEnabled = h.service.PickerEnabled()
+	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
 // DeleteConnection implements apigen.ServerInterface.
@@ -109,6 +112,24 @@ func (h *Handler) TestConnection(w http.ResponseWriter, r *http.Request, id type
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// OpenPicker implements apigen.ServerInterface.
+func (h *Handler) OpenPicker(w http.ResponseWriter, r *http.Request, id types.UUID) {
+	principal, _ := httpx.PrincipalFrom(r.Context())
+	if !h.allowCheck(w, r, principal.UserID) {
+		return
+	}
+	access, err := h.service.OpenPicker(r.Context(), principal.UserID, id, httpx.ClientIP(r.Context()))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, apigen.PickerAccess{
+		AccessToken:  access.AccessToken,
+		DeveloperKey: access.DeveloperKey,
+		AppId:        access.AppID,
+	})
 }
 
 // ConnectGoogleDrive implements apigen.ServerInterface. The cookie ties the
@@ -202,6 +223,8 @@ func (h *Handler) allowCheck(w http.ResponseWriter, r *http.Request, userID uuid
 // the logs only, because the reason comes from outside and can hold anything.
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, ErrPickerDisabled):
+		httpx.WriteError(w, r, http.StatusNotFound, codePickerDisabled, "Adding files from Drive isn't set up on this server.")
 	case errors.Is(err, ErrConnectionNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
 	case errors.Is(err, ErrConnectionFailed):

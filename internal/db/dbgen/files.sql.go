@@ -15,7 +15,7 @@ import (
 const createFile = `-- name: CreateFile :one
 INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
 `
 
 type CreateFileParams struct {
@@ -53,6 +53,7 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.External,
 	)
 	return i, err
 }
@@ -119,7 +120,7 @@ func (q *Queries) DeleteFolderForOwner(ctx context.Context, arg DeleteFolderForO
 }
 
 const getFileForOwner = `-- name: GetFileForOwner :one
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at FROM files WHERE user_id = $1 AND id = $2
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external FROM files WHERE user_id = $1 AND id = $2
 `
 
 type GetFileForOwnerParams struct {
@@ -142,6 +143,7 @@ func (q *Queries) GetFileForOwner(ctx context.Context, arg GetFileForOwnerParams
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.External,
 	)
 	return i, err
 }
@@ -171,8 +173,8 @@ func (q *Queries) GetFolderForOwner(ctx context.Context, arg GetFolderForOwnerPa
 }
 
 const importFile = `-- name: ImportFile :execrows
-INSERT INTO files (id, user_id, connection_id, object_id, name, size, content_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO files (id, user_id, connection_id, object_id, name, size, content_type, external)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (connection_id, object_id) DO NOTHING
 `
 
@@ -184,6 +186,7 @@ type ImportFileParams struct {
 	Name         string
 	Size         int64
 	ContentType  string
+	External     bool
 }
 
 func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, error) {
@@ -195,6 +198,7 @@ func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, 
 		arg.Name,
 		arg.Size,
 		arg.ContentType,
+		arg.External,
 	)
 	if err != nil {
 		return 0, err
@@ -203,7 +207,7 @@ func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, 
 }
 
 const listFilesInFolderForOwner = `-- name: ListFilesInFolderForOwner :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
 FROM files
 WHERE user_id = $1
   AND folder_id IS NOT DISTINCT FROM $2::uuid
@@ -237,6 +241,7 @@ func (q *Queries) ListFilesInFolderForOwner(ctx context.Context, arg ListFilesIn
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.External,
 		); err != nil {
 			return nil, err
 		}
@@ -255,7 +260,7 @@ WITH RECURSIVE tree AS (
     UNION
     SELECT c.id FROM folders c JOIN tree ON c.parent_id = tree.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external
 FROM files
 JOIN tree ON files.folder_id = tree.id
 WHERE files.user_id = $1
@@ -288,6 +293,7 @@ func (q *Queries) ListFilesUnderFolderForOwner(ctx context.Context, arg ListFile
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.External,
 		); err != nil {
 			return nil, err
 		}
@@ -438,7 +444,7 @@ func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsF
 }
 
 const listTrashedFilesForOwner = `-- name: ListTrashedFilesForOwner :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
 FROM files
 WHERE user_id = $1 AND trashed_at IS NOT NULL
 ORDER BY trashed_at DESC, id
@@ -465,6 +471,7 @@ func (q *Queries) ListTrashedFilesForOwner(ctx context.Context, userID uuid.UUID
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.External,
 		); err != nil {
 			return nil, err
 		}
@@ -525,7 +532,7 @@ const moveFileForOwner = `-- name: MoveFileForOwner :one
 UPDATE files
 SET folder_id = $3::uuid, updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
 `
 
 type MoveFileForOwnerParams struct {
@@ -549,6 +556,7 @@ func (q *Queries) MoveFileForOwner(ctx context.Context, arg MoveFileForOwnerPara
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.External,
 	)
 	return i, err
 }
@@ -585,7 +593,7 @@ const renameFileForOwner = `-- name: RenameFileForOwner :one
 UPDATE files
 SET name = $3, updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
 `
 
 type RenameFileForOwnerParams struct {
@@ -609,6 +617,7 @@ func (q *Queries) RenameFileForOwner(ctx context.Context, arg RenameFileForOwner
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.External,
 	)
 	return i, err
 }
@@ -647,7 +656,7 @@ WITH RECURSIVE hidden AS (
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external
 FROM files
 WHERE files.user_id = $1
   AND files.trashed_at IS NULL
@@ -684,6 +693,7 @@ func (q *Queries) SearchFilesForOwner(ctx context.Context, arg SearchFilesForOwn
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.External,
 		); err != nil {
 			return nil, err
 		}

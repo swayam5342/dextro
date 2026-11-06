@@ -23,6 +23,8 @@ type Config struct {
 	TrustedProxies     []netip.Prefix
 	GoogleClientID     string
 	GoogleClientSecret string
+	// GooglePickerAPIKey turns on adding files with Google's picker. It's optional.
+	GooglePickerAPIKey string
 	// EncryptionKeys maps key IDs to 32-byte keys for stored credentials. Old keys
 	// stay listed so existing values can still be read.
 	EncryptionKeys map[string][]byte
@@ -46,6 +48,7 @@ func Load(getenv func(string) string) (Config, error) {
 		DatabaseURL:        getenv("DEXTRO_DATABASE_URL"),
 		GoogleClientID:     getenv("DEXTRO_GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: getenv("DEXTRO_GOOGLE_CLIENT_SECRET"),
+		GooglePickerAPIKey: getenv("DEXTRO_GOOGLE_PICKER_API_KEY"),
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = defaultListenAddr

@@ -263,12 +263,15 @@ type Error struct {
 
 // File defines model for File.
 type File struct {
-	ConnectionId openapi_types.UUID  `json:"connection_id"`
-	ContentType  string              `json:"content_type"`
-	CreatedAt    time.Time           `json:"created_at"`
-	FolderId     *openapi_types.UUID `json:"folder_id"`
-	Id           openapi_types.UUID  `json:"id"`
-	Name         string              `json:"name"`
+	ConnectionId openapi_types.UUID `json:"connection_id"`
+	ContentType  string             `json:"content_type"`
+	CreatedAt    time.Time          `json:"created_at"`
+
+	// External Someone's own Drive file, which deleting forever leaves in Drive.
+	External bool                `json:"external"`
+	FolderId *openapi_types.UUID `json:"folder_id"`
+	Id       openapi_types.UUID  `json:"id"`
+	Name     string              `json:"name"`
 
 	// Preview How the file can be shown inline, if at all.
 	Preview   FilePreview `json:"preview"`
@@ -317,6 +320,14 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// ImportResult defines model for ImportResult.
+type ImportResult struct {
+	Added int `json:"added"`
+
+	// Skipped Files that were already added, have no bytes to download, or are gone.
+	Skipped int `json:"skipped"`
+}
 
 // JobRun defines model for JobRun.
 type JobRun struct {
@@ -377,6 +388,18 @@ type NewUpload struct {
 	Size         int64  `json:"size"`
 }
 
+// PickedFiles defines model for PickedFiles.
+type PickedFiles struct {
+	FileIds []string `json:"file_ids"`
+}
+
+// PickerAccess defines model for PickerAccess.
+type PickerAccess struct {
+	AccessToken  string `json:"access_token"`
+	AppId        string `json:"app_id"`
+	DeveloperKey string `json:"developer_key"`
+}
+
 // Pool defines model for Pool.
 type Pool struct {
 	Accounts []PoolAccount `json:"accounts"`
@@ -386,7 +409,10 @@ type Pool struct {
 
 	// LimitBytes Null if any working account has no limit.
 	LimitBytes *int64 `json:"limit_bytes"`
-	UsedBytes  int64  `json:"used_bytes"`
+
+	// PickerEnabled Whether files can be added with Google's picker.
+	PickerEnabled bool  `json:"picker_enabled"`
+	UsedBytes     int64 `json:"used_bytes"`
 }
 
 // PoolAccount defines model for PoolAccount.
@@ -597,6 +623,9 @@ type RenameFolderJSONRequestBody = NameInput
 // MoveFolderJSONRequestBody defines body for MoveFolder for application/json ContentType.
 type MoveFolderJSONRequestBody = MoveFolderInput
 
+// ImportPickedJSONRequestBody defines body for ImportPicked for application/json ContentType.
+type ImportPickedJSONRequestBody = PickedFiles
+
 // BeginUploadJSONRequestBody defines body for BeginUpload for application/json ContentType.
 type BeginUploadJSONRequestBody = NewUpload
 
@@ -725,6 +754,12 @@ type ServerInterface interface {
 	// DeleteConnection Remove a connection and forget its credentials
 	// (DELETE /api/v1/storage/connections/{id})
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ImportPicked Add files chosen in Google's picker
+	// (POST /api/v1/storage/connections/{id}/import)
+	ImportPicked(w http.ResponseWriter, r *http.Request, id Id)
+	// OpenPicker Get what Google's picker needs to run in the browser
+	// (POST /api/v1/storage/connections/{id}/picker)
+	OpenPicker(w http.ResponseWriter, r *http.Request, id Id)
 	// SyncConnection Make dextro match what's really in an account
 	// (POST /api/v1/storage/connections/{id}/sync)
 	SyncConnection(w http.ResponseWriter, r *http.Request, id Id)
@@ -1013,6 +1048,18 @@ func (_ Unimplemented) ListConnections(w http.ResponseWriter, r *http.Request) {
 // DeleteConnection Remove a connection and forget its credentials
 // (DELETE /api/v1/storage/connections/{id})
 func (_ Unimplemented) DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ImportPicked Add files chosen in Google's picker
+// (POST /api/v1/storage/connections/{id}/import)
+func (_ Unimplemented) ImportPicked(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// OpenPicker Get what Google's picker needs to run in the browser
+// (POST /api/v1/storage/connections/{id}/picker)
+func (_ Unimplemented) OpenPicker(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2056,6 +2103,58 @@ func (siw *ServerInterfaceWrapper) DeleteConnection(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ImportPicked operation middleware
+func (siw *ServerInterfaceWrapper) ImportPicked(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportPicked(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenPicker operation middleware
+func (siw *ServerInterfaceWrapper) OpenPicker(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenPicker(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SyncConnection operation middleware
 func (siw *ServerInterfaceWrapper) SyncConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -2611,6 +2710,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/sync", wrapper.SyncConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/picker", wrapper.OpenPicker)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/import", wrapper.ImportPicked)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/test", wrapper.TestConnection)

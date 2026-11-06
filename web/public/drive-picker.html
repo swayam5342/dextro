@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add from Drive</title>
+    <style>
+      body {
+        margin: 0;
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+        background: #000;
+        color: #fff;
+        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+        text-align: center;
+      }
+      p {
+        max-width: 40ch;
+        padding: 0 20px;
+      }
+    </style>
+    <script src="/drive-picker.js" defer></script>
+  </head>
+  <body>
+    <p id="status" role="status">Opening Google Drive…</p>
+  </body>
+</html>

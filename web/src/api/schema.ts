@@ -63,6 +63,8 @@ export interface components {
       limit_bytes: number | null;
     };
     Pool: {
+      /** Whether files can be added with Google's picker. */
+      picker_enabled: boolean;
       accounts: components["schemas"]["PoolAccount"][];
       used_bytes: number;
       /** Null if any working account has no limit. */
@@ -146,6 +148,11 @@ export interface components {
       added: number;
       removed: number;
     };
+    PickerAccess: {
+      access_token: string;
+      developer_key: string;
+      app_id: string;
+    };
     SearchResults: {
       folders: components["schemas"]["Folder"][];
       files: components["schemas"]["File"][];
@@ -160,6 +167,8 @@ export interface components {
     };
     File: {
       id: string;
+      /** Someone's own Drive file, which deleting forever leaves in Drive. */
+      external: boolean;
       name: string;
       size: number;
       content_type: string;

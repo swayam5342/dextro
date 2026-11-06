@@ -153,6 +153,8 @@ func TestHandlers(t *testing.T) {
 		{"google failures are hidden", testDriveFailureHidden},
 		{"the callback needs a session", testDriveCallbackNeedsSession},
 		{"linking an account syncs it", testLinkingSyncsTheAccount},
+		{"the picker is off without a key", testPickerDisabled},
+		{"opening the picker", testOpenPicker},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -398,5 +400,48 @@ func testLinkingSyncsTheAccount(t *testing.T, s *server) {
 	}
 	if calls != 1 {
 		t.Errorf("syncs = %d, want 1", calls)
+	}
+}
+
+func testPickerDisabled(t *testing.T, s *server) {
+	b := s.signedIn(t)
+	connection := s.connect(t, b.userID, "person@example.org")
+	wantError(t, b.do(http.MethodPost, "/api/v1/storage/connections/"+connection.ID.String()+"/picker"),
+		http.StatusNotFound, "picker_disabled")
+	if got := decode[apigen.Pool](t, b.do(http.MethodGet, "/api/v1/storage/pool")); got.PickerEnabled {
+		t.Errorf("pool = %+v", got)
+	}
+}
+
+func testOpenPicker(t *testing.T, s *server) {
+	s.service.picker = PickerConfig{APIKey: "the-api-key", AppID: "1234"}
+	b := s.signedIn(t)
+	connection := s.connect(t, b.userID, "person@example.org")
+	target := "/api/v1/storage/connections/" + connection.ID.String() + "/picker"
+
+	wantError(t, s.signedIn(t).do(http.MethodPost, target), http.StatusNotFound, "not_found")
+
+	rec := b.do(http.MethodPost, target)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	got := decode[apigen.PickerAccess](t, rec)
+	if got.AccessToken == "" || got.DeveloperKey != "the-api-key" || got.AppId != "1234" {
+		t.Errorf("access = %+v", got)
+	}
+	if body := rec.Body.String(); strings.Contains(body, refreshToken) {
+		t.Errorf("the refresh token left the server: %s", body)
+	}
+	if cache := rec.Header().Get("Cache-Control"); cache != "no-store" {
+		t.Errorf("Cache-Control = %q, a token must not be cached", cache)
+	}
+	if n := s.count(t, `SELECT count(*) FROM audit_events WHERE action = 'storage.picker_opened' AND actor_id = $1`, b.userID); n != 1 {
+		t.Errorf("audit events = %d, want 1", n)
+	}
+	if n := s.count(t, `SELECT count(*) FROM audit_events WHERE metadata::text LIKE '%' || $1 || '%'`, got.AccessToken); n != 0 {
+		t.Error("the access token reached the audit log")
+	}
+	if pool := decode[apigen.Pool](t, b.do(http.MethodGet, "/api/v1/storage/pool")); !pool.PickerEnabled {
+		t.Errorf("pool = %+v", pool)
 	}
 }

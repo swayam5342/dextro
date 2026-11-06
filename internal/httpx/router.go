@@ -61,6 +61,7 @@ type FilesHandlers interface {
 	CancelUpload(w http.ResponseWriter, r *http.Request, id types.UUID)
 	PutUploadChunk(w http.ResponseWriter, r *http.Request, id types.UUID, params apigen.PutUploadChunkParams)
 	SyncConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
+	ImportPicked(w http.ResponseWriter, r *http.Request, id types.UUID)
 }
 
 // StorageHandlers is the part of the API the storage feature implements.
@@ -69,6 +70,7 @@ type StorageHandlers interface {
 	GetPool(w http.ResponseWriter, r *http.Request)
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	TestConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
+	OpenPicker(w http.ResponseWriter, r *http.Request, id types.UUID)
 	ConnectGoogleDrive(w http.ResponseWriter, r *http.Request)
 	GoogleDriveCallback(w http.ResponseWriter, r *http.Request, params apigen.GoogleDriveCallbackParams)
 }

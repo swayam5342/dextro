@@ -369,3 +369,19 @@ func TestEachAccountHasItsOwnToken(t *testing.T) {
 		t.Error("the same account got a second token source")
 	}
 }
+
+func TestDescribeTreatsTrashAsGone(t *testing.T) {
+	f := newFakeDrive(t)
+	p := openProvider(t, f)
+	ctx := context.Background()
+	object, err := p.Put(ctx, provider.Upload{Name: "a.txt", Body: strings.NewReader("x")})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	f.mu.Lock()
+	f.files[object.ID].Trashed = true
+	f.mu.Unlock()
+	if _, err := p.Describe(ctx, object.ID); !errors.Is(err, provider.ErrObjectNotFound) {
+		t.Errorf("error = %v, want ErrObjectNotFound", err)
+	}
+}

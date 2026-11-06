@@ -67,7 +67,7 @@ func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.
 			if _, ok := known[object.ID]; ok || object.ModifiedAt.After(cutoff) {
 				continue
 			}
-			added, err := s.importObject(ctx, userID, connectionID, object)
+			added, err := s.importObject(ctx, userID, connectionID, object, false)
 			if err != nil {
 				return result, err
 			}
@@ -104,7 +104,7 @@ func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.
 	return result, s.recordSync(ctx, userID, connectionID, ip, result)
 }
 
-func (s *Service) importObject(ctx context.Context, userID, connectionID uuid.UUID, object provider.Object) (bool, error) {
+func (s *Service) importObject(ctx context.Context, userID, connectionID uuid.UUID, object provider.Object, external bool) (bool, error) {
 	name, err := cleanName(object.Name)
 	if err != nil {
 		name = importedFallbackName
@@ -115,6 +115,7 @@ func (s *Service) importObject(ctx context.Context, userID, connectionID uuid.UU
 			Name:         name,
 			Size:         object.Size,
 			ContentType:  cleanContentType(object.ContentType),
+			External:     external,
 		},
 		objectID: object.ID,
 	})

@@ -42,6 +42,7 @@ describe("web server", () => {
     await mkdir(path.join(root, "assets"), { recursive: true });
     await writeFile(path.join(root, "index.html"), "<title>app</title>");
     await writeFile(path.join(root, "favicon.svg"), "<svg/>");
+    await writeFile(path.join(root, "drive-picker.html"), "<title>picker</title>");
     await writeFile(path.join(root, ".hidden"), "hidden");
     await writeFile(path.join(root, "assets", "app-1.js"), "console.log(1)");
     await writeFile(path.join(dir, "outside.txt"), "outside the root");
@@ -116,6 +117,20 @@ describe("web server", () => {
       const res = await fetch(base + target);
       assert.equal(res.headers.get("x-content-type-options"), "nosniff", target);
       assert.match(res.headers.get("content-security-policy"), /frame-ancestors 'none'/, target);
+    }
+  });
+
+  it("lets only the picker popup load Google's scripts", async () => {
+    const picker = await fetch(`${base}/drive-picker.html`);
+    assert.equal(picker.status, 200);
+    assert.match(picker.headers.get("content-security-policy"), /script-src 'self' https:\/\/apis\.google\.com/);
+    assert.match(picker.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+    assert.equal(picker.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+
+    for (const target of ["/", "/storage", "/assets/app-1.js"]) {
+      const res = await fetch(base + target);
+      assert.doesNotMatch(res.headers.get("content-security-policy"), /google/, target);
+      assert.equal(res.headers.get("referrer-policy"), "same-origin", target);
     }
   });
 
