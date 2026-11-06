@@ -17,6 +17,7 @@ import (
 	"github.com/swayam5342/tributary/internal/files"
 	"github.com/swayam5342/tributary/internal/secrets"
 	"github.com/swayam5342/tributary/internal/storage"
+	"github.com/swayam5342/tributary/internal/version"
 )
 
 type fixture struct {
@@ -71,6 +72,7 @@ func TestCommands(t *testing.T) {
 		run  func(*testing.T, *fixture)
 	}{
 		{"help lists the commands", testHelp},
+		{"version needs no server", testVersion},
 		{"anything else gets the usage", testUsage},
 		{"users shows counts, not files", testUsers},
 		{"a new user gets a password that has to change", testCreateUser},
@@ -300,5 +302,18 @@ func testStatus(t *testing.T, f *fixture) {
 func testSync(t *testing.T, f *fixture) {
 	if out := f.run(t, "sync"); !strings.Contains(out, "0 found") {
 		t.Errorf("output = %q", out)
+	}
+}
+
+func testVersion(t *testing.T, f *fixture) {
+	if !NeedsNoServer([]string{"version"}) {
+		t.Error("version shouldn't need a server")
+	}
+	var out bytes.Buffer
+	if err := Run(f.ctx, f.deps, []string{"version"}, &out); err != nil {
+		t.Fatalf("version: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != version.Version {
+		t.Errorf("version = %q, want %q", got, version.Version)
 	}
 }

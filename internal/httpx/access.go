@@ -58,6 +58,11 @@ var keyRoutes = map[string]string{
 	"POST /api/v1/folders/{id}/restore": ScopeFilesWrite,
 	"GET /api/v1/trash":                 ScopeFilesRead,
 	"GET /api/v1/search":                ScopeFilesRead,
+	"GET /api/v1/uploads":               ScopeFilesWrite,
+	"POST /api/v1/uploads":              ScopeFilesWrite,
+	"GET /api/v1/uploads/{id}":          ScopeFilesWrite,
+	"DELETE /api/v1/uploads/{id}":       ScopeFilesWrite,
+	"PUT /api/v1/uploads/{id}/chunk":    ScopeFilesWrite,
 }
 
 // passwordChangeRoutes are all that's left while someone has to replace a password

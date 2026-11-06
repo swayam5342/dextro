@@ -17,11 +17,13 @@ import (
 	"github.com/swayam5342/tributary/internal/admin"
 	"github.com/swayam5342/tributary/internal/auth"
 	"github.com/swayam5342/tributary/internal/files"
+	"github.com/swayam5342/tributary/internal/version"
 )
 
 const usage = `usage: tributary-cli <command>
 
 Server
+  version                      Which release this is
   status                       How the server, accounts and background jobs are doing
   sync                         Match Tributary to every linked account now
 
@@ -59,11 +61,15 @@ type Deps struct {
 
 // NeedsNoServer says whether arguments only ask what the commands are.
 func NeedsNoServer(args []string) bool {
-	return len(args) == 0 || (len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h"))
+	return len(args) == 0 || (len(args) == 1 && (args[0] == "version" || args[0] == "help" || args[0] == "--help" || args[0] == "-h"))
 }
 
 // Run runs one command. An unknown command or the wrong arguments return the usage.
 func Run(ctx context.Context, d Deps, args []string, out io.Writer) error {
+	if len(args) == 1 && args[0] == "version" {
+		_, err := fmt.Fprintln(out, version.Version)
+		return err
+	}
 	if NeedsNoServer(args) {
 		_, err := io.WriteString(out, usage)
 		return err
@@ -131,6 +137,7 @@ func status(ctx context.Context, d Deps, out io.Writer) error {
 		return err
 	}
 	table := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
+	row(table, "Version\t%s\n", version.Version)
 	row(table, "Users\t%d\n", len(everyone))
 	row(table, "Linked accounts\t%d, %s used\n", report.Health.Accounts, gib(report.Health.UsedBytes))
 	row(table, "Google links\t%s\n", onOff(settings.GoogleLinks))

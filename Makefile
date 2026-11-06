@@ -14,6 +14,10 @@ GOOSE_VERSION := v3.29.0
 OAPI_CODEGEN_VERSION := v2.8.2
 GOLANGCI_LINT_VERSION := v2.15.0
 
+# The release. docker-compose.yml reads it too, so builds of the stack know what they are.
+export VERSION := $(shell cat VERSION)
+LDFLAGS := -X github.com/swayam5342/tributary/internal/version.Version=$(VERSION)
+
 BIN := $(CURDIR)/bin
 SQLC := $(BIN)/sqlc$(EXE)
 GOOSE := $(BIN)/goose$(EXE)
@@ -52,8 +56,8 @@ web-build: $(WEB_DEPS) ## Type-check and build the frontend into web/dist
 	cd web && pnpm build
 
 build: web-build ## Build the frontend into web/dist, and the server and admin CLI into bin/
-	CGO_ENABLED=0 go build -trimpath -o $(BIN)/tributary$(EXE) ./cmd/server
-	CGO_ENABLED=0 go build -trimpath -o $(BIN)/tributary-cli$(EXE) ./cmd/cli
+	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o $(BIN)/tributary$(EXE) ./cmd/server
+	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o $(BIN)/tributary-cli$(EXE) ./cmd/cli
 
 lint: $(GOLANGCI_LINT) $(WEB_DEPS) ## Lint Go and TypeScript, and type-check the frontend
 	$(GOLANGCI_LINT) run ./...

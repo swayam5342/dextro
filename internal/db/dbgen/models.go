@@ -45,6 +45,7 @@ type File struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	External     bool
+	StarredAt    *time.Time
 }
 
 type FileShare struct {

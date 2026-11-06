@@ -371,12 +371,18 @@ type File struct {
 	// Preview How the file can be shown inline, if at all.
 	Preview   FilePreview `json:"preview"`
 	Size      int64       `json:"size"`
+	Starred   bool        `json:"starred"`
 	TrashedAt *time.Time  `json:"trashed_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
 // FilePreview How the file can be shown inline, if at all.
 type FilePreview string
+
+// FileList defines model for FileList.
+type FileList struct {
+	Files []File `json:"files"`
+}
 
 // Folder defines model for Folder.
 type Folder struct {
@@ -582,6 +588,9 @@ type ServerStatus struct {
 
 	// UsedBytes Space used across them, as of the last quota sync.
 	UsedBytes int64 `json:"used_bytes"`
+
+	// Version The version this server is running.
+	Version string `json:"version"`
 }
 
 // Session defines model for Session.
@@ -958,6 +967,12 @@ type ServerInterface interface {
 	// PutShare Make a Google link for a file, or change one
 	// (PUT /api/v1/files/{id}/share)
 	PutShare(w http.ResponseWriter, r *http.Request, id Id)
+	// UnstarFile Take a file's star away
+	// (DELETE /api/v1/files/{id}/star)
+	UnstarFile(w http.ResponseWriter, r *http.Request, id Id)
+	// StarFile Star a file
+	// (PUT /api/v1/files/{id}/star)
+	StarFile(w http.ResponseWriter, r *http.Request, id Id)
 	// GetThumbnail Return a small preview image of a file
 	// (GET /api/v1/files/{id}/thumbnail)
 	GetThumbnail(w http.ResponseWriter, r *http.Request, id Id)
@@ -982,12 +997,18 @@ type ServerInterface interface {
 	// TrashFolder Move a folder and everything in it to the trash
 	// (POST /api/v1/folders/{id}/trash)
 	TrashFolder(w http.ResponseWriter, r *http.Request, id Id)
+	// ListRecentFiles List the newest files, wherever they are
+	// (GET /api/v1/recent)
+	ListRecentFiles(w http.ResponseWriter, r *http.Request)
 	// Search Find files and folders by name
 	// (GET /api/v1/search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 	// ListShares See every Google link on your files
 	// (GET /api/v1/shares)
 	ListShares(w http.ResponseWriter, r *http.Request)
+	// ListStarredFiles List starred files, wherever they are
+	// (GET /api/v1/starred)
+	ListStarredFiles(w http.ResponseWriter, r *http.Request)
 	// ListConnections List the signed-in user's storage connections
 	// (GET /api/v1/storage/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
@@ -1045,7 +1066,7 @@ type ServerInterface interface {
 	// ListTrash List what's in the trash
 	// (GET /api/v1/trash)
 	ListTrash(w http.ResponseWriter, r *http.Request)
-	// ListUploads List the signed-in user's unfinished uploads
+	// ListUploads List the user's unfinished uploads
 	// (GET /api/v1/uploads)
 	ListUploads(w http.ResponseWriter, r *http.Request)
 	// BeginUpload Start an upload sent in chunks
@@ -1273,6 +1294,18 @@ func (_ Unimplemented) PutShare(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// UnstarFile Take a file's star away
+// (DELETE /api/v1/files/{id}/star)
+func (_ Unimplemented) UnstarFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StarFile Star a file
+// (PUT /api/v1/files/{id}/star)
+func (_ Unimplemented) StarFile(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetThumbnail Return a small preview image of a file
 // (GET /api/v1/files/{id}/thumbnail)
 func (_ Unimplemented) GetThumbnail(w http.ResponseWriter, r *http.Request, id Id) {
@@ -1321,6 +1354,12 @@ func (_ Unimplemented) TrashFolder(w http.ResponseWriter, r *http.Request, id Id
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListRecentFiles List the newest files, wherever they are
+// (GET /api/v1/recent)
+func (_ Unimplemented) ListRecentFiles(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Search Find files and folders by name
 // (GET /api/v1/search)
 func (_ Unimplemented) Search(w http.ResponseWriter, r *http.Request, params SearchParams) {
@@ -1330,6 +1369,12 @@ func (_ Unimplemented) Search(w http.ResponseWriter, r *http.Request, params Sea
 // ListShares See every Google link on your files
 // (GET /api/v1/shares)
 func (_ Unimplemented) ListShares(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListStarredFiles List starred files, wherever they are
+// (GET /api/v1/starred)
+func (_ Unimplemented) ListStarredFiles(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1447,7 +1492,7 @@ func (_ Unimplemented) ListTrash(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ListUploads List the signed-in user's unfinished uploads
+// ListUploads List the user's unfinished uploads
 // (GET /api/v1/uploads)
 func (_ Unimplemented) ListUploads(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2266,6 +2311,58 @@ func (siw *ServerInterfaceWrapper) PutShare(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// UnstarFile operation middleware
+func (siw *ServerInterfaceWrapper) UnstarFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnstarFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StarFile operation middleware
+func (siw *ServerInterfaceWrapper) StarFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StarFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetThumbnail operation middleware
 func (siw *ServerInterfaceWrapper) GetThumbnail(w http.ResponseWriter, r *http.Request) {
 
@@ -2462,6 +2559,20 @@ func (siw *ServerInterfaceWrapper) TrashFolder(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListRecentFiles operation middleware
+func (siw *ServerInterfaceWrapper) ListRecentFiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRecentFiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Search operation middleware
 func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
 
@@ -2500,6 +2611,20 @@ func (siw *ServerInterfaceWrapper) ListShares(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListShares(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListStarredFiles operation middleware
+func (siw *ServerInterfaceWrapper) ListStarredFiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListStarredFiles(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3332,6 +3457,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/v1/storage/routing", wrapper.SetRouting)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/recent", wrapper.ListRecentFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/starred", wrapper.ListStarredFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/files/{id}/star", wrapper.UnstarFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/files/{id}/star", wrapper.StarFile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/search", wrapper.Search)

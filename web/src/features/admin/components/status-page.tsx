@@ -108,7 +108,7 @@ export function StatusPage() {
         <h1 className="text-xl font-semibold tracking-tight">Server status</h1>
         {status && (
           <p className="text-muted-foreground">
-            {formatBytes(status.used_bytes)} used across {accounts}
+            Version {status.version}, {formatBytes(status.used_bytes)} used across {accounts}
           </p>
         )}
       </div>

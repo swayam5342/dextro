@@ -51,6 +51,7 @@ type File struct {
 	ContentType  string
 	// External marks someone's own Drive file. Deleting it leaves it in Drive.
 	External  bool
+	Starred   bool
 	TrashedAt *time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time

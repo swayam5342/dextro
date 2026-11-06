@@ -176,6 +176,8 @@ export interface components {
       checked_at: string;
     };
     ServerStatus: {
+      /** The version this server is running. */
+      version: string;
       /** Only jobs that have finished at least once. */
       jobs: components["schemas"]["JobRun"][];
       /** Storage accounts linked across the whole server. */
@@ -256,9 +258,13 @@ export interface components {
       preview: "image" | "video" | "pdf" | "none";
       connection_id: string;
       folder_id: string | null;
+      starred: boolean;
       trashed_at: string | null;
       created_at: string;
       updated_at: string;
+    };
+    FileList: {
+      files: components["schemas"]["File"][];
     };
     Folder: {
       id: string;
@@ -602,6 +608,16 @@ export interface paths {
       requestBody?: never;
       responses: { 200: JsonBody<Schemas["UploadSession"]>; default: JsonBody<Schemas["Error"]> };
     };
+    delete: PathOperation;
+  };
+  "/api/v1/recent": {
+    get: Operation<{ 200: JsonBody<Schemas["FileList"]> }>;
+  };
+  "/api/v1/starred": {
+    get: Operation<{ 200: JsonBody<Schemas["FileList"]> }>;
+  };
+  "/api/v1/files/{id}/star": {
+    put: PathOperation;
     delete: PathOperation;
   };
   "/api/v1/search": {

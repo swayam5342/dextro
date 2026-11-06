@@ -23,6 +23,7 @@ import (
 	"github.com/swayam5342/tributary/internal/jobs"
 	"github.com/swayam5342/tributary/internal/platform"
 	"github.com/swayam5342/tributary/internal/storage"
+	"github.com/swayam5342/tributary/internal/version"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -123,7 +124,7 @@ func syncNewAccount(service *files.Service) storage.AfterConnect {
 func serve(ctx context.Context, server *http.Server, logger *slog.Logger) error {
 	listenErr := make(chan error, 1)
 	go func() {
-		logger.Info("server listening", "addr", server.Addr)
+		logger.Info("server listening", "addr", server.Addr, "version", version.Version)
 		listenErr <- server.ListenAndServe()
 	}()
 

@@ -306,6 +306,36 @@ func (h *Handler) TrashFile(w http.ResponseWriter, r *http.Request, id types.UUI
 	h.noContent(w, r, h.service.TrashFile(r.Context(), userID(r), id, httpx.ClientIP(r.Context())))
 }
 
+// ListRecentFiles implements apigen.ServerInterface.
+func (h *Handler) ListRecentFiles(w http.ResponseWriter, r *http.Request) {
+	files, err := h.service.Recent(r.Context(), userID(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, apigen.FileList{Files: toAPIFiles(files)})
+}
+
+// ListStarredFiles implements apigen.ServerInterface.
+func (h *Handler) ListStarredFiles(w http.ResponseWriter, r *http.Request) {
+	files, err := h.service.Starred(r.Context(), userID(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, apigen.FileList{Files: toAPIFiles(files)})
+}
+
+// StarFile implements apigen.ServerInterface.
+func (h *Handler) StarFile(w http.ResponseWriter, r *http.Request, id types.UUID) {
+	h.noContent(w, r, h.service.SetStarred(r.Context(), userID(r), id, true))
+}
+
+// UnstarFile implements apigen.ServerInterface.
+func (h *Handler) UnstarFile(w http.ResponseWriter, r *http.Request, id types.UUID) {
+	h.noContent(w, r, h.service.SetStarred(r.Context(), userID(r), id, false))
+}
+
 // RestoreFile implements apigen.ServerInterface.
 func (h *Handler) RestoreFile(w http.ResponseWriter, r *http.Request, id types.UUID) {
 	h.noContent(w, r, h.service.RestoreFile(r.Context(), userID(r), id))
@@ -491,6 +521,7 @@ func toAPIFile(f File) apigen.File {
 		Size:         f.Size,
 		ContentType:  f.ContentType,
 		External:     f.External,
+		Starred:      f.Starred,
 		Preview:      previewOf(f.ContentType),
 		ConnectionId: f.ConnectionID,
 		FolderId:     f.FolderID,

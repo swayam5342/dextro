@@ -319,6 +319,7 @@ func toRecord(row dbgen.File) fileRecord {
 			Size:         row.Size,
 			ContentType:  row.ContentType,
 			External:     row.External,
+			Starred:      row.StarredAt != nil,
 			TrashedAt:    row.TrashedAt,
 			CreatedAt:    row.CreatedAt,
 			UpdatedAt:    row.UpdatedAt,

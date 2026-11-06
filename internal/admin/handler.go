@@ -9,6 +9,7 @@ import (
 	"github.com/swayam5342/tributary/internal/audit"
 	"github.com/swayam5342/tributary/internal/httpx"
 	"github.com/swayam5342/tributary/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/version"
 )
 
 // Handler serves the admin routes. requireAdmin has already run by the time any
@@ -80,6 +81,7 @@ func (h *Handler) GetServerStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := apigen.ServerStatus{
+		Version:             version.Version,
 		Jobs:                make([]apigen.JobRun, 0, len(status.Jobs)),
 		Accounts:            status.Health.Accounts,
 		UsedBytes:           status.Health.UsedBytes,

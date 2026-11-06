@@ -15,7 +15,7 @@ import (
 const createFile = `-- name: CreateFile :one
 INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
 `
 
 type CreateFileParams struct {
@@ -54,6 +54,7 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.External,
+		&i.StarredAt,
 	)
 	return i, err
 }
@@ -147,7 +148,7 @@ func (q *Queries) DeleteFolderForOwner(ctx context.Context, arg DeleteFolderForO
 }
 
 const getFileForOwner = `-- name: GetFileForOwner :one
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external FROM files WHERE user_id = $1 AND id = $2
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at FROM files WHERE user_id = $1 AND id = $2
 `
 
 type GetFileForOwnerParams struct {
@@ -171,6 +172,7 @@ func (q *Queries) GetFileForOwner(ctx context.Context, arg GetFileForOwnerParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.External,
+		&i.StarredAt,
 	)
 	return i, err
 }
@@ -262,7 +264,7 @@ func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, 
 }
 
 const listFilesInFolderForOwner = `-- name: ListFilesInFolderForOwner :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
 FROM files
 WHERE user_id = $1
   AND folder_id IS NOT DISTINCT FROM $2::uuid
@@ -297,6 +299,7 @@ func (q *Queries) ListFilesInFolderForOwner(ctx context.Context, arg ListFilesIn
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.External,
+			&i.StarredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -315,7 +318,7 @@ WITH RECURSIVE tree AS (
     UNION
     SELECT c.id FROM folders c JOIN tree ON c.parent_id = tree.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
 FROM files
 JOIN tree ON files.folder_id = tree.id
 WHERE files.user_id = $1
@@ -349,6 +352,7 @@ func (q *Queries) ListFilesUnderFolderForOwner(ctx context.Context, arg ListFile
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.External,
+			&i.StarredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -463,7 +467,7 @@ func (q *Queries) ListFoldersInFolderForOwner(ctx context.Context, arg ListFolde
 }
 
 const listObjectsForConnection = `-- name: ListObjectsForConnection :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
 FROM files
 WHERE user_id = $1 AND connection_id = $2
 `
@@ -495,6 +499,108 @@ func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsF
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.External,
+			&i.StarredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentFilesForOwner = `-- name: ListRecentFilesForOwner :many
+WITH RECURSIVE hidden AS (
+    SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
+    UNION
+    SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+)
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
+FROM files
+WHERE files.user_id = $1
+  AND files.trashed_at IS NULL
+  AND (files.folder_id IS NULL OR files.folder_id NOT IN (SELECT id FROM hidden))
+ORDER BY files.created_at DESC, files.id
+LIMIT 50
+`
+
+// The newest live files, wherever they are.
+func (q *Queries) ListRecentFilesForOwner(ctx context.Context, userID uuid.UUID) ([]File, error) {
+	rows, err := q.db.Query(ctx, listRecentFilesForOwner, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []File{}
+	for rows.Next() {
+		var i File
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConnectionID,
+			&i.FolderID,
+			&i.ObjectID,
+			&i.Name,
+			&i.Size,
+			&i.ContentType,
+			&i.TrashedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.External,
+			&i.StarredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStarredFilesForOwner = `-- name: ListStarredFilesForOwner :many
+WITH RECURSIVE hidden AS (
+    SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
+    UNION
+    SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+)
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
+FROM files
+WHERE files.user_id = $1
+  AND files.starred_at IS NOT NULL
+  AND files.trashed_at IS NULL
+  AND (files.folder_id IS NULL OR files.folder_id NOT IN (SELECT id FROM hidden))
+ORDER BY files.starred_at DESC, files.id
+LIMIT 500
+`
+
+// Live starred files, the latest star first.
+func (q *Queries) ListStarredFilesForOwner(ctx context.Context, userID uuid.UUID) ([]File, error) {
+	rows, err := q.db.Query(ctx, listStarredFilesForOwner, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []File{}
+	for rows.Next() {
+		var i File
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConnectionID,
+			&i.FolderID,
+			&i.ObjectID,
+			&i.Name,
+			&i.Size,
+			&i.ContentType,
+			&i.TrashedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.External,
+			&i.StarredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -507,7 +613,7 @@ func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsF
 }
 
 const listTrashedFilesForOwner = `-- name: ListTrashedFilesForOwner :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
 FROM files
 WHERE user_id = $1 AND trashed_at IS NOT NULL
 ORDER BY trashed_at DESC, id
@@ -535,6 +641,7 @@ func (q *Queries) ListTrashedFilesForOwner(ctx context.Context, userID uuid.UUID
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.External,
+			&i.StarredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -595,7 +702,7 @@ const moveFileForOwner = `-- name: MoveFileForOwner :one
 UPDATE files
 SET folder_id = $3::uuid, updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
 `
 
 type MoveFileForOwnerParams struct {
@@ -620,6 +727,7 @@ func (q *Queries) MoveFileForOwner(ctx context.Context, arg MoveFileForOwnerPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.External,
+		&i.StarredAt,
 	)
 	return i, err
 }
@@ -656,7 +764,7 @@ const renameFileForOwner = `-- name: RenameFileForOwner :one
 UPDATE files
 SET name = $3, updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
 `
 
 type RenameFileForOwnerParams struct {
@@ -681,6 +789,7 @@ func (q *Queries) RenameFileForOwner(ctx context.Context, arg RenameFileForOwner
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.External,
+		&i.StarredAt,
 	)
 	return i, err
 }
@@ -719,7 +828,7 @@ WITH RECURSIVE hidden AS (
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
 FROM files
 WHERE files.user_id = $1
   AND files.trashed_at IS NULL
@@ -757,6 +866,7 @@ func (q *Queries) SearchFilesForOwner(ctx context.Context, arg SearchFilesForOwn
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.External,
+			&i.StarredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -815,6 +925,27 @@ func (q *Queries) SearchFoldersForOwner(ctx context.Context, arg SearchFoldersFo
 		return nil, err
 	}
 	return items, nil
+}
+
+const setFileStarredForOwner = `-- name: SetFileStarredForOwner :execrows
+UPDATE files
+SET starred_at = CASE WHEN $1::boolean THEN now() END
+WHERE user_id = $2 AND id = $3
+`
+
+type SetFileStarredForOwnerParams struct {
+	Starred bool
+	UserID  uuid.UUID
+	ID      uuid.UUID
+}
+
+// Leaves updated_at alone: a star isn't a change to the file.
+func (q *Queries) SetFileStarredForOwner(ctx context.Context, arg SetFileStarredForOwnerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setFileStarredForOwner, arg.Starred, arg.UserID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setFileTrashedForOwner = `-- name: SetFileTrashedForOwner :execrows

@@ -146,6 +146,43 @@ WHERE folders.user_id = $1
 ORDER BY lower(folders.name), folders.id
 LIMIT 100;
 
+-- The newest live files, wherever they are.
+-- name: ListRecentFilesForOwner :many
+WITH RECURSIVE hidden AS (
+    SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
+    UNION
+    SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+)
+SELECT files.*
+FROM files
+WHERE files.user_id = $1
+  AND files.trashed_at IS NULL
+  AND (files.folder_id IS NULL OR files.folder_id NOT IN (SELECT id FROM hidden))
+ORDER BY files.created_at DESC, files.id
+LIMIT 50;
+
+-- Live starred files, the latest star first.
+-- name: ListStarredFilesForOwner :many
+WITH RECURSIVE hidden AS (
+    SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
+    UNION
+    SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+)
+SELECT files.*
+FROM files
+WHERE files.user_id = $1
+  AND files.starred_at IS NOT NULL
+  AND files.trashed_at IS NULL
+  AND (files.folder_id IS NULL OR files.folder_id NOT IN (SELECT id FROM hidden))
+ORDER BY files.starred_at DESC, files.id
+LIMIT 500;
+
+-- Leaves updated_at alone: a star isn't a change to the file.
+-- name: SetFileStarredForOwner :execrows
+UPDATE files
+SET starred_at = CASE WHEN sqlc.arg(starred)::boolean THEN now() END
+WHERE user_id = sqlc.arg(user_id) AND id = sqlc.arg(id);
+
 -- name: ListObjectsForConnection :many
 SELECT *
 FROM files

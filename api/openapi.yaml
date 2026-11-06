@@ -640,6 +640,59 @@ paths:
                 $ref: "#/components/schemas/Routing"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/recent:
+    get:
+      operationId: listRecentFiles
+      summary: List the newest files, wherever they are
+      description: Up to 50, newest first. Anything in the trash is left out.
+      tags: [files]
+      responses:
+        "200":
+          description: The files.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileList"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/starred:
+    get:
+      operationId: listStarredFiles
+      summary: List starred files, wherever they are
+      description: The latest star comes first. Anything in the trash is left out.
+      tags: [files]
+      responses:
+        "200":
+          description: The files.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileList"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{id}/star:
+    put:
+      operationId: starFile
+      summary: Star a file
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The file is starred.
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: unstarFile
+      summary: Take a file's star away
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The file isn't starred.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/search:
     get:
       operationId: search
@@ -1030,7 +1083,7 @@ paths:
   /api/v1/uploads:
     get:
       operationId: listUploads
-      summary: List the signed-in user's unfinished uploads
+      summary: List the user's unfinished uploads
       tags: [files]
       responses:
         "200":
@@ -1561,8 +1614,10 @@ components:
           type: string
     File:
       type: object
-      required: [id, name, size, content_type, preview, connection_id, folder_id, trashed_at, created_at, updated_at, external]
+      required: [id, name, size, content_type, preview, connection_id, folder_id, starred, trashed_at, created_at, updated_at, external]
       properties:
+        starred:
+          type: boolean
         external:
           type: boolean
           description: Someone's own Drive file, which deleting forever leaves in Drive.
@@ -1597,6 +1652,14 @@ components:
         updated_at:
           type: string
           format: date-time
+    FileList:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/File"
     Folder:
       type: object
       required: [id, name, parent_id, trashed_at, created_at, updated_at]
@@ -1895,8 +1958,11 @@ components:
           format: date-time
     ServerStatus:
       type: object
-      required: [jobs, accounts, used_bytes, unreachable_accounts]
+      required: [version, jobs, accounts, used_bytes, unreachable_accounts]
       properties:
+        version:
+          type: string
+          description: The version this server is running.
         jobs:
           type: array
           description: Only jobs that have finished at least once.
