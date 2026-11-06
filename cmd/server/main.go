@@ -14,15 +14,15 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/admin"
-	"github.com/swayam5342/dextro/internal/auth"
-	"github.com/swayam5342/dextro/internal/config"
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/files"
-	"github.com/swayam5342/dextro/internal/httpx"
-	"github.com/swayam5342/dextro/internal/jobs"
-	"github.com/swayam5342/dextro/internal/platform"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/admin"
+	"github.com/swayam5342/tributary/internal/auth"
+	"github.com/swayam5342/tributary/internal/config"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/files"
+	"github.com/swayam5342/tributary/internal/httpx"
+	"github.com/swayam5342/tributary/internal/jobs"
+	"github.com/swayam5342/tributary/internal/platform"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 const shutdownTimeout = 15 * time.Second

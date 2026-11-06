@@ -14,9 +14,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/admin"
-	"github.com/swayam5342/dextro/internal/auth"
-	"github.com/swayam5342/dextro/internal/files"
+	"github.com/swayam5342/tributary/internal/admin"
+	"github.com/swayam5342/tributary/internal/auth"
+	"github.com/swayam5342/tributary/internal/files"
 )
 
 const usage = `usage: tributary-cli <command>

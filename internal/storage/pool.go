@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/tributary/internal/provider"
 )
 
 // quotaTimeout is how long a slow account can hold up an upload before it's

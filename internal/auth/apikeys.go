@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/swayam5342/dextro/internal/audit"
-	"github.com/swayam5342/dextro/internal/db/dbgen"
-	"github.com/swayam5342/dextro/internal/httpx"
+	"github.com/swayam5342/tributary/internal/audit"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/httpx"
 )
 
 const (

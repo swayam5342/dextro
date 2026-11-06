@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/swayam5342/dextro/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
 )
 
 // folderObject ties a Tributary folder to its folder in one account. objectID is empty

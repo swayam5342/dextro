@@ -17,12 +17,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/db/dbtest"
-	"github.com/swayam5342/dextro/internal/httpx"
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
-	"github.com/swayam5342/dextro/internal/provider"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/httpx"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/provider"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 func (f *uploadFixture) putIn(t *testing.T, userID, connection uuid.UUID, folder *uuid.UUID, name, body string) File {

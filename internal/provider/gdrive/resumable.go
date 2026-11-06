@@ -15,7 +15,7 @@ import (
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
 
-	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/tributary/internal/provider"
 )
 
 const (

@@ -14,9 +14,9 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
-	"github.com/swayam5342/dextro/internal/admin"
-	"github.com/swayam5342/dextro/internal/files"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/admin"
+	"github.com/swayam5342/tributary/internal/files"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 // Names of the jobs. These are stored, and the admin's status page knows them.

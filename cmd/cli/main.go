@@ -10,14 +10,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/swayam5342/dextro/internal/admin"
-	"github.com/swayam5342/dextro/internal/auth"
-	"github.com/swayam5342/dextro/internal/cli"
-	"github.com/swayam5342/dextro/internal/config"
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/files"
-	"github.com/swayam5342/dextro/internal/platform"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/admin"
+	"github.com/swayam5342/tributary/internal/auth"
+	"github.com/swayam5342/tributary/internal/cli"
+	"github.com/swayam5342/tributary/internal/config"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/files"
+	"github.com/swayam5342/tributary/internal/platform"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 func main() {

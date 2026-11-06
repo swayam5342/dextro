@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swayam5342/dextro/internal/provider"
-	"github.com/swayam5342/dextro/internal/provider/providertest"
+	"github.com/swayam5342/tributary/internal/provider"
+	"github.com/swayam5342/tributary/internal/provider/providertest"
 )
 
 const testVerifier = "the-verifier-the-verifier-the-verifier-the-verifier"

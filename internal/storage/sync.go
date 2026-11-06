@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/provider/gdrive"
+	"github.com/swayam5342/tributary/internal/provider/gdrive"
 )
 
 // syncBatch limits how many accounts are asked at once, so a server with many

@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swayam5342/dextro/internal/httpx"
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/httpx"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
 )
 
 func parseIDs(raw *[]string) ([]uuid.UUID, error) {

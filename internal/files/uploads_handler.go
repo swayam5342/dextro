@@ -6,8 +6,8 @@ import (
 
 	"github.com/oapi-codegen/runtime/types"
 
-	"github.com/swayam5342/dextro/internal/httpx"
-	"github.com/swayam5342/dextro/internal/httpx/apigen"
+	"github.com/swayam5342/tributary/internal/httpx"
+	"github.com/swayam5342/tributary/internal/httpx/apigen"
 )
 
 // ListUploads implements apigen.ServerInterface.

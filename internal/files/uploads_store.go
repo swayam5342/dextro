@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/swayam5342/dextro/internal/db/dbgen"
-	"github.com/swayam5342/dextro/internal/secrets"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/secrets"
 )
 
 // uploadRecord is a session plus what must not leave this package.

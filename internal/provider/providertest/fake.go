@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/tributary/internal/provider"
 )
 
 // Fake is an in-memory provider. Unlike real ones it holds whole files in

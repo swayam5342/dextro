@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/swayam5342/dextro/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
 )
 
 // Actions recorded in audit_events. Stored values, so don't rename them.

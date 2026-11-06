@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/tributary/internal/provider"
 )
 
 // ListPageSize is the page size providers must be configured with for Run, so

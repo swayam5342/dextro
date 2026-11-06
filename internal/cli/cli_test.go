@@ -10,13 +10,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/swayam5342/dextro/internal/admin"
-	"github.com/swayam5342/dextro/internal/auth"
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/db/dbtest"
-	"github.com/swayam5342/dextro/internal/files"
-	"github.com/swayam5342/dextro/internal/secrets"
-	"github.com/swayam5342/dextro/internal/storage"
+	"github.com/swayam5342/tributary/internal/admin"
+	"github.com/swayam5342/tributary/internal/auth"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/files"
+	"github.com/swayam5342/tributary/internal/secrets"
+	"github.com/swayam5342/tributary/internal/storage"
 )
 
 type fixture struct {

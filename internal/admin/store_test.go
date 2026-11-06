@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/swayam5342/dextro/internal/db"
-	"github.com/swayam5342/dextro/internal/db/dbtest"
+	"github.com/swayam5342/tributary/internal/db"
+	"github.com/swayam5342/tributary/internal/db/dbtest"
 )
 
 func TestSettingsStore(t *testing.T) {

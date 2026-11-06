@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/swayam5342/dextro/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/db/dbgen"
 )
 
 // dueShare is a link the expiry job has to end. An unfinished one never reached anybody.

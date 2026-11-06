@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swayam5342/dextro/internal/provider"
+	"github.com/swayam5342/tributary/internal/provider"
 )
 
 func openProvider(t *testing.T, f *fakeDrive) *Provider {
