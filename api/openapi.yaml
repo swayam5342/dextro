@@ -606,6 +606,40 @@ paths:
                 $ref: "#/components/schemas/Pool"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/storage/routing:
+    get:
+      operationId: getRouting
+      summary: Report how uploads choose an account
+      tags: [storage]
+      responses:
+        "200":
+          description: The routing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Routing"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: setRouting
+      summary: Set how uploads choose an account
+      description: An upload that names an account still goes there, whatever this says.
+      tags: [storage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingUpdate"
+      responses:
+        "200":
+          description: The routing as saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Routing"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/search:
     get:
       operationId: search
@@ -1714,6 +1748,41 @@ components:
           format: int64
           nullable: true
           description: Null if the account has no limit, or can't be reached.
+    RoutingMode:
+      type: string
+      enum: [most_space, round_robin, priority]
+      description: >-
+        most_space uses the account with the most free space. round_robin takes the
+        accounts in turn. priority uses the first account in the order that has room.
+    Routing:
+      type: object
+      required: [mode, order, last_connection_id]
+      properties:
+        mode:
+          $ref: "#/components/schemas/RoutingMode"
+        order:
+          type: array
+          description: Every linked account, in the order round robin and priority use.
+          items:
+            type: string
+            format: uuid
+        last_connection_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The account round robin used last.
+    RoutingUpdate:
+      type: object
+      required: [mode, order]
+      properties:
+        mode:
+          $ref: "#/components/schemas/RoutingMode"
+        order:
+          type: array
+          description: Accounts left out come after these, oldest first.
+          items:
+            type: string
+            format: uuid
     Pool:
       type: object
       required: [accounts, used_bytes, limit_bytes, free_bytes, picker_enabled]

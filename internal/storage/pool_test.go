@@ -49,6 +49,23 @@ func TestPool(t *testing.T) {
 		{"the pool view adds accounts up", testPoolUsage},
 		{"the pool view flags broken accounts", testPoolFlagsBroken},
 		{"the pool view has no total with an unlimited account", testPoolUnlimited},
+		{"round robin takes the accounts in turn", testRoundRobinTakesTurns},
+		{"round robin follows the order", testRoundRobinFollowsOrder},
+		{"round robin skips a full account", testRoundRobinSkipsFull},
+		{"round robin skips a broken account", testRoundRobinSkipsBroken},
+		{"round robin skips an account being emptied", testRoundRobinSkipsDraining},
+		{"a chosen account does not use up a turn", testChosenAccountKeepsTheTurn},
+		{"round robin carries on after an account is removed", testRoundRobinSurvivesRemoval},
+		{"round robin shares out uploads started together", testRoundRobinSharesParallelUploads},
+		{"priority uses the first account in the order", testPriorityUsesTheOrder},
+		{"priority moves on when a file does not fit", testPriorityOverflows},
+		{"priority counts space held by unfinished uploads", testPriorityCountsReservations},
+		{"accounts linked later go to the end of the order", testPriorityListsNewAccountsLast},
+		{"every mode reports a full pool", testAllFullIsStillFull},
+		{"routing starts as most free space", testRoutingDefault},
+		{"routing refuses bad input", testRoutingRefusesBadInput},
+		{"routing belongs to one user", testRoutingIsPerUser},
+		{"changing routing is audited", testRoutingIsAudited},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

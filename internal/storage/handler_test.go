@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -54,7 +56,12 @@ func (s *server) signedIn(t *testing.T) *browser {
 
 func (b *browser) do(method, target string) *httptest.ResponseRecorder {
 	b.t.Helper()
-	req := httptest.NewRequest(method, target, nil)
+	return b.send(method, target, "")
+}
+
+func (b *browser) send(method, target, body string) *httptest.ResponseRecorder {
+	b.t.Helper()
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Header.Set("Origin", testOrigin)
 	for name, value := range b.cookies {
 		req.AddCookie(&http.Cookie{Name: name, Value: value})
@@ -155,6 +162,7 @@ func TestHandlers(t *testing.T) {
 		{"linking an account syncs it", testLinkingSyncsTheAccount},
 		{"the picker is off without a key", testPickerDisabled},
 		{"opening the picker", testOpenPicker},
+		{"reading and setting routing", testRoutingRoutes},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -444,4 +452,33 @@ func testOpenPicker(t *testing.T, s *server) {
 	if pool := decode[apigen.Pool](t, b.do(http.MethodGet, "/api/v1/storage/pool")); !pool.PickerEnabled {
 		t.Errorf("pool = %+v", pool)
 	}
+}
+
+func testRoutingRoutes(t *testing.T, s *server) {
+	b := s.signedIn(t)
+	other := s.signedIn(t)
+	first := s.connect(t, b.userID, "first@example.org")
+	second := s.connect(t, b.userID, "second@example.org")
+
+	body := fmt.Sprintf(`{"mode":"priority","order":[%q,%q]}`, second.ID, first.ID)
+	rec := b.send(http.MethodPut, "/api/v1/storage/routing", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	got := decode[apigen.Routing](t, b.do(http.MethodGet, "/api/v1/storage/routing"))
+	if got.Mode != apigen.Priority || !slices.Equal(got.Order, []uuid.UUID{second.ID, first.ID}) {
+		t.Errorf("routing = %+v", got)
+	}
+
+	// Someone else's routing is their own, and they can't name these accounts.
+	theirs := decode[apigen.Routing](t, other.do(http.MethodGet, "/api/v1/storage/routing"))
+	if theirs.Mode != apigen.MostSpace || len(theirs.Order) != 0 {
+		t.Errorf("another user sees %+v", theirs)
+	}
+	wantError(t, other.send(http.MethodPut, "/api/v1/storage/routing", body), http.StatusNotFound, httpx.CodeNotFound)
+
+	wantError(t, b.send(http.MethodPut, "/api/v1/storage/routing", `{"mode":"fastest","order":[]}`), http.StatusBadRequest, httpx.CodeBadRequest)
+
+	delete(b.cookies, httpx.SessionCookieName)
+	wantError(t, b.do(http.MethodGet, "/api/v1/storage/routing"), http.StatusUnauthorized, httpx.CodeUnauthorized)
 }

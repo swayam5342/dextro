@@ -35,6 +35,7 @@ const (
 	ActionFilesAdded       = "storage.files_added"
 	ActionFilesTransferred = "storage.files_transferred"
 	ActionStorageEmptied   = "storage.emptied"
+	ActionRoutingChanged   = "storage.routing_changed"
 	ActionAPIKeyCreated    = "api_key.created"
 	ActionAPIKeyRevoked    = "api_key.revoked"
 	ActionFileDeleted      = "file.deleted"

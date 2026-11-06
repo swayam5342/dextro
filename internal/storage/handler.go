@@ -92,6 +92,32 @@ func (h *Handler) GetPool(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
+// GetRouting implements apigen.ServerInterface.
+func (h *Handler) GetRouting(w http.ResponseWriter, r *http.Request) {
+	principal, _ := httpx.PrincipalFrom(r.Context())
+	routing, err := h.service.Routing(r.Context(), principal.UserID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toAPIRouting(routing))
+}
+
+// SetRouting implements apigen.ServerInterface.
+func (h *Handler) SetRouting(w http.ResponseWriter, r *http.Request) {
+	principal, _ := httpx.PrincipalFrom(r.Context())
+	var body apigen.RoutingUpdate
+	if !httpx.DecodeJSON(w, r, &body) {
+		return
+	}
+	routing, err := h.service.SetRouting(r.Context(), principal.UserID, RoutingMode(body.Mode), body.Order, httpx.ClientIP(r.Context()))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toAPIRouting(routing))
+}
+
 // DeleteConnection implements apigen.ServerInterface.
 func (h *Handler) DeleteConnection(w http.ResponseWriter, r *http.Request, id types.UUID) {
 	principal, _ := httpx.PrincipalFrom(r.Context())
@@ -226,6 +252,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, ErrPickerDisabled):
 		httpx.WriteError(w, r, http.StatusNotFound, codePickerDisabled, "Adding files from Drive isn't set up on this server.")
+	case errors.Is(err, ErrInvalidRouting):
+		httpx.WriteError(w, r, http.StatusBadRequest, httpx.CodeBadRequest, "Choose a routing mode, and list each account once.")
 	case errors.Is(err, ErrConnectionNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
 	case errors.Is(err, ErrConnectionHasLinks):
@@ -241,6 +269,10 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 			"request_id", httpx.RequestID(r.Context()), "error", err)
 		httpx.WriteError(w, r, http.StatusInternalServerError, httpx.CodeInternal, "Something went wrong.")
 	}
+}
+
+func toAPIRouting(r Routing) apigen.Routing {
+	return apigen.Routing{Mode: apigen.RoutingMode(r.Mode), Order: r.Order, LastConnectionId: r.Last}
 }
 
 func toAPIPool(p Pool) apigen.Pool {

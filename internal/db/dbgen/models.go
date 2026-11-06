@@ -136,6 +136,13 @@ type StorageConnection struct {
 	Draining         bool
 }
 
+type UploadRouting struct {
+	UserID           uuid.UUID
+	Mode             string
+	AccountOrder     []uuid.UUID
+	LastConnectionID uuid.NullUUID
+}
+
 type UploadSession struct {
 	ID               uuid.UUID
 	UserID           uuid.UUID

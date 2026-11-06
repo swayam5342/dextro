@@ -146,6 +146,27 @@ func (e NewShareRole) Valid() bool {
 	}
 }
 
+// Defines values for RoutingMode.
+const (
+	MostSpace  RoutingMode = "most_space"
+	Priority   RoutingMode = "priority"
+	RoundRobin RoutingMode = "round_robin"
+)
+
+// Valid indicates whether the value is a known member of the RoutingMode enum.
+func (e RoutingMode) Valid() bool {
+	switch e {
+	case MostSpace:
+		return true
+	case Priority:
+		return true
+	case RoundRobin:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ShareRole.
 const (
 	ShareRoleCommenter ShareRole = "commenter"
@@ -520,6 +541,30 @@ type PoolAccount struct {
 	UsedBytes     int64 `json:"used_bytes"`
 }
 
+// Routing defines model for Routing.
+type Routing struct {
+	// LastConnectionId The account round robin used last.
+	LastConnectionId *openapi_types.UUID `json:"last_connection_id"`
+
+	// Mode most_space uses the account with the most free space. round_robin takes the accounts in turn. priority uses the first account in the order that has room.
+	Mode RoutingMode `json:"mode"`
+
+	// Order Every linked account, in the order round robin and priority use.
+	Order []openapi_types.UUID `json:"order"`
+}
+
+// RoutingMode most_space uses the account with the most free space. round_robin takes the accounts in turn. priority uses the first account in the order that has room.
+type RoutingMode string
+
+// RoutingUpdate defines model for RoutingUpdate.
+type RoutingUpdate struct {
+	// Mode most_space uses the account with the most free space. round_robin takes the accounts in turn. priority uses the first account in the order that has room.
+	Mode RoutingMode `json:"mode"`
+
+	// Order Accounts left out come after these, oldest first.
+	Order []openapi_types.UUID `json:"order"`
+}
+
 // SearchResults defines model for SearchResults.
 type SearchResults struct {
 	Files   []File   `json:"files"`
@@ -803,6 +848,9 @@ type MoveFolderJSONRequestBody = MoveFolderInput
 // ImportPickedJSONRequestBody defines body for ImportPicked for application/json ContentType.
 type ImportPickedJSONRequestBody = PickedFiles
 
+// SetRoutingJSONRequestBody defines body for SetRouting for application/json ContentType.
+type SetRoutingJSONRequestBody = RoutingUpdate
+
 // CreateTransfersJSONRequestBody defines body for CreateTransfers for application/json ContentType.
 type CreateTransfersJSONRequestBody = NewTransfers
 
@@ -973,6 +1021,12 @@ type ServerInterface interface {
 	// GetPool Report how full each linked account is, and the total
 	// (GET /api/v1/storage/pool)
 	GetPool(w http.ResponseWriter, r *http.Request)
+	// GetRouting Report how uploads choose an account
+	// (GET /api/v1/storage/routing)
+	GetRouting(w http.ResponseWriter, r *http.Request)
+	// SetRouting Set how uploads choose an account
+	// (PUT /api/v1/storage/routing)
+	SetRouting(w http.ResponseWriter, r *http.Request)
 	// ListTransfers See files moving between accounts
 	// (GET /api/v1/transfers)
 	ListTransfers(w http.ResponseWriter, r *http.Request)
@@ -1342,6 +1396,18 @@ func (_ Unimplemented) ConnectGoogleDrive(w http.ResponseWriter, r *http.Request
 // GetPool Report how full each linked account is, and the total
 // (GET /api/v1/storage/pool)
 func (_ Unimplemented) GetPool(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetRouting Report how uploads choose an account
+// (GET /api/v1/storage/routing)
+func (_ Unimplemented) GetRouting(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetRouting Set how uploads choose an account
+// (PUT /api/v1/storage/routing)
+func (_ Unimplemented) SetRouting(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2713,6 +2779,34 @@ func (siw *ServerInterfaceWrapper) GetPool(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// GetRouting operation middleware
+func (siw *ServerInterfaceWrapper) GetRouting(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRouting(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetRouting operation middleware
+func (siw *ServerInterfaceWrapper) SetRouting(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetRouting(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTransfers operation middleware
 func (siw *ServerInterfaceWrapper) ListTransfers(w http.ResponseWriter, r *http.Request) {
 
@@ -3232,6 +3326,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/storage/pool", wrapper.GetPool)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/storage/routing", wrapper.GetRouting)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/storage/routing", wrapper.SetRouting)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/search", wrapper.Search)

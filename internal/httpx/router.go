@@ -79,6 +79,8 @@ type FilesHandlers interface {
 type StorageHandlers interface {
 	ListConnections(w http.ResponseWriter, r *http.Request)
 	GetPool(w http.ResponseWriter, r *http.Request)
+	GetRouting(w http.ResponseWriter, r *http.Request)
+	SetRouting(w http.ResponseWriter, r *http.Request)
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	TestConnection(w http.ResponseWriter, r *http.Request, id types.UUID)
 	OpenPicker(w http.ResponseWriter, r *http.Request, id types.UUID)

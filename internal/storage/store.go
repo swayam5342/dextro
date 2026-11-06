@@ -226,6 +226,51 @@ func (s *Store) ReservedBytes(ctx context.Context, userID uuid.UUID) (map[uuid.U
 	return reserved, nil
 }
 
+// UploadRouting returns how a user's uploads choose an account. Someone who has never
+// set it gets the most free space.
+func (s *Store) UploadRouting(ctx context.Context, userID uuid.UUID) (Routing, error) {
+	row, err := s.queries.GetUploadRoutingForOwner(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Routing{Mode: RouteMostSpace}, nil
+	}
+	if err != nil {
+		return Routing{}, fmt.Errorf("get upload routing: %w", err)
+	}
+	routing := Routing{Mode: RoutingMode(row.Mode), Order: row.AccountOrder}
+	if row.LastConnectionID.Valid {
+		routing.Last = &row.LastConnectionID.UUID
+	}
+	return routing, nil
+}
+
+// SetUploadRouting saves how a user's uploads choose an account.
+func (s *Store) SetUploadRouting(ctx context.Context, userID uuid.UUID, mode RoutingMode, order []uuid.UUID) error {
+	if order == nil {
+		order = []uuid.UUID{} // A nil slice would be saved as NULL.
+	}
+	err := s.queries.SetUploadRoutingForOwner(ctx, dbgen.SetUploadRoutingForOwnerParams{
+		UserID:       userID,
+		Mode:         string(mode),
+		AccountOrder: order,
+	})
+	if err != nil {
+		return fmt.Errorf("set upload routing: %w", err)
+	}
+	return nil
+}
+
+// SetLastUploadConnection records the account round robin just used.
+func (s *Store) SetLastUploadConnection(ctx context.Context, userID, connectionID uuid.UUID) error {
+	err := s.queries.SetLastUploadConnectionForOwner(ctx, dbgen.SetLastUploadConnectionForOwnerParams{
+		UserID:           userID,
+		LastConnectionID: uuid.NullUUID{UUID: connectionID, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("set last upload connection: %w", err)
+	}
+	return nil
+}
+
 // CreateUploadSession saves an upload, which is what holds its space.
 func (s *Store) CreateUploadSession(ctx context.Context, userID, connectionID uuid.UUID, r Reservation) error {
 	folder := uuid.NullUUID{}

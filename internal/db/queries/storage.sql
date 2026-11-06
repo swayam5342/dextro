@@ -64,3 +64,19 @@ ORDER BY c.checked_at, c.id;
 UPDATE storage_connections
 SET draining = $3
 WHERE user_id = $1 AND id = $2;
+
+-- name: GetUploadRoutingForOwner :one
+SELECT *
+FROM upload_routing
+WHERE user_id = $1;
+
+-- name: SetUploadRoutingForOwner :exec
+INSERT INTO upload_routing (user_id, mode, account_order)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id) DO UPDATE
+SET mode = EXCLUDED.mode, account_order = EXCLUDED.account_order;
+
+-- name: SetLastUploadConnectionForOwner :exec
+UPDATE upload_routing
+SET last_connection_id = $2
+WHERE user_id = $1;

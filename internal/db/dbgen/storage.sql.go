@@ -161,6 +161,24 @@ func (q *Queries) GetConnectionTotals(ctx context.Context) (GetConnectionTotalsR
 	return i, err
 }
 
+const getUploadRoutingForOwner = `-- name: GetUploadRoutingForOwner :one
+SELECT user_id, mode, account_order, last_connection_id
+FROM upload_routing
+WHERE user_id = $1
+`
+
+func (q *Queries) GetUploadRoutingForOwner(ctx context.Context, userID uuid.UUID) (UploadRouting, error) {
+	row := q.db.QueryRow(ctx, getUploadRoutingForOwner, userID)
+	var i UploadRouting
+	err := row.Scan(
+		&i.UserID,
+		&i.Mode,
+		&i.AccountOrder,
+		&i.LastConnectionID,
+	)
+	return i, err
+}
+
 const listAllConnectionsForJobs = `-- name: ListAllConnectionsForJobs :many
 SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at, draining
 FROM storage_connections
@@ -318,6 +336,40 @@ func (q *Queries) SetConnectionDrainingForOwner(ctx context.Context, arg SetConn
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setLastUploadConnectionForOwner = `-- name: SetLastUploadConnectionForOwner :exec
+UPDATE upload_routing
+SET last_connection_id = $2
+WHERE user_id = $1
+`
+
+type SetLastUploadConnectionForOwnerParams struct {
+	UserID           uuid.UUID
+	LastConnectionID uuid.NullUUID
+}
+
+func (q *Queries) SetLastUploadConnectionForOwner(ctx context.Context, arg SetLastUploadConnectionForOwnerParams) error {
+	_, err := q.db.Exec(ctx, setLastUploadConnectionForOwner, arg.UserID, arg.LastConnectionID)
+	return err
+}
+
+const setUploadRoutingForOwner = `-- name: SetUploadRoutingForOwner :exec
+INSERT INTO upload_routing (user_id, mode, account_order)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id) DO UPDATE
+SET mode = EXCLUDED.mode, account_order = EXCLUDED.account_order
+`
+
+type SetUploadRoutingForOwnerParams struct {
+	UserID       uuid.UUID
+	Mode         string
+	AccountOrder []uuid.UUID
+}
+
+func (q *Queries) SetUploadRoutingForOwner(ctx context.Context, arg SetUploadRoutingForOwnerParams) error {
+	_, err := q.db.Exec(ctx, setUploadRoutingForOwner, arg.UserID, arg.Mode, arg.AccountOrder)
+	return err
 }
 
 const updateConnectionForOwner = `-- name: UpdateConnectionForOwner :one

@@ -126,6 +126,19 @@ export interface components {
       /** Null if the account has no limit, or can't be reached. */
       limit_bytes: number | null;
     };
+    RoutingMode: "most_space" | "round_robin" | "priority";
+    Routing: {
+      mode: Schemas["RoutingMode"];
+      /** Every linked account, in the order round robin and priority use. */
+      order: string[];
+      /** The account round robin used last. */
+      last_connection_id: string | null;
+    };
+    RoutingUpdate: {
+      mode: Schemas["RoutingMode"];
+      /** Accounts left out come after these, oldest first. */
+      order: string[];
+    };
     Pool: {
       /** Whether files can be added with Google's picker. */
       picker_enabled: boolean;
@@ -190,7 +203,7 @@ export interface components {
       size: number;
       content_type?: string;
       folder_id?: string | null;
-      /** The account to use. Left out, the account with the most free space is chosen. */
+      /** The account to use. Left out, the user's upload routing chooses. */
       connection_id?: string | null;
       /** The file's modified time in milliseconds. */
       last_modified?: number;
@@ -443,6 +456,10 @@ export interface paths {
   };
   "/api/v1/storage/pool": {
     get: Operation<{ 200: JsonBody<Schemas["Pool"]> }>;
+  };
+  "/api/v1/storage/routing": {
+    get: Operation<{ 200: JsonBody<Schemas["Routing"]> }>;
+    put: JsonOperation<Schemas["RoutingUpdate"], { 200: JsonBody<Schemas["Routing"]> }>;
   };
   "/api/v1/storage/google/connect": {
     post: Operation<{ 200: JsonBody<Schemas["GoogleRedirect"]> }>;
