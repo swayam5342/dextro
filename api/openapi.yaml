@@ -288,7 +288,7 @@ paths:
       parameters:
         - name: connection_id
           in: query
-          description: The account to use. Left out, the account with the most free space is chosen.
+          description: The account to use. Left out, the user's upload routing chooses.
           schema:
             type: string
             format: uuid
@@ -1966,7 +1966,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: The account to use. Left out, the account with the most free space is chosen.
+          description: The account to use. Left out, the user's upload routing chooses.
         last_modified:
           type: integer
           format: int64

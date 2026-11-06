@@ -23,6 +23,8 @@ import { rootRoute } from "./root-route";
 export const queryClient = new QueryClient();
 
 export const router = createRouter({
+  // The website serves a copy of the app under /demo.
+  basepath: import.meta.env.BASE_URL,
   routeTree: rootRoute.addChildren([
     signInRoute,
     registerRoute,

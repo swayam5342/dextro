@@ -239,6 +239,14 @@ Each backend feature has a `handler.go` for HTTP, a `service.go` for rules and a
 - Uploaded content is served with a sandbox policy. Only images, video and PDFs display in the browser, and everything else downloads.
 - Every query that loads user data is scoped to that user.
 
+## Docker images
+
+Ready-built images are on Docker Hub as [`swayam5342/tributary-api`](https://hub.docker.com/r/swayam5342/tributary-api) and [`swayam5342/tributary-web`](https://hub.docker.com/r/swayam5342/tributary-web), for amd64. [`website/public/docker-compose.yml`](website/public/docker-compose.yml) runs them without building anything.
+
+## Licence
+
+Tributary is released under the [MIT licence](LICENSE).
+
 ## Good to know
 
 - **The name.** Tributary used to be called dextro. That's why the folder in your Drive, the database and the `DEXTRO_` settings still use the old name: changing them would lose track of data that's already there.

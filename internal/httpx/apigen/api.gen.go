@@ -487,7 +487,7 @@ type NewTransfers struct {
 
 // NewUpload defines model for NewUpload.
 type NewUpload struct {
-	// ConnectionId The account to use. Left out, the account with the most free space is chosen.
+	// ConnectionId The account to use. Left out, the user's upload routing chooses.
 	ConnectionId *openapi_types.UUID `json:"connection_id,omitempty"`
 	ContentType  *string             `json:"content_type,omitempty"`
 	FolderId     *openapi_types.UUID `json:"folder_id,omitempty"`
@@ -760,7 +760,7 @@ type ListFolderParams struct {
 
 // UploadFileParams defines parameters for UploadFile.
 type UploadFileParams struct {
-	// ConnectionId The account to use. Left out, the account with the most free space is chosen.
+	// ConnectionId The account to use. Left out, the user's upload routing chooses.
 	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
 
 	// Name Required. Not marked so, because generated checks would run before access checks.
