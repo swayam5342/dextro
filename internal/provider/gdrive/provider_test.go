@@ -301,3 +301,36 @@ func TestThumbnail(t *testing.T) {
 		t.Errorf("asked for %q, want a 480px image", f.gotThumbPath)
 	}
 }
+
+// Moving a file to Drive's trash counts as gone, as it does in a listing.
+func TestExistsTreatsTrashAsGone(t *testing.T) {
+	f := newFakeDrive(t)
+	p := openProvider(t, f)
+	ctx := context.Background()
+	object, err := p.Put(ctx, provider.Upload{Name: "a.txt", Body: strings.NewReader("x")})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	f.mu.Lock()
+	f.files[object.ID].Trashed = true
+	f.mu.Unlock()
+	if exists, err := p.Exists(ctx, object.ID); err != nil || exists {
+		t.Errorf("exists = %v, error = %v", exists, err)
+	}
+}
+
+func TestExistsReportsFailures(t *testing.T) {
+	f := newFakeDrive(t)
+	c := newTestClient(f)
+	settings, credentials := connect(t, c)
+	f.mu.Lock()
+	f.refreshRevoked = true
+	f.mu.Unlock()
+	p, err := c.Open(context.Background(), settings, credentials)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if exists, err := p.Exists(context.Background(), "file-1"); err == nil || exists {
+		t.Errorf("exists = %v, error = %v, a failure must not read as gone", exists, err)
+	}
+}

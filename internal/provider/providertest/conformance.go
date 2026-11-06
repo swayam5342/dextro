@@ -86,6 +86,22 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 	})
 
+	t.Run("an object can be looked up directly", func(t *testing.T) {
+		object, err := p.Put(ctx, provider.Upload{Name: "here.txt", ContentType: "text/plain", Body: strings.NewReader("x")})
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		if exists, err := p.Exists(ctx, object.ID); err != nil || !exists {
+			t.Errorf("after storing: exists = %v, error = %v", exists, err)
+		}
+		if err := p.Delete(ctx, object.ID); err != nil {
+			t.Fatalf("Delete: %v", err)
+		}
+		if exists, err := p.Exists(ctx, object.ID); err != nil || exists {
+			t.Errorf("after deleting: exists = %v, error = %v", exists, err)
+		}
+	})
+
 	t.Run("a listing says what type an object is", func(t *testing.T) {
 		object := put(t, "typed.txt", "hello")
 		for _, listed := range listAll(t) {

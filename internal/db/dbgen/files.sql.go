@@ -402,7 +402,7 @@ func (q *Queries) ListFoldersInFolderForOwner(ctx context.Context, arg ListFolde
 }
 
 const listObjectsForConnection = `-- name: ListObjectsForConnection :many
-SELECT id, object_id, created_at
+SELECT id, object_id
 FROM files
 WHERE user_id = $1 AND connection_id = $2
 `
@@ -413,9 +413,8 @@ type ListObjectsForConnectionParams struct {
 }
 
 type ListObjectsForConnectionRow struct {
-	ID        uuid.UUID
-	ObjectID  string
-	CreatedAt time.Time
+	ID       uuid.UUID
+	ObjectID string
 }
 
 func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsForConnectionParams) ([]ListObjectsForConnectionRow, error) {
@@ -427,7 +426,7 @@ func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsF
 	items := []ListObjectsForConnectionRow{}
 	for rows.Next() {
 		var i ListObjectsForConnectionRow
-		if err := rows.Scan(&i.ID, &i.ObjectID, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.ID, &i.ObjectID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	// syncGrace leaves anything this new alone. An upload stores its object a moment
-	// before saving its record, and a listing can lag behind a new file, so in that
-	// window the two sides disagree without anything being wrong.
+	// syncGrace is how old an object has to be before it's added. An upload stores its
+	// object a moment before saving its record, and adding it in that moment would make
+	// the upload's own save fail, which would then delete the object.
 	syncGrace = 10 * time.Minute
 	// importedFallbackName stands in for a name dextro can't use.
 	importedFallbackName = "Recovered file"
@@ -33,9 +33,10 @@ type SyncResult struct {
 // of files that are gone are removed.
 //
 // Removing is the dangerous half, because a failure can look like an empty account.
-// So nothing is removed unless the account answers for its folder and the listing
-// reaches the end. This only removes records of objects already gone, so it doesn't
-// break the rule that deleting is an explicit action.
+// So nothing is removed unless the account answers for its folder, the listing
+// reaches the end, and the account confirms that this one object is gone. This only
+// removes records of objects already gone, so it doesn't break the rule that deleting
+// is an explicit action.
 func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.UUID, ip string) (SyncResult, error) {
 	stored, err := s.providers.Provider(ctx, userID, connectionID)
 	if err != nil {
@@ -79,11 +80,19 @@ func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.
 		}
 	}
 
-	for objectID, record := range known {
-		if seen[objectID] || record.createdAt.After(cutoff) {
+	for objectID, fileID := range known {
+		if seen[objectID] {
 			continue
 		}
-		err := s.store.DeleteFileForOwner(ctx, userID, record.id)
+		// A listing can lag behind a new file, so being missing from it proves nothing.
+		exists, err := stored.Exists(ctx, objectID)
+		if err != nil {
+			return result, errors.Join(fmt.Errorf("%w: %w", ErrProviderFailed, err), s.recordSync(ctx, userID, connectionID, ip, result))
+		}
+		if exists {
+			continue
+		}
+		err = s.store.DeleteFileForOwner(ctx, userID, fileID)
 		if errors.Is(err, ErrFileNotFound) {
 			continue
 		}

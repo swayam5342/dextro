@@ -41,6 +41,9 @@ type Fake struct {
 	ListFailsAfter int
 	listed         int
 	hidden         map[string]bool
+	unlisted       map[string]bool
+	// ExistsErr, if set, is what Exists returns.
+	ExistsErr error
 }
 
 type fakeSession struct {
@@ -161,7 +164,7 @@ func (f *Fake) List(_ context.Context, pageToken string) (provider.ObjectPage, e
 	}
 	ids := make([]int, 0, len(f.objects))
 	for id := range f.objects {
-		if f.hidden[id] {
+		if f.hidden[id] || f.unlisted[id] {
 			continue
 		}
 		n, err := strconv.Atoi(id)
@@ -309,4 +312,26 @@ func (f *Fake) SetPageSize(size int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pageSize = size
+}
+
+// Exists implements provider.Provider.
+func (f *Fake) Exists(_ context.Context, id string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ExistsErr != nil {
+		return false, f.ExistsErr
+	}
+	_, ok := f.objects[id]
+	return ok && !f.hidden[id], nil
+}
+
+// Unlist keeps an object out of listings while it's still there, the way a listing
+// can lag behind a new file.
+func (f *Fake) Unlist(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unlisted == nil {
+		f.unlisted = map[string]bool{}
+	}
+	f.unlisted[id] = true
 }

@@ -116,6 +116,9 @@ type Provider interface {
 	// Delete removes an object permanently. Moving files to the trash is dextro's
 	// job, above this interface.
 	Delete(ctx context.Context, id string) error
+	// Exists asks about one object directly. Something in the account's trash counts
+	// as gone. Unlike a listing, this doesn't lag behind a change.
+	Exists(ctx context.Context, id string) (bool, error)
 	// List returns one page of objects. An empty token starts from the beginning.
 	List(ctx context.Context, pageToken string) (ObjectPage, error)
 	// BeginResumable starts an upload sent in chunks. The result is the session's

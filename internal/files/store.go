@@ -345,21 +345,15 @@ func toFolder(row dbgen.Folder) Folder {
 	}
 }
 
-// objectRecord is enough of a file to compare it with what's in an account.
-type objectRecord struct {
-	id        uuid.UUID
-	createdAt time.Time
-}
-
-// ObjectsForConnection returns a user's files in one account, by object ID.
-func (s *Store) ObjectsForConnection(ctx context.Context, userID, connectionID uuid.UUID) (map[string]objectRecord, error) {
+// ObjectsForConnection returns the IDs of a user's files in one account, by object ID.
+func (s *Store) ObjectsForConnection(ctx context.Context, userID, connectionID uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := s.queries.ListObjectsForConnection(ctx, dbgen.ListObjectsForConnectionParams{UserID: userID, ConnectionID: connectionID})
 	if err != nil {
 		return nil, fmt.Errorf("list objects: %w", err)
 	}
-	objects := make(map[string]objectRecord, len(rows))
+	objects := make(map[string]uuid.UUID, len(rows))
 	for _, row := range rows {
-		objects[row.ObjectID] = objectRecord{id: row.ID, createdAt: row.CreatedAt}
+		objects[row.ObjectID] = row.ID
 	}
 	return objects, nil
 }

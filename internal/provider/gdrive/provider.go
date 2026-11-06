@@ -270,6 +270,18 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// Exists implements provider.Provider.
+func (p *Provider) Exists(ctx context.Context, id string) (bool, error) {
+	file, err := p.service.Files.Get(id).Fields("id,trashed").Context(ctx).Do()
+	if isNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("find file: %w", err)
+	}
+	return !file.Trashed, nil
+}
+
 // List implements provider.Provider.
 func (p *Provider) List(ctx context.Context, pageToken string) (provider.ObjectPage, error) {
 	query := fmt.Sprintf("'%s' in parents and mimeType != '%s' and trashed = false", escapeQuery(p.folderID), folderMimeType)

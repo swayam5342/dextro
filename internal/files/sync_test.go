@@ -82,7 +82,9 @@ func TestSync(t *testing.T) {
 		{"a file put back in the account returns", testSyncBringsBack},
 		{"files still in the account are left alone", testSyncKeepsWhatsThere},
 		{"a new object isn't imported while its upload finishes", testSyncSkipsNewObjects},
-		{"a new record isn't removed because the listing missed it", testSyncSkipsNewRecords},
+		{"a file just uploaded and deleted leaves straight away", testSyncRemovesNewFiles},
+		{"a file the listing missed but the account has stays", testSyncKeepsLaggingFiles},
+		{"a failed lookup removes nothing", testFailedLookupRemovesNothing},
 		{"a listing that fails partway removes nothing", testPartialListingRemovesNothing},
 		{"a missing folder removes nothing", testMissingFolderRemovesNothing},
 		{"an unreachable account removes nothing", testUnreachableRemovesNothing},
@@ -301,20 +303,57 @@ func testSyncSkipsNewObjects(t *testing.T, f *uploadFixture) {
 	}
 }
 
-func testSyncSkipsNewRecords(t *testing.T, f *uploadFixture) {
+func (f *uploadFixture) objectID(t *testing.T, userID, fileID uuid.UUID) string {
+	t.Helper()
+	record, err := NewStore(f.pool).FileForOwner(f.ctx, userID, fileID)
+	if err != nil {
+		t.Fatalf("FileForOwner: %v", err)
+	}
+	return record.objectID
+}
+
+// What someone does to try this out: upload, delete it in Drive, press Sync.
+func testSyncRemovesNewFiles(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	connection := f.link(t, user, "a@gmail.com", 1<<30)
 	file, err := f.service.Upload(f.ctx, user, UploadInput{Name: "a.txt", Size: 1, Body: strings.NewReader("x")})
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
-	record, err := NewStore(f.pool).FileForOwner(f.ctx, user, file.ID)
-	if err != nil {
-		t.Fatalf("FileForOwner: %v", err)
+	if err := f.account("a@gmail.com").Delete(f.ctx, f.objectID(t, user, file.ID)); err != nil {
+		t.Fatalf("Delete: %v", err)
 	}
-	f.account("a@gmail.com").Hide(record.objectID)
+	if got := f.sync(t, user, connection); got.Removed != 1 {
+		t.Errorf("result = %+v", got)
+	}
+}
+
+// A listing can lag behind a new file, so missing from it doesn't prove anything.
+func testSyncKeepsLaggingFiles(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	connection := f.link(t, user, "a@gmail.com", 1<<30)
+	file, err := f.service.Upload(f.ctx, user, UploadInput{Name: "a.txt", Size: 1, Body: strings.NewReader("x")})
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	f.account("a@gmail.com").Unlist(f.objectID(t, user, file.ID))
 	if got := f.sync(t, user, connection); got.Removed != 0 {
 		t.Errorf("result = %+v", got)
+	}
+}
+
+func testFailedLookupRemovesNothing(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	connection := f.link(t, user, "a@gmail.com", 1<<30)
+	file := f.recorded(t, user, "a@gmail.com", "a.txt")
+	account := f.account("a@gmail.com")
+	account.Hide(f.objectID(t, user, file.ID))
+	account.ExistsErr = errors.New("backend error")
+	if _, err := f.service.SyncConnection(f.ctx, user, connection, "job"); !errors.Is(err, ErrProviderFailed) {
+		t.Fatalf("error = %v, want ErrProviderFailed", err)
+	}
+	if got := f.files(t, user); got != 1 {
+		t.Errorf("files = %d", got)
 	}
 }
 

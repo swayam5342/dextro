@@ -147,7 +147,7 @@ ORDER BY lower(folders.name), folders.id
 LIMIT 100;
 
 -- name: ListObjectsForConnection :many
-SELECT id, object_id, created_at
+SELECT id, object_id
 FROM files
 WHERE user_id = $1 AND connection_id = $2;
 
