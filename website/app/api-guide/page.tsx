@@ -23,6 +23,7 @@ const GROUPS: DocGroup[] = [
     title: "Examples",
     items: [
       ["upload", "Upload a file"],
+      ["resume", "Resume a large upload"],
       ["download", "Download a file"],
       ["search", "Search"],
       ["organize", "Folders and moving"],
@@ -60,6 +61,11 @@ const WRITE = [
   ["Move a folder", "POST /api/v1/folders/{id}/move"],
   ["Trash a folder", "POST /api/v1/folders/{id}/trash"],
   ["Restore a folder", "POST /api/v1/folders/{id}/restore"],
+  ["List unfinished uploads", "GET /api/v1/uploads"],
+  ["Start a resumable upload", "POST /api/v1/uploads"],
+  ["See how far an upload got", "GET /api/v1/uploads/{id}"],
+  ["Send a piece of an upload", "PUT /api/v1/uploads/{id}/chunk?offset=..."],
+  ["Cancel an upload", "DELETE /api/v1/uploads/{id}"],
 ];
 
 const ERRORS = [
@@ -72,6 +78,8 @@ const ERRORS = [
   ["409", "no_storage", "No Google account is linked yet."],
   ["507", "storage_full", "No linked account has room. A file has to fit in one account."],
   ["413", "file_too_large", "The file is over the limit the admin set."],
+  ["409", "offset_mismatch", "A piece didn't start where the upload is. Ask for the upload and carry on from received."],
+  ["410", "upload_expired", "The upload sat idle for too long. Start it again."],
   ["502", "provider_unavailable", "Google couldn't be reached. Try again."],
 ];
 
@@ -123,6 +131,7 @@ export default function ApiGuide() {
   "folder_id": null,
   "connection_id": "1b9e4d02-77ac-4a0e-8e1f-5a3c9b2d6e40",
   "external": false,
+  "starred": false,
   "trashed_at": null,
   "created_at": "2026-03-02T09:14:07Z",
   "updated_at": "2026-03-02T09:14:07Z"
@@ -140,9 +149,23 @@ export default function ApiGuide() {
       </p>
       <CodeTabs samples={samples("upload")} />
       <p>
-        An upload is one request, so if the connection drops, send the file again. Pausing and resuming are only in the app. Names
-        don't have to be unique, so uploading twice gives you two files.
+        If the connection drops, this kind of upload has to start again. Names don't have to be unique, so uploading twice gives you two
+        files.
       </p>
+    </section>
+
+    <section>
+      <h2 id="resume">Resume a large upload</h2>
+      <p>
+        For a large file, send it in pieces, so a dropped connection only costs you one piece. Start an upload, then send each piece with
+        its <code>offset</code>. The answer's <code>received</code> says where the next piece has to start, which can be less than you
+        sent, and <code>file</code> appears when it's finished. Every piece but the last must be a multiple of 256 KiB, and at most 64 MiB.
+      </p>
+      <p>
+        To pick up after a problem, ask for the upload by its ID and carry on from <code>received</code>. Space for the whole file is held
+        while it's unfinished, and an upload left idle for 24 hours is cleared away. This needs the <code>files:write</code> scope.
+      </p>
+      <CodeTabs samples={samples("resumable")} />
     </section>
 
     <section>
@@ -220,7 +243,7 @@ export default function ApiGuide() {
         <li>Delete anything permanently, or empty the trash.</li>
         <li>Make or change public Google links.</li>
         <li>Move files between Google accounts, or link and remove accounts.</li>
-        <li>Download a zip, or use resumable uploads.</li>
+        <li>Download a zip.</li>
         <li>Change upload routing, keys, passwords or server settings.</li>
       </ul>
     </section>

@@ -2,6 +2,8 @@
 
 A self-hosted file manager that turns several Google Drive accounts into one pool of storage.
 
+**[Website](https://tributary.swayam.li)** · **[Try the demo](https://tributary.swayam.li/demo)** · **[Self-hosting guide](https://tributary.swayam.li/self-host)** · **[API guide](https://tributary.swayam.li/api-guide)** · **[Changelog](CHANGELOG.md)**
+
 Link your Drive accounts, then upload, organize, preview and share files from one web app. Tributary keeps your files in your own Drive accounts, not on its own server.
 
 <picture>
@@ -20,13 +22,15 @@ Link your Drive accounts, then upload, organize, preview and share files from on
 - **One pool from many accounts.** Uploads go to the one you pick, or follow your routing: most free space, round robin or a priority order. An account that can't be reached is skipped.
 - **Real folders.** Folders appear in every linked account, inside a Drive folder named `dextro`.
 - **Large uploads that survive problems.** Files go up in pieces, so an upload can pause, resume and recover from a lost connection. You can upload a whole folder, or drag one onto the page.
-- **File management.** Sort, search, drag files onto folders, and move things to a trash with Undo. Images, video and PDFs preview in the app.
+- **File management.** Sort, search, star files, see what's recent, drag files onto folders, and move things to a trash with Undo. Keyboard shortcuts cover search (`/`), trash (Delete), rename (F2) and select all (Ctrl+A). Images, video and PDFs preview in the app.
 - **Zip downloads.** Download a folder or a selection as one zip.
 - **Moving between accounts.** Move files to rebalance your accounts, or empty one before unlinking it. Each file is copied and checked before the old copy is removed.
 - **Google links.** Share one file with a public link, choosing whether people can view, comment or edit, with an optional expiry. These are off until the admin turns them on.
 - **Add from Drive.** Bring in files you already have in Drive, using Google's picker.
 - **Accounts for other people.** One admin creates users, each with their own files and linked accounts.
-- **API keys.** Scripts can upload and read files with a scoped key.
+- **API keys.** Scripts can upload and read files with a scoped key, including resumable uploads for large files.
+- **Warnings when it matters.** A banner says when an account can't be reached or is nearly full, and Reconnect repairs it.
+- **Daily database backups.** The Compose files copy the database into a `backups` folder and keep a week.
 - **Storage at a glance.** See how much photos, videos and documents take up across the pool.
 - **Light and dark themes.** Follows your device, or choose one.
 - **Admin commands.** Manage users and settings from the command line.
@@ -241,7 +245,11 @@ Each backend feature has a `handler.go` for HTTP, a `service.go` for rules and a
 
 ## Docker images
 
-Ready-built images are on Docker Hub as [`swayam5342/tributary-api`](https://hub.docker.com/r/swayam5342/tributary-api) and [`swayam5342/tributary-web`](https://hub.docker.com/r/swayam5342/tributary-web), for amd64. [`website/public/docker-compose.yml`](website/public/docker-compose.yml) runs them without building anything.
+Ready-built images are on Docker Hub as [`swayam5342/tributary-api`](https://hub.docker.com/r/swayam5342/tributary-api) and [`swayam5342/tributary-web`](https://hub.docker.com/r/swayam5342/tributary-web), for amd64 and arm64. [`website/public/docker-compose.yml`](website/public/docker-compose.yml) runs them without building anything, and the [self-hosting guide](https://tributary.swayam.li/self-host) walks through it.
+
+## Reporting a security problem
+
+Please see [SECURITY.md](SECURITY.md).
 
 ## Licence
 

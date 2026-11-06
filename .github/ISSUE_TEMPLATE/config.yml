@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/swayam5342/tributary/security/advisories/new
+    about: Please report these privately.
+  - name: Read the docs
+    url: https://tributary.swayam.li/self-host
+    about: The self-hosting and API guides may already answer your question.

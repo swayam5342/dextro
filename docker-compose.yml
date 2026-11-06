@@ -71,6 +71,32 @@ services:
       timeout: 3s
       retries: 20
 
+  # Copies the database into ./backups once a day, and keeps the last week.
+  backup:
+    image: postgres:18-alpine
+    environment:
+      PGHOST: postgres
+      PGUSER: dextro
+      PGDATABASE: dextro
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run make env to create .env}
+    entrypoint: [/bin/sh, -c]
+    command:
+      - |
+        while true; do
+          file=/backups/dextro-$$(date +%F).sql
+          pg_dump --file="$$file" && gzip -f "$$file"
+          find /backups -name 'dextro-*.sql.gz' -mtime +7 -delete
+          sleep 86400
+        done
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
 networks:
   default:
     ipam:

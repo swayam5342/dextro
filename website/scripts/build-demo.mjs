@@ -26,6 +26,14 @@ const html = readFileSync(page, "utf8");
 if (!html.includes("<head>")) {
   throw new Error("no <head> in the built page");
 }
+// What a shared link to the demo shows.
+const preview = `
+    <meta name="description" content="Try Tributary in your browser with made-up files. No sign-up needed." />
+    <meta property="og:title" content="Try Tributary: many Google Drives, one pool" />
+    <meta property="og:description" content="The real app, running in your browser with made-up files. No sign-up needed." />
+    <meta property="og:url" content="https://tributary.swayam.li/demo" />
+    <meta property="og:image" content="https://tributary.swayam.li/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />`;
 // A plain script runs before the app's module, so the app only ever sees the stand-in.
-writeFileSync(page, html.replace("<head>", '<head>\n    <script src="/demo/demo-api.js"></script>'));
+writeFileSync(page, html.replace("<head>", `<head>\n    <script src="/demo/demo-api.js"></script>${preview}`));
 console.log("demo built");

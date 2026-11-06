@@ -1,0 +1,34 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can it be reproduced?
+      placeholder: |
+        1. Open the Storage page
+        2. Press Sync
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: On the Server status page, or from `tributary-cli version`.
+      placeholder: 0.1.1
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Anything useful from the server's logs. Remove tokens, keys and email addresses first.
+      render: text

@@ -26,7 +26,7 @@ const GROUPS: DocGroup[] = [
 
 export default function Privacy() {
   return (
-    <DocsShell current="/privacy" title="Privacy policy" lead="Last updated 6 November 2026." groups={GROUPS} next={{ href: "/terms", label: "Terms of service" }}>
+    <DocsShell current="/privacy" title="Privacy policy" lead="Last updated 7 November 2026." groups={GROUPS} next={{ href: "/terms", label: "Terms of service" }}>
       <p>
         Tributary is self-hosted software. It runs on a computer or server chosen by the person who installs it, and that person
         controls the data. Tributary doesn't send your data to its developer, and there's no central Tributary service.
@@ -41,7 +41,8 @@ export default function Privacy() {
           </li>
           <li>
             <strong>If you link a Google Drive account:</strong> the account's email address and how much storage it has used, plus the
-            files Tributary created. Tributary uses the <code>drive.file</code> permission, so it can't see anything else in your Drive.
+            files Tributary created and any files you choose in Google's picker. Tributary uses the <code>drive.file</code> permission, so it
+            can't see anything else in your Drive.
           </li>
         </ul>
       </section>
@@ -49,8 +50,8 @@ export default function Privacy() {
       <section>
         <h2 id="use">How Tributary uses it</h2>
         <p>
-          Tributary uses this information only to sign you in, show you your files, store the files you upload, and choose which linked
-          account has room. It isn't used for advertising, and Tributary has no analytics or tracking.
+          Tributary uses this information only to sign you in, show you your files, store the files you upload, choose which linked account
+          has room, and make the public links you ask for. It isn't used for advertising, and Tributary has no analytics or tracking.
         </p>
       </section>
 
@@ -58,6 +59,7 @@ export default function Privacy() {
         <h2 id="stored">Where it's stored</h2>
         <ul className="plain">
           <li>Your files stay in your own Google Drive, in a folder named dextro, the app's earlier name.</li>
+          <li>Files you add with Google's picker stay where they already are in your Drive.</li>
           <li>
             Your account details, the names and sizes of your files, and the token that keeps a Drive account linked are stored on the
             server running Tributary. Tokens are encrypted with AES-256-GCM.
@@ -69,9 +71,13 @@ export default function Privacy() {
       <section>
         <h2 id="shared">Who it's shared with</h2>
         <p>
-          Tributary doesn't sell your data or share it with anyone. It sends data only to Google, in order to do what you ask, such as
-          storing a file. The admin of the server you use can see your email address and how many accounts you've linked, but not your
-          files through Tributary.
+          Tributary doesn't sell your data. It sends data only to Google, in order to do what you ask, such as storing a file. The admin of
+          the server you use can see your email address and how many accounts you've linked, but not your files through Tributary.
+        </p>
+        <p>
+          If you make a public Google link for a file, anyone with that link can open it. This only happens when you ask for it, one file at
+          a time, and only if the admin has turned links on. Google serves the file, so Tributary can't see who opens it. The link ends when
+          you remove it, when it expires, or when the file goes to the trash.
         </p>
       </section>
 
@@ -93,7 +99,7 @@ export default function Privacy() {
             To remove Tributary's access on Google's side, go to{" "}
             <a href="https://myaccount.google.com/connections">your Google account's connections</a>.
           </li>
-          <li>The admin of your server can delete your Tributary account.</li>
+          <li>The admin of your server can delete your Tributary account. Any public links you made keep working until you remove them in Drive.</li>
         </ul>
       </section>
 

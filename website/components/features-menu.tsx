@@ -6,7 +6,7 @@ import { useState } from "react";
 const FEATURES = [
   { name: "Upload anything", text: "Send files or whole folders in pieces, so an upload can pause, resume and survive a lost connection.", image: "/media/uploading.webp", alt: "The upload panel with three files going up" },
   { name: "Preview in place", text: "Photos, video and PDFs open in the app, without downloading them first.", image: "/media/viewer.webp", alt: "A large photo open in the viewer with its details alongside" },
-  { name: "Keep things tidy", text: "Real folders, search, sorting, drag and drop, and a trash with Undo.", image: "/media/list.webp", alt: "Files in a list showing size, account and date" },
+  { name: "Keep things tidy", text: "Real folders, search, stars, recent files, keyboard shortcuts, drag and drop, and a trash with Undo.", image: "/media/list.webp", alt: "Files in a list showing size, account and date" },
   { name: "Share one file", text: "Make a public Google link for a single file, choose whether people can edit, and set when it ends. It's off until the admin turns it on.", image: "/media/link.webp", alt: "The Google link dialog with a choice of role and expiry" },
   { name: "Move between accounts", text: "Rebalance your accounts, or empty one before unlinking it. Each copy is checked before the old one goes.", image: "/media/storage.webp", alt: "Three accounts on the Storage page with files moving between them" },
   { name: "Use it on your phone", text: "The whole app works on a small screen, in light or dark.", image: "/media/phone.webp", alt: "The file browser on a phone" },

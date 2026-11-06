@@ -4,7 +4,7 @@ name: tributary
 services:
   # The address browsers use. It serves the app and passes API calls to the api service.
   web:
-    image: swayam5342/tributary-web:0.1.0
+    image: swayam5342/tributary-web:0.1.1
     environment:
       DEXTRO_API_URL: http://api:8080
       # A proxy on this machine reaches the web service from this address. Nothing else can,
@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: swayam5342/tributary-api:0.1.0
+    image: swayam5342/tributary-api:0.1.1
     environment:
       DEXTRO_DATABASE_URL: postgres://tributary:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/tributary?sslmode=disable
       DEXTRO_PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
@@ -60,6 +60,32 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
+
+  # Copies the database into ./backups once a day, and keeps the last week.
+  backup:
+    image: postgres:18-alpine
+    environment:
+      PGHOST: postgres
+      PGUSER: tributary
+      PGDATABASE: tributary
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    entrypoint: [/bin/sh, -c]
+    command:
+      - |
+        while true; do
+          file=/backups/tributary-$$(date +%F).sql
+          pg_dump --file="$$file" && gzip -f "$$file"
+          find /backups -name 'tributary-*.sql.gz' -mtime +7 -delete
+          sleep 86400
+        done
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
 networks:

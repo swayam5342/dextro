@@ -41,6 +41,7 @@ GOOGLE_CLIENT_SECRET=
 EOF`;
 
 const COMMANDS = [
+  ["version", "Which release this is"],
   ["status", "Accounts, usage and when each background job last ran"],
   ["users", "List the accounts on this server"],
   ["create-user", "Add someone"],
@@ -115,6 +116,10 @@ export default function SelfHost() {
         in. Put a reverse proxy such as Caddy or nginx in front of port 3000, then set <code>PUBLIC_URL</code> to the address people use,
         such as <code>https://files.example.com</code>, and update Google's redirect addresses to match.
       </p>
+      <p>
+        The compose file already trusts a proxy on the same machine, so the rate limits and the audit log see your visitors' real addresses.
+        If your proxy runs somewhere else, add <code>TRUSTED_PROXIES</code> to <code>.env</code> with its address or range.
+      </p>
     </section>
 
     <section>
@@ -143,11 +148,14 @@ export default function SelfHost() {
       <CodeTabs samples={[{ label: "Shell", code: "docker compose pull\ndocker compose up -d" }]} />
       <p>Database changes apply by themselves when the server starts.</p>
       <p>
-        Your files are safe in Drive, but the trash, links, users and keys live in the database, so back that up too:
+        Your files are safe in Drive, but the trash, links, users and keys live in the database. The <code>backup</code> service copies it
+        into a <code>backups</code> folder once a day and keeps the last week. Copy that folder somewhere else too, along with your{" "}
+        <code>.env</code>, because a backup on the same disk doesn't survive that disk.
       </p>
-      <CodeTabs samples={[{ label: "Shell", code: "docker compose exec -T postgres pg_dump -U tributary tributary > tributary.sql" }]} />
+      <p>To restore one, start from an empty database:</p>
+      <CodeTabs samples={[{ label: "Shell", code: "docker compose down -v\ndocker compose up -d postgres\ngunzip -c backups/tributary-2026-11-07.sql.gz | docker compose exec -T postgres psql -U tributary tributary\ndocker compose up -d" }]} />
       <p>
-        If the database is ever lost, a sync brings your files and folders back from Drive. The trash, users and keys don't come back.
+        With no backup at all, a sync still brings your files and folders back from Drive. The trash, users and keys don't come back.
       </p>
       <p>
         Ready to build on it? Read the <Link href="/api-guide">API guide</Link>, or see the <a href={GITHUB}>code on GitHub</a>.

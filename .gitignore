@@ -3,6 +3,9 @@
 /web/node_modules/
 /web/dist/
 
+# Database backups, from the backup service
+/backups/
+
 # Secrets
 .env
 .env.*
