@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -66,7 +67,7 @@ func NeedsNoServer(args []string) bool {
 
 // Run runs one command. An unknown command or the wrong arguments return the usage.
 func Run(ctx context.Context, d Deps, args []string, out io.Writer) error {
-	if len(args) == 1 && args[0] == "version" {
+	if slices.Equal(args, []string{"version"}) {
 		_, err := fmt.Fprintln(out, version.Version)
 		return err
 	}

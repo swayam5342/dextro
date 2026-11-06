@@ -960,21 +960,34 @@ func TestChunkedUploadHandlers(t *testing.T) {
 		t.Errorf("cancel: status = %d, body %s", rec.Code, rec.Body)
 	}
 
-	// Scripts keep the one-request upload, so these stay closed to keys.
-	for _, route := range []struct{ method, target string }{
+	withKey := func(token, method, target string) int {
+		req := httptest.NewRequest(method, target, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	routes := []struct{ method, target string }{
 		{http.MethodGet, "/api/v1/uploads"},
 		{http.MethodPost, "/api/v1/uploads"},
 		{http.MethodGet, path},
 		{http.MethodDelete, path},
 		{http.MethodPut, path + "/chunk?offset=0"},
-	} {
-		req := httptest.NewRequest(route.method, route.target, strings.NewReader("{}"))
-		req.Header.Set("Origin", testOrigin)
-		req.Header.Set("Authorization", "Bearer "+owner.String()+":files:write")
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("%s %s with a key: status = %d", route.method, route.target, rec.Code)
+	}
+	for _, route := range routes {
+		// A key that writes can reach these, and one that only reads can't.
+		if code := withKey(owner.String()+":files:write", route.method, route.target); code == http.StatusForbidden || code == http.StatusUnauthorized {
+			t.Errorf("%s %s with a write key: status = %d", route.method, route.target, code)
 		}
+		if code := withKey(owner.String()+":files:read", route.method, route.target); code != http.StatusForbidden {
+			t.Errorf("%s %s with a read key: status = %d, want 403", route.method, route.target, code)
+		}
+	}
+
+	// Someone else's key doesn't find this person's upload.
+	theirs := decode[apigen.UploadSession](t, do(owner, http.MethodPost, "/api/v1/uploads", `{"name":"d.txt","size":3}`))
+	stranger := f.user(t).String() + ":files:write"
+	if code := withKey(stranger, http.MethodGet, "/api/v1/uploads/"+theirs.Id.String()); code != http.StatusNotFound {
+		t.Errorf("a stranger's key: status = %d, want 404", code)
 	}
 }
