@@ -213,6 +213,7 @@ function Tank({
   const sync = useSyncConnection(connection.id);
   const empty = useEmptyConnection(connection.id);
   const stop = useStopEmptying(connection.id);
+  const connect = useConnectGoogleDrive();
   const [confirming, setConfirming] = useState<"remove" | "empty" | null>(null);
   const broken = account?.available === false;
   const limit = account?.limit_bytes;
@@ -238,13 +239,19 @@ function Tank({
       </h2>
       {isNext && <p className="text-[13px] text-water">Next upload goes here</p>}
       {connection.draining && <p className="text-[13px]">{emptyingText(files, idle)}</p>}
-      {broken && <p className="text-[13px] text-destructive">Link it again to repair it.</p>}
+      {broken && <p className="text-[13px] text-destructive">Its Google sign-in has expired or been removed.</p>}
       {test.isSuccess && <p className="text-[13px]">This account works.</p>}
       {sync.data && <p className="text-[13px]">{syncText(sync.data)}</p>}
       <FormError message={sync.error ? "This account couldn't be checked, so nothing changed." : undefined} />
-      <FormError message={test.error ? "This account couldn't be reached. Link it again to repair it." : undefined} />
+      <FormError message={test.error ? "This account couldn't be reached. Reconnect it to repair it." : undefined} />
+      <FormError message={connect.error?.message} />
       <FormError message={stop.error?.message} />
       <div className="mt-auto flex flex-wrap gap-2">
+        {broken && (
+          <Button size="sm" disabled={connect.isPending} onClick={() => connect.mutate()}>
+            Reconnect
+          </Button>
+        )}
         {pickerEnabled && !broken && (
           <Button variant="soft" size="sm" onClick={() => openPicker(connection.id)}>
             Add from Drive

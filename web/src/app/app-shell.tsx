@@ -4,17 +4,20 @@ import {
   Activity,
   ChevronDown,
   Check,
+  Clock,
   Database,
   Folder,
   ScrollText,
   Search,
   Settings,
+  Star,
   Trash2,
   FolderUp,
   Link2,
   Upload,
   UserRound,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
@@ -36,10 +39,12 @@ import { DropZone, UploadPanel } from "@/features/files/components/upload-panel"
 import { treeFromPicked } from "@/features/files/folder-tree";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
 import { UsageCard } from "@/features/storage/components/usage-card";
-import { freeSpaceText, routingText, usableConnections } from "@/features/storage/pool";
+import { accountAlert, freeSpaceText, routingText, usableConnections } from "@/features/storage/pool";
 import { connectionsQuery, poolQuery, routingQuery, useFollowTransfers } from "@/features/storage/queries";
+import { recall, remember } from "@/lib/remember";
+import { keyIsTaken } from "@/lib/utils";
 
-function NavLink({ to, icon: Icon, label }: { to: "/" | "/trash" | "/links" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
+function NavLink({ to, icon: Icon, label }: { to: "/" | "/recent" | "/starred" | "/trash" | "/links" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
   return (
     <Link
       to={to}
@@ -107,6 +112,8 @@ function Sidebar() {
     <aside className="hidden min-h-0 flex-col overflow-y-auto border-r p-3 md:flex">
       <nav aria-label="Main" className="flex flex-col gap-0.5">
         <NavLink to="/" icon={Folder} label="Files" />
+        <NavLink to="/recent" icon={Clock} label="Recent" />
+        <NavLink to="/starred" icon={Star} label="Starred" />
         <NavLink to="/trash" icon={Trash2} label="Trash" />
         <NavLink to="/links" icon={Link2} label="Links" />
         <NavLink to="/storage" icon={Database} label="Storage" />
@@ -134,7 +141,19 @@ function SearchBox() {
   const navigate = useNavigate();
   const { q } = useSearch({ strict: false });
   const [text, setText] = useState(q ?? "");
+  const box = useRef<HTMLInputElement>(null);
   useEffect(() => setText(q ?? ""), [q]);
+
+  useEffect(() => {
+    function focusOnSlash(event: KeyboardEvent) {
+      if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !keyIsTaken(event.target)) {
+        event.preventDefault();
+        box.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", focusOnSlash);
+    return () => window.removeEventListener("keydown", focusOnSlash);
+  }, []);
 
   function search(value: string) {
     const trimmed = value.trim();
@@ -151,6 +170,7 @@ function SearchBox() {
       <label className="flex h-[38px] items-center gap-2.5 rounded-full bg-card px-3.5 text-muted-foreground transition-colors focus-within:bg-raised">
         <Search className="size-[18px] shrink-0" />
         <input
+          ref={box}
           type="search"
           aria-label="Search your files"
           placeholder="Search your files"
@@ -252,6 +272,34 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
   );
 }
 
+const DISMISSED_KEY = "dextro.dismissed-alert";
+
+/** Says when an account needs attention, everywhere but the page that already shows it. */
+function AccountAlert() {
+  const { pathname } = useLocation();
+  const { data: pool } = useQuery(poolQuery);
+  const [dismissed, setDismissed] = useState(() => recall(DISMISSED_KEY));
+  const alert = accountAlert(pool);
+  if (!alert || alert.text === dismissed || pathname === "/storage") {
+    return null;
+  }
+  function dismiss(text: string) {
+    setDismissed(text);
+    remember(DISMISSED_KEY, text);
+  }
+  return (
+    <div role="status" className="mb-4 flex items-center gap-3 rounded-[14px] bg-card py-2 pr-2 pl-3.5 text-sm">
+      <span className="min-w-0 flex-1">{alert.text}</span>
+      <Button asChild variant="soft" size="sm">
+        <Link to="/storage">{alert.action}</Link>
+      </Button>
+      <Button variant="ghost" size="icon" aria-label="Dismiss" onClick={() => dismiss(alert.text)}>
+        <X />
+      </Button>
+    </div>
+  );
+}
+
 function MobileTabs() {
   const tab = (to: "/" | "/trash" | "/links" | "/storage" | "/account", Icon: LucideIcon, label: string) => (
     <Link
@@ -302,6 +350,7 @@ function Frame() {
       </header>
       <Sidebar />
       <main id="main" className="relative min-w-0 overflow-y-auto px-4 pt-4 pb-24 md:px-7 md:pt-[22px]">
+        <AccountAlert />
         <Outlet />
       </main>
       <MobileTabs />

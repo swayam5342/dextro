@@ -13,6 +13,8 @@ import {
   List,
   Pencil,
   RefreshCw,
+  Star,
+  StarOff,
   Trash2,
   X,
 } from "lucide-react";
@@ -27,19 +29,22 @@ import { syncText, usableConnections } from "@/features/storage/pool";
 import { connectionsQuery, useSyncAccounts } from "@/features/storage/queries";
 import { count, formatBytes, formatDate } from "@/lib/format";
 import { recall, remember } from "@/lib/remember";
-import { cn } from "@/lib/utils";
+import { cn, keyIsTaken } from "@/lib/utils";
 
 import {
   checkZip,
   contentUrl,
   folderQuery,
   itemKey,
+  recentQuery,
   searchQuery,
   sharesQuery,
+  starredQuery,
   useCreateFolder,
   useMoveToTrash,
   useRename,
   useRestore,
+  useSetStarred,
   zipUrl,
   type Item,
 } from "../queries";
@@ -63,6 +68,12 @@ import { Viewer } from "./viewer";
 type File = components["schemas"]["File"];
 type Folder = components["schemas"]["Folder"];
 type View = "grid" | "list";
+type FileList = "recent" | "starred";
+
+const FILE_LISTS = {
+  recent: { title: "Recent", blank: "Nothing here yet", text: "The newest files in your pool show up here." },
+  starred: { title: "Starred", blank: "No starred files", text: "Star a file from its menu to keep it here." },
+};
 
 type Action =
   | { type: "rename"; item: Item; name: string }
@@ -88,22 +99,37 @@ function download(file: File) {
   save(contentUrl(file.id, false));
 }
 
-function Browser({ folderId, query }: { folderId: string | undefined; query: string | undefined }) {
+function Browser({
+  folderId,
+  query,
+  list,
+}: {
+  folderId: string | undefined;
+  query: string | undefined;
+  list: FileList | undefined;
+}) {
   const navigate = useNavigate();
-  const folder = useQuery({ ...folderQuery(folderId), enabled: !query });
+  /** A flat list of results has no folder of its own to add to or sync. */
+  const flat = Boolean(query || list);
+  const folder = useQuery({ ...folderQuery(folderId), enabled: !flat });
   const search = useQuery({ ...searchQuery(query ?? ""), enabled: Boolean(query) });
-  const { isPending, isError } = query ? search : folder;
-  const data = query ? search.data && { path: [], ...search.data } : folder.data;
+  const recent = useQuery({ ...recentQuery, enabled: list === "recent" });
+  const starred = useQuery({ ...starredQuery, enabled: list === "starred" });
+  const listed = list === "recent" ? recent : starred;
+  const { isPending, isError } = list ? listed : query ? search : folder;
+  const results = query ? search.data : listed.data && { folders: [], ...listed.data };
+  const data = flat ? results && { path: [], ...results } : folder.data;
   const { data: connections } = useQuery(connectionsQuery);
   const { data: links } = useQuery(sharesQuery);
 
   const [view, setView] = useState<View>(loadView);
-  const [sort, setSort] = useState<SortId>(loadSort);
+  const [sort, setSort] = useState<SortId>(() => (list ? "date-desc" : loadSort()));
   const [selected, setSelected] = useState<Item[]>([]);
   const [action, setAction] = useState<Action | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const createFolder = useCreateFolder();
   const rename = useRename();
+  const setStarred = useSetStarred();
   const trash = useMoveToTrash();
   const restore = useRestore();
   const sync = useSyncAccounts();
@@ -128,13 +154,41 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
       return undefined;
     }
     function clearOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      // Escape in a dialog or menu closes that, and leaves the selection alone.
+      if (event.key === "Escape" && !keyIsTaken(event.target)) {
         setSelected([]);
       }
     }
     window.addEventListener("keydown", clearOnEscape);
     return () => window.removeEventListener("keydown", clearOnEscape);
   }, [selecting]);
+
+  // Runs after every render, so the keys always act on what's on screen now.
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (action || viewing || keyIsTaken(event.target)) {
+        return;
+      }
+      if (event.key === "Delete" && selecting) {
+        void moveToTrash(selected);
+      } else if (event.key === "F2" && selected.length === 1 && selected[0]) {
+        const item = selected[0];
+        const named = [...folders, ...files].find((entry) => entry.id === item.id);
+        if (named) {
+          event.preventDefault();
+          setAction({ type: "rename", item, name: named.name });
+        }
+      } else if (event.key === "a" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        setSelected([
+          ...folders.map(({ id }): Item => ({ kind: "folder", id })),
+          ...files.map(({ id }): Item => ({ kind: "file", id })),
+        ]);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  });
 
   function toggle(item: Item) {
     setSelected((current) =>
@@ -164,7 +218,10 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
 
   function changeSort(next: SortId) {
     setSort(next);
-    saveSort(next);
+    // Recent and Starred start newest first, and a choice there stays there.
+    if (!list) {
+      saveSort(next);
+    }
   }
 
   function deselect(items: Item[]) {
@@ -271,6 +328,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
       entries: fileEntries(file),
       drag: dragFrom(item),
       shared: shares.has(file.id),
+      starred: file.starred,
       onToggle: () => toggle(item),
     };
   }
@@ -300,8 +358,23 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
       icon: ArrowLeftRight,
       run: () => setAction({ type: "account", fileIds: [file.id], name: file.name, from: [file.connection_id] }),
     };
+    const showInFolder: MenuEntry = {
+      label: "Show in folder",
+      icon: FolderOpen,
+      run: () => void navigate({ to: "/", search: file.folder_id ? { folder: file.folder_id } : {} }),
+    };
     return [
       { label: "Download", icon: Download, run: () => download(file) },
+      ...(flat ? [showInFolder] : []),
+      {
+        label: file.starred ? "Remove star" : "Star",
+        icon: file.starred ? StarOff : Star,
+        run: () =>
+          setStarred.mutate(
+            { id: file.id, starred: !file.starred },
+            { onError: (error) => toast({ message: failureMessage(error) }) },
+          ),
+      },
       { label: "Select", icon: CheckSquare, run: () => toggle(item) },
       { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: file.name }) },
       { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: file.name }) },
@@ -312,7 +385,7 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
     ];
   }
 
-  if (isError && !query) {
+  if (isError && !flat) {
     return (
       <Blank title="This folder isn't available" text="It may have been moved to the trash.">
         <Button asChild variant="outline">
@@ -381,18 +454,20 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
         </div>
       ) : (
         <div className="mb-[18px] flex min-h-9 items-center gap-2">
-          {query ? (
-            <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">Results for {query}</h1>
+          {flat ? (
+            <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">
+              {list ? FILE_LISTS[list].title : `Results for ${query}`}
+            </h1>
           ) : (
             <Breadcrumbs path={path} dropOn={dropOn} dropTarget={dropTarget} />
           )}
-          {!query && (
+          {!flat && (
             <Button variant="outline" aria-label="New folder" onClick={() => setAction({ type: "new-folder" })}>
               <FolderPlus />
               <span className="hidden sm:inline">New folder</span>
             </Button>
           )}
-          {!query && !noAccounts && (
+          {!flat && !noAccounts && (
             <Button variant="outline" aria-label="Sync with Drive" disabled={sync.isPending} onClick={handleSync}>
               <RefreshCw className={cn(sync.isPending && "motion-safe:animate-spin")} />
               <span className="hidden sm:inline">Sync</span>
@@ -424,19 +499,30 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
         </div>
       )}
 
+      {!selecting && !query && !folderId && (
+        <div className="mb-[18px] flex gap-2 md:hidden">
+          {(["recent", "starred"] as const).map((name) => (
+            <Button key={name} asChild variant="outline" size="sm">
+              <Link to={`/${name}`}>{FILE_LISTS[name].title}</Link>
+            </Button>
+          ))}
+        </div>
+      )}
       <FormError message={viewing ? undefined : trash.error?.message} />
       {isPending && <p className="text-muted-foreground">Loading…</p>}
       {isError && query && <FormError message="The search didn't work. Try again." />}
+      {isError && list && <FormError message="This list couldn't be loaded. Try again." />}
 
       {empty && query && <Blank title="Nothing matches" text="Try part of the name, or a different word." />}
-      {empty && !query && noAccounts && (
+      {empty && list && <Blank title={FILE_LISTS[list].blank} text={FILE_LISTS[list].text} />}
+      {empty && !flat && noAccounts && (
         <Blank title="Link an account to start" text="Your files live in your own Google Drive accounts.">
           <Button asChild>
             <Link to="/storage">Link a Google Drive account</Link>
           </Button>
         </Blank>
       )}
-      {empty && !query && !noAccounts && (
+      {empty && !flat && !noAccounts && (
         <Blank title="This folder is empty" text="Drop files anywhere on this page, or use Upload." />
       )}
 
@@ -583,6 +669,14 @@ function Browser({ folderId, query }: { folderId: string | undefined; query: str
 }
 
 /** Keyed by what's on screen, so a selection doesn't carry into another folder. */
-export function FilesPage({ folderId, query }: { folderId: string | undefined; query: string | undefined }) {
-  return <Browser key={`${folderId ?? "top"}:${query ?? ""}`} folderId={folderId} query={query} />;
+export function FilesPage({
+  folderId,
+  query,
+  list,
+}: {
+  folderId: string | undefined;
+  query: string | undefined;
+  list?: FileList;
+}) {
+  return <Browser key={`${folderId ?? "top"}:${query ?? ""}:${list ?? ""}`} folderId={folderId} query={query} list={list} />;
 }

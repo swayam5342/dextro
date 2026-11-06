@@ -63,6 +63,35 @@ export function freeSpaceText(account: PoolAccount | undefined): string | undefi
   return `${formatBytes(room(account))} free`;
 }
 
+const NEARLY_FULL = 0.9;
+
+/** The one thing worth interrupting someone about, on any page. */
+export function accountAlert(pool: Pool | undefined): { text: string; action: string } | undefined {
+  const accounts = pool?.accounts ?? [];
+  const broken = accounts.filter((account) => !account.available);
+  const [first] = broken;
+  if (first) {
+    return {
+      text:
+        broken.length === 1
+          ? `${first.connection.summary} can't be reached, so uploads are skipping it.`
+          : `${broken.length} accounts can't be reached, so uploads are skipping them.`,
+      action: broken.length === 1 ? "Reconnect" : "Reconnect them",
+    };
+  }
+  const full = accounts.filter(({ available, connection, limit_bytes, used_bytes, reserved_bytes }) => (
+    available && !connection.draining && limit_bytes !== null && used_bytes + reserved_bytes >= limit_bytes * NEARLY_FULL
+  ));
+  const [nearly] = full;
+  if (nearly) {
+    return {
+      text: full.length === 1 ? `${nearly.connection.summary} is nearly full.` : `${full.length} accounts are nearly full.`,
+      action: "See storage",
+    };
+  }
+  return undefined;
+}
+
 /** What a sync did, in words. */
 export function syncText({ added, removed, failed = 0 }: { added: number; removed: number; failed?: number }): string {
   const parts = [];

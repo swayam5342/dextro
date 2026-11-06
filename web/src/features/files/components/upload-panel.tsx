@@ -3,13 +3,14 @@ import { ChevronDown, Pause, Play, Upload as UploadIcon, X } from "lucide-react"
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { routingText } from "@/features/storage/pool";
 import { connectionsQuery, routingQuery } from "@/features/storage/queries";
 import { recall, remember } from "@/lib/remember";
 import { cn } from "@/lib/utils";
 
 import { treeFromDrop } from "../folder-tree";
-import { useUploads, type Upload, type UploadStatus } from "../uploads";
+import { useUploads, type DuplicatesQuestion, type Upload, type UploadStatus } from "../uploads";
 
 const MINIMISED_KEY = "dextro.uploads-minimised";
 
@@ -124,9 +125,34 @@ function Row({ upload, emails, routed }: { upload: Upload; emails: Map<string, s
   );
 }
 
+/** Closing it skips them, because that's the choice that can't leave a mess. */
+function DuplicatesDialog({ question }: { question: DuplicatesQuestion }) {
+  const files = question.count === 1 ? "1 file is" : `${question.count} files are`;
+  return (
+    <Dialog open onOpenChange={(open) => !open && question.answer(true)}>
+      <DialogContent>
+        <div className="space-y-1.5">
+          <DialogTitle className="text-base font-semibold">{files} already here</DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Same name and size as what's in the folder. Uploading again adds a second copy.
+          </DialogDescription>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="soft" onClick={() => question.answer(false)}>
+            Upload copies
+          </Button>
+          <Button autoFocus onClick={() => question.answer(true)}>
+            Skip them
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Progress for every upload, docked in the corner on every page. */
 export function UploadPanel() {
-  const { uploads, clearFinished } = useUploads();
+  const { uploads, duplicates, clearFinished } = useUploads();
   const { data: connections } = useQuery(connectionsQuery);
   const { data: routing } = useQuery(routingQuery);
   const [minimised, setMinimised] = useState(() => recall(MINIMISED_KEY) === "true");
@@ -154,6 +180,8 @@ export function UploadPanel() {
   const percent = overallPercent(uploads);
   const unfinished = left + stopped > 0;
   return (
+    <>
+    {duplicates && <DuplicatesDialog question={duplicates} />}
     <section
       aria-label="Uploads"
       className={cn(
@@ -192,6 +220,7 @@ export function UploadPanel() {
         </ul>
       )}
     </section>
+    </>
   );
 }
 

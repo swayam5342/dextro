@@ -47,6 +47,24 @@ export function searchQuery(query: string) {
   });
 }
 
+async function listFiles(path: "/api/v1/recent" | "/api/v1/starred") {
+  const { data, error } = await api.GET(path);
+  if (!data) {
+    throw toApiError(error);
+  }
+  return data;
+}
+
+export const recentQuery = queryOptions({
+  queryKey: [FILES_KEY, "recent"],
+  queryFn: () => listFiles("/api/v1/recent"),
+});
+
+export const starredQuery = queryOptions({
+  queryKey: [FILES_KEY, "starred"],
+  queryFn: () => listFiles("/api/v1/starred"),
+});
+
 export const trashQuery = queryOptions({
   queryKey: [TRASH_KEY],
   queryFn: async () => {
@@ -176,6 +194,22 @@ export function useRestore() {
         item.kind === "file"
           ? await api.POST("/api/v1/files/{id}/restore", { params })
           : await api.POST("/api/v1/folders/{id}/restore", { params });
+      if (!response.ok) {
+        throw toApiError(error);
+      }
+    },
+    onSuccess: refresh,
+  });
+}
+
+export function useSetStarred() {
+  const refresh = useRefreshFiles();
+  return useMutation({
+    mutationFn: async ({ id, starred }: { id: string; starred: boolean }) => {
+      const options = { params: { path: { id } } };
+      const { error, response } = await (starred
+        ? api.PUT("/api/v1/files/{id}/star", options)
+        : api.DELETE("/api/v1/files/{id}/star", options));
       if (!response.ok) {
         throw toApiError(error);
       }

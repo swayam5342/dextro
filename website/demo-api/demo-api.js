@@ -35,7 +35,7 @@
 
   const file = (id, name, size, type, preview, connection, parent, days) => ({
     id, external: false, name, size, content_type: type, preview, connection_id: connection, folder_id: parent,
-    trashed_at: null, created_at: earlier(days), updated_at: earlier(days),
+    starred: false, trashed_at: null, created_at: earlier(days), updated_at: earlier(days),
   });
   const files = [
     file("rennell-1786", "Rennell, Bengal and Oude 1786.jpg", 41 * MB, "image/jpeg", "image", "north", "survey", 40),
@@ -128,6 +128,15 @@
     };
   }
 
+  const live = () => files.filter((f) => !f.trashed_at && !folders.find((d) => d.id === f.folder_id)?.trashed_at);
+
+  function setStar(id, starred) {
+    const found = files.find((f) => f.id === id);
+    if (!found) return missing();
+    found.starred = starred;
+    return done();
+  }
+
   function usage() {
     const total = { photo_bytes: 0, video_bytes: 0, document_bytes: 0 };
     for (const f of files) {
@@ -197,6 +206,10 @@
     ["DELETE", /^\/api\/v1\/storage\/connections\/([^/]+)\/empty$/, ([, id]) => { accounts.find((a) => a.id === id).draining = false; return done(); }],
 
     ["GET", /^\/api\/v1\/usage$/, () => ok(usage())],
+    ["GET", /^\/api\/v1\/recent$/, () => ok({ files: live().sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 50) })],
+    ["GET", /^\/api\/v1\/starred$/, () => ok({ files: live().filter((f) => f.starred) })],
+    ["PUT", /^\/api\/v1\/files\/([^/]+)\/star$/, ([, id]) => setStar(id, true)],
+    ["DELETE", /^\/api\/v1\/files\/([^/]+)\/star$/, ([, id]) => setStar(id, false)],
     ["GET", /^\/api\/v1\/files$/, (_, __, query) => ok(contents(query.get("folder_id")))],
     ["PATCH", /^\/api\/v1\/files\/([^/]+)$/, ([, id], body) => {
       const found = files.find((f) => f.id === id);

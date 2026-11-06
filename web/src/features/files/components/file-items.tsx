@@ -8,6 +8,7 @@ import {
   Link2,
   MoreVertical,
   Play,
+  Star,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type HTMLAttributes, type MouseEvent } from "react";
@@ -144,6 +145,14 @@ function LinkBadge({ className }: { className?: string }) {
   return (
     <span role="img" aria-label="Has a Google link" title="Has a Google link" className={cn("grid size-6 shrink-0 place-items-center rounded-full", className)}>
       <Link2 className="size-3.5" />
+    </span>
+  );
+}
+
+function StarBadge({ className }: { className?: string }) {
+  return (
+    <span role="img" aria-label="Starred" title="Starred" className={cn("grid size-6 shrink-0 place-items-center rounded-full", className)}>
+      <Star className="size-3.5 fill-current" />
     </span>
   );
 }
@@ -349,6 +358,7 @@ export function FileTile({
             </span>
           )}
           {shared && <LinkBadge className="pointer-events-none absolute right-2 bottom-2 bg-media-scrim text-on-media" />}
+          {file.starred && <StarBadge className="pointer-events-none absolute bottom-2 left-2 bg-media-scrim text-on-media" />}
           <PickButton
             name={file.name}
             selected={selected}
@@ -405,6 +415,7 @@ interface ListRowProps {
   drag: HTMLAttributes<HTMLElement>;
   lit?: boolean;
   shared?: boolean;
+  starred?: boolean;
   onToggle: () => void;
 }
 
@@ -421,6 +432,7 @@ export function ListRow({
   drag,
   lit,
   shared,
+  starred,
   onToggle,
 }: ListRowProps) {
   const cell = "border-t px-3 py-2 whitespace-nowrap text-muted-foreground group-hover:bg-row-hover";
@@ -441,6 +453,7 @@ export function ListRow({
                 />
               </span>
               {open}
+              {starred && <StarBadge className="text-muted-foreground" />}
               {shared && <LinkBadge className="text-muted-foreground" />}
             </span>
           </td>

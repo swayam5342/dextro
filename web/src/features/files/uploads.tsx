@@ -50,8 +50,15 @@ export interface Upload {
   connectionId?: string;
 }
 
+/** Asked when a folder going up has files that are already there. */
+export interface DuplicatesQuestion {
+  count: number;
+  answer: (skip: boolean) => void;
+}
+
 interface UploadsValue {
   uploads: Upload[];
+  duplicates: DuplicatesQuestion | null;
   /** The account uploads go to. Empty leaves it to the user's routing. */
   target: string;
   setTarget: (connectionId: string) => void;
@@ -182,6 +189,7 @@ async function readSession(id: string): Promise<Session> {
  */
 async function makeFolders(queryClient: QueryClient, tree: FolderTree, root: string | undefined) {
   const ids = new Map<string, string | undefined>([["", root]]);
+  const made = new Set<string>();
   const listings = new Map<string | undefined, Folder[]>();
   for (const path of foldersToMake(tree)) {
     const name = path.at(-1) ?? "";
@@ -191,13 +199,37 @@ async function makeFolders(queryClient: QueryClient, tree: FolderTree, root: str
     let folder = siblings.find((other) => other.name === name);
     if (!folder) {
       folder = await createFolder({ name, parent_id: parent ?? null });
+      made.add(folder.id);
       siblings.push(folder);
       // Nothing can be in it yet, so there's no need to ask.
       listings.set(folder.id, []);
     }
     ids.set(path.join("/"), folder.id);
   }
-  return ids;
+  return { ids, made };
+}
+
+/** Which of a tree's files are already in their folder, by name and size. */
+async function filesAlreadyThere(queryClient: QueryClient, tree: FolderTree, ids: Map<string, string | undefined>, made: Set<string>) {
+  const stored = new Map<string | undefined, Set<string>>();
+  const already = new Set<File>();
+  for (const { file, dirs } of tree.files) {
+    const folderId = ids.get(dirs.join("/"));
+    // A folder made just now can't have anything in it.
+    if (folderId !== undefined && made.has(folderId)) {
+      continue;
+    }
+    let names = stored.get(folderId);
+    if (!names) {
+      const listing = await queryClient.fetchQuery(folderQuery(folderId));
+      names = new Set(listing.files.map(({ name, size }) => `${name}:${size}`));
+      stored.set(folderId, names);
+    }
+    if (names.has(`${file.name}:${file.size}`)) {
+      already.add(file);
+    }
+  }
+  return already;
 }
 
 /**
@@ -210,6 +242,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
   const refresh = useRefreshFiles();
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [target, setTarget] = useState("");
+  const [duplicates, setDuplicates] = useState<DuplicatesQuestion | null>(null);
   const nextId = useRef(0);
   const jobs = useRef(new Map<number, Job>());
   const queue = useRef<number[]>([]);
@@ -390,6 +423,21 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
     pump();
   }, [pump, target]);
 
+  /** Waits for an answer from the dialog in the upload panel. True means skip them. */
+  const askAboutDuplicates = useCallback(
+    (count: number) =>
+      new Promise<boolean>((resolve) => {
+        setDuplicates({
+          count,
+          answer: (skip) => {
+            setDuplicates(null);
+            resolve(skip);
+          },
+        });
+      }),
+    [],
+  );
+
   const add = useCallback((files: File[], folderId: string | undefined) => {
     queueFiles(files.map((file) => ({ file, folderId })));
   }, [queueFiles]);
@@ -400,14 +448,21 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
     setUploads((current) => [...current, { id: row, name, loaded: 0, total: 0, status: "preparing" }]);
     try {
       const read = await tree;
-      const ids = await makeFolders(queryClient, read, folderId);
-      setUploads((current) => current.filter((u) => u.id !== row));
-      queueFiles(read.files.map(({ file, dirs }) => ({ file, folderId: ids.get(dirs.join("/")) })));
+      const { ids, made } = await makeFolders(queryClient, read, folderId);
+      const already = await filesAlreadyThere(queryClient, read, ids, made);
+      const skip = already.size > 0 && (await askAboutDuplicates(already.size));
+      const wanted = skip ? read.files.filter(({ file }) => !already.has(file)) : read.files;
+      if (wanted.length === 0) {
+        update(row, { name: `${name}: nothing new`, status: "done" });
+      } else {
+        setUploads((current) => current.filter((u) => u.id !== row));
+        queueFiles(wanted.map(({ file, dirs }) => ({ file, folderId: ids.get(dirs.join("/")) })));
+      }
       await refresh();
     } catch (error) {
       update(row, { status: "failed", error: failureMessage(error) });
     }
-  }, [queryClient, queueFiles, refresh, update]);
+  }, [askAboutDuplicates, queryClient, queueFiles, refresh, update]);
 
   const pause = useCallback((id: number) => {
     const job = jobs.current.get(id);
@@ -526,8 +581,8 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
   }, [busy]);
 
   const value = useMemo(
-    () => ({ uploads, target, setTarget, add, addTree, pause, resume, reattach, cancel, clearFinished }),
-    [uploads, target, add, addTree, pause, resume, reattach, cancel, clearFinished],
+    () => ({ uploads, duplicates, target, setTarget, add, addTree, pause, resume, reattach, cancel, clearFinished }),
+    [uploads, duplicates, target, add, addTree, pause, resume, reattach, cancel, clearFinished],
   );
   return <UploadsContext.Provider value={value}>{children}</UploadsContext.Provider>;
 }

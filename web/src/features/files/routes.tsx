@@ -19,6 +19,22 @@ export const filesRoute = createRoute({
   },
 });
 
+export const recentRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/recent",
+  component: function RecentRoute() {
+    return <FilesPage folderId={undefined} query={undefined} list="recent" />;
+  },
+});
+
+export const starredRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/starred",
+  component: function StarredRoute() {
+    return <FilesPage folderId={undefined} query={undefined} list="starred" />;
+  },
+});
+
 export const trashRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/trash",
