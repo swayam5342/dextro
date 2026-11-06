@@ -27,7 +27,9 @@ Link your Drive accounts, then upload, organize, preview and share files from on
 - **Add from Drive.** Bring in files you already have in Drive, using Google's picker.
 - **Accounts for other people.** One admin creates users, each with their own files and linked accounts.
 - **API keys.** Scripts can upload and read files with a scoped key.
+- **Storage at a glance.** See how much photos, videos and documents take up across the pool.
 - **Light and dark themes.** Follows your device, or choose one.
+- **Admin commands.** Manage users and settings from the command line.
 
 ## Screenshots
 
@@ -132,21 +134,36 @@ The admin can change the upload limit and turn Google links on or off in **Serve
 
 Session cookies are always `Secure`. Chrome accepts them on `http://127.0.0.1`, but any other address needs HTTPS, or sign-in won't stick. If you change `PUBLIC_URL`, update the redirect URIs in Google to match.
 
-## Admin tasks
+## Admin commands
 
-There's one admin. These run on the server:
+There's one admin. `make admin` runs these on the server:
 
 ```sh
-# Hand the admin role to someone else
-docker compose exec api /dextro transfer-admin someone@example.org
-
-# Print a temporary password for someone locked out, the admin included
-docker compose exec api /dextro reset-password someone@example.org
+make admin cmd="help"
 ```
 
-In Git Bash, put `MSYS_NO_PATHCONV=1` in front of these.
+| Command | What it does |
+|---|---|
+| `status` | How the server, accounts and background jobs are doing |
+| `sync` | Match dextro to every linked account now |
+| `users` | List every user |
+| `create-user <email>` | Add a user and print a temporary password |
+| `delete-user <email> --yes` | Delete a user. Leave off `--yes` to see what that does |
+| `reset-password <email>` | Print a temporary password, for someone locked out, the admin included |
+| `transfer-admin <email>` | Hand the admin role to someone else |
+| `links [on\|off]` | Show or set whether people can make Google links |
+| `upload-limit [GiB]` | Show or set the largest upload |
 
-**Server status** shows whether each background job and linked account is healthy, and the **Audit log** records sign-ins, settings changes, links and permanent deletes.
+For example:
+
+```sh
+make admin cmd="create-user someone@example.org"
+make admin cmd="links on"
+```
+
+Without `make`, run `docker compose exec api /dextro <command>`. In Git Bash, put `MSYS_NO_PATHCONV=1` in front of it.
+
+These show accounts and counts, never what anyone stores, and changes appear in the audit log. In the app, **Server status** shows the same health information, and the **Audit log** records sign-ins, settings changes, links and permanent deletes.
 
 ## Changing the look
 
