@@ -89,8 +89,9 @@ up: env ## Build and start the whole stack
 down: ## Stop the stack and keep its data
 	$(COMPOSE) down
 
+admin: export MSYS_NO_PATHCONV=1
 admin: ## Run an admin command on the running stack: make admin cmd="users"
-	MSYS_NO_PATHCONV=1 $(COMPOSE) exec api /dextro $(or $(cmd),help)
+	$(COMPOSE) exec api /dextro $(or $(cmd),help)
 
 migration: $(GOOSE) ## Create a migration: make migration name=add_users
 	$(GOOSE) -dir internal/db/migrations create $(name) sql
