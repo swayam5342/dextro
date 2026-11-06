@@ -125,6 +125,48 @@ func (e ManagedUserRole) Valid() bool {
 	}
 }
 
+// Defines values for NewShareRole.
+const (
+	NewShareRoleCommenter NewShareRole = "commenter"
+	NewShareRoleEditor    NewShareRole = "editor"
+	NewShareRoleViewer    NewShareRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the NewShareRole enum.
+func (e NewShareRole) Valid() bool {
+	switch e {
+	case NewShareRoleCommenter:
+		return true
+	case NewShareRoleEditor:
+		return true
+	case NewShareRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ShareRole.
+const (
+	ShareRoleCommenter ShareRole = "commenter"
+	ShareRoleEditor    ShareRole = "editor"
+	ShareRoleViewer    ShareRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the ShareRole enum.
+func (e ShareRole) Valid() bool {
+	switch e {
+	case ShareRoleCommenter:
+		return true
+	case ShareRoleEditor:
+		return true
+	case ShareRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransferStatus.
 const (
 	Failed  TransferStatus = "failed"
@@ -407,6 +449,15 @@ type NewPassword struct {
 	Password string `json:"password"`
 }
 
+// NewShare defines model for NewShare.
+type NewShare struct {
+	ExpiresAt *time.Time   `json:"expires_at,omitempty"`
+	Role      NewShareRole `json:"role"`
+}
+
+// NewShareRole defines model for NewShare.Role.
+type NewShareRole string
+
 // NewTransfers defines model for NewTransfers.
 type NewTransfers struct {
 	FileIds            []openapi_types.UUID `json:"file_ids"`
@@ -503,13 +554,39 @@ type Session struct {
 
 // Settings defines model for Settings.
 type Settings struct {
+	// GoogleLinksEnabled Whether people can make public Google links. Off until the admin says.
+	GoogleLinksEnabled bool `json:"google_links_enabled"`
+
 	// MaxUploadBytes The largest file anyone can upload.
 	MaxUploadBytes int64 `json:"max_upload_bytes"`
 }
 
 // SettingsUpdate Only the fields present are changed.
 type SettingsUpdate struct {
-	MaxUploadBytes *int64 `json:"max_upload_bytes,omitempty"`
+	GoogleLinksEnabled *bool  `json:"google_links_enabled,omitempty"`
+	MaxUploadBytes     *int64 `json:"max_upload_bytes,omitempty"`
+}
+
+// Share A public Google link on one file.
+type Share struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// ExpiresAt When dextro removes the link. Null means it stays until removed.
+	ExpiresAt *time.Time         `json:"expires_at"`
+	FileId    openapi_types.UUID `json:"file_id"`
+	Name      string             `json:"name"`
+	Role      ShareRole          `json:"role"`
+	Url       string             `json:"url"`
+}
+
+// ShareRole defines model for Share.Role.
+type ShareRole string
+
+// ShareList defines model for ShareList.
+type ShareList struct {
+	// Enabled Whether the admin allows links. Existing ones can still be removed.
+	Enabled bool    `json:"enabled"`
+	Shares  []Share `json:"shares"`
 }
 
 // SyncResult defines model for SyncResult.
@@ -704,6 +781,9 @@ type RenameFileJSONRequestBody = NameInput
 // MoveFileJSONRequestBody defines body for MoveFile for application/json ContentType.
 type MoveFileJSONRequestBody = MoveFileInput
 
+// PutShareJSONRequestBody defines body for PutShare for application/json ContentType.
+type PutShareJSONRequestBody = NewShare
+
 // CreateFolderJSONRequestBody defines body for CreateFolder for application/json ContentType.
 type CreateFolderJSONRequestBody = FolderInput
 
@@ -814,6 +894,12 @@ type ServerInterface interface {
 	// RestoreFile Take a file out of the trash
 	// (POST /api/v1/files/{id}/restore)
 	RestoreFile(w http.ResponseWriter, r *http.Request, id Id)
+	// DeleteShare Remove a file's Google link
+	// (DELETE /api/v1/files/{id}/share)
+	DeleteShare(w http.ResponseWriter, r *http.Request, id Id)
+	// PutShare Make a Google link for a file, or change one
+	// (PUT /api/v1/files/{id}/share)
+	PutShare(w http.ResponseWriter, r *http.Request, id Id)
 	// GetThumbnail Return a small preview image of a file
 	// (GET /api/v1/files/{id}/thumbnail)
 	GetThumbnail(w http.ResponseWriter, r *http.Request, id Id)
@@ -841,6 +927,9 @@ type ServerInterface interface {
 	// Search Find files and folders by name
 	// (GET /api/v1/search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
+	// ListShares See every Google link on your files
+	// (GET /api/v1/shares)
+	ListShares(w http.ResponseWriter, r *http.Request)
 	// ListConnections List the signed-in user's storage connections
 	// (GET /api/v1/storage/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
@@ -1099,6 +1188,18 @@ func (_ Unimplemented) RestoreFile(w http.ResponseWriter, r *http.Request, id Id
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// DeleteShare Remove a file's Google link
+// (DELETE /api/v1/files/{id}/share)
+func (_ Unimplemented) DeleteShare(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutShare Make a Google link for a file, or change one
+// (PUT /api/v1/files/{id}/share)
+func (_ Unimplemented) PutShare(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetThumbnail Return a small preview image of a file
 // (GET /api/v1/files/{id}/thumbnail)
 func (_ Unimplemented) GetThumbnail(w http.ResponseWriter, r *http.Request, id Id) {
@@ -1150,6 +1251,12 @@ func (_ Unimplemented) TrashFolder(w http.ResponseWriter, r *http.Request, id Id
 // Search Find files and folders by name
 // (GET /api/v1/search)
 func (_ Unimplemented) Search(w http.ResponseWriter, r *http.Request, params SearchParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListShares See every Google link on your files
+// (GET /api/v1/shares)
+func (_ Unimplemented) ListShares(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1990,6 +2097,58 @@ func (siw *ServerInterfaceWrapper) RestoreFile(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteShare operation middleware
+func (siw *ServerInterfaceWrapper) DeleteShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteShare(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutShare operation middleware
+func (siw *ServerInterfaceWrapper) PutShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutShare(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetThumbnail operation middleware
 func (siw *ServerInterfaceWrapper) GetThumbnail(w http.ResponseWriter, r *http.Request) {
 
@@ -2210,6 +2369,20 @@ func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Search(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListShares operation middleware
+func (siw *ServerInterfaceWrapper) ListShares(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListShares(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3021,6 +3194,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/shares", wrapper.ListShares)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/files/{id}/share", wrapper.DeleteShare)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/files/{id}/share", wrapper.PutShare)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/transfers", wrapper.ListTransfers)

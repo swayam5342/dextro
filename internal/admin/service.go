@@ -23,11 +23,13 @@ var ErrInvalidSettings = errors.New("invalid settings")
 // Settings are the instance-wide options an admin can change.
 type Settings struct {
 	MaxUploadBytes int64
+	GoogleLinks    bool
 }
 
 // Update is a change to Settings. Fields left nil stay as they are.
 type Update struct {
 	MaxUploadBytes *int64
+	GoogleLinks    *bool
 }
 
 // AccountHealth is what the status page needs from the storage feature.
@@ -57,7 +59,11 @@ func readSettings(ctx context.Context, store *Store) (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{MaxUploadBytes: limit}, nil
+	links, err := store.GoogleLinksEnabled(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
+	return Settings{MaxUploadBytes: limit, GoogleLinks: links}, nil
 }
 
 // UpdateSettings saves new settings and records who changed them.
@@ -68,6 +74,9 @@ func (s *Service) UpdateSettings(ctx context.Context, actor uuid.UUID, ip string
 	changes := map[string]any{}
 	if next.MaxUploadBytes != nil {
 		changes[settingMaxUploadBytes] = *next.MaxUploadBytes
+	}
+	if next.GoogleLinks != nil {
+		changes[settingGoogleLinks] = *next.GoogleLinks
 	}
 
 	var saved Settings

@@ -352,6 +352,10 @@ func (s *Service) MoveFile(ctx context.Context, userID, id uuid.UUID, target *uu
 
 // TrashFile moves a file to the trash. Its stored object isn't touched.
 func (s *Service) TrashFile(ctx context.Context, userID, id uuid.UUID) error {
+	// The trash exists only here, so the file is still in Drive and its link still works.
+	if err := s.revokeShare(ctx, userID, id, ""); err != nil {
+		return err
+	}
 	now := time.Now()
 	return s.store.SetFileTrashedForOwner(ctx, userID, id, &now)
 }
@@ -489,6 +493,9 @@ func (s *Service) MoveFolder(ctx context.Context, userID, id uuid.UUID, target *
 // TrashFolder moves a folder to the trash. Only the folder is marked: what's
 // inside goes with it, and comes back with it.
 func (s *Service) TrashFolder(ctx context.Context, userID, id uuid.UUID) error {
+	if err := s.revokeSharesUnderFolder(ctx, userID, id); err != nil {
+		return err
+	}
 	now := time.Now()
 	return s.store.SetFolderTrashedForOwner(ctx, userID, id, &now)
 }

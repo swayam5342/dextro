@@ -41,8 +41,61 @@ func TestConformance(t *testing.T) {
 	}
 	p.pageSize = providertest.ListPageSize
 	providertest.Run(t, p)
-	if f.permissionCalls != 0 {
-		t.Errorf("permission calls = %d, want none", f.permissionCalls)
+	// Rule 6: making something public is one explicit act, never a side effect.
+	if len(f.permissionFiles) == 0 {
+		t.Error("the suite never reached the permissions, so this proves nothing")
+	}
+	for _, name := range f.permissionFiles {
+		if !strings.HasPrefix(name, providertest.SharedPrefix) {
+			t.Errorf("the adapter touched the permissions of %q", name)
+		}
+	}
+}
+
+func TestShare(t *testing.T) {
+	f := newFakeDrive(t)
+	c := newTestClient(f)
+	settings, credentials := connect(t, c)
+	p, err := c.Open(context.Background(), settings, credentials)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	ctx := context.Background()
+	object, err := p.Put(ctx, provider.Upload{Name: "a.txt", Body: strings.NewReader("x")})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	link, err := p.Share(ctx, object.ID, provider.ShareCommenter)
+	if err != nil {
+		t.Fatalf("Share: %v", err)
+	}
+	if !strings.Contains(link, object.ID) {
+		t.Errorf("link = %q", link)
+	}
+	created := f.anyone[object.ID]
+	if created.Type != "anyone" || created.Role != "commenter" {
+		t.Errorf("permission = %+v", created)
+	}
+	if created.AllowFileDiscovery == nil || *created.AllowFileDiscovery {
+		t.Errorf("allowFileDiscovery = %v, want an explicit false", created.AllowFileDiscovery)
+	}
+	if _, err := p.Share(ctx, object.ID, provider.ShareEditor); err != nil {
+		t.Fatalf("Share again: %v", err)
+	}
+	if got := f.anyone[object.ID].Role; got != "writer" {
+		t.Errorf("role = %q", got)
+	}
+	if err := p.Unshare(ctx, object.ID); err != nil {
+		t.Fatalf("Unshare: %v", err)
+	}
+	if _, ok := f.anyone[object.ID]; ok {
+		t.Error("the permission is still there")
+	}
+
+	f.shareForbidden = true
+	if _, err := p.Share(ctx, object.ID, provider.ShareViewer); !errors.Is(err, provider.ErrShareRefused) {
+		t.Errorf("error = %v, want ErrShareRefused", err)
 	}
 }
 

@@ -54,6 +54,25 @@ export interface components {
       /** Being emptied, so new files stay out of it. */
       draining: boolean;
     };
+    /** A public Google link on one file. */
+    Share: {
+      file_id: string;
+      name: string;
+      role: "viewer" | "commenter" | "editor";
+      url: string;
+      /** When dextro removes the link. Null means it stays until removed. */
+      expires_at: string | null;
+      created_at: string;
+    };
+    ShareList: {
+      /** Whether the admin allows links. Existing ones can still be removed. */
+      enabled: boolean;
+      shares: components["schemas"]["Share"][];
+    };
+    NewShare: {
+      role: "viewer" | "commenter" | "editor";
+      expires_at?: string | null;
+    };
     Transfer: {
       id: string;
       file_id: string;
@@ -200,10 +219,13 @@ export interface components {
     Settings: {
       /** The largest file anyone can upload. */
       max_upload_bytes: number;
+      /** Whether people can make public Google links. Off until the admin says. */
+      google_links_enabled: boolean;
     };
     /** Only the fields present are changed. */
     SettingsUpdate: {
       max_upload_bytes?: number;
+      google_links_enabled?: boolean;
     };
     File: {
       id: string;
@@ -478,6 +500,25 @@ export interface paths {
   };
   "/api/v1/folders/{id}/restore": {
     post: PathOperation;
+  };
+  "/api/v1/shares": {
+    get: Operation<{ 200: JsonBody<Schemas["ShareList"]> }>;
+  };
+  "/api/v1/files/{id}/share": {
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: { id: string };
+        cookie?: never;
+      };
+      requestBody: JsonRequest<Schemas["NewShare"]>;
+      responses: {
+        200: JsonBody<Schemas["Share"]>;
+        default: JsonBody<Schemas["Error"]>;
+      };
+    };
+    delete: PathOperation;
   };
   "/api/v1/transfers": {
     get: Operation<{ 200: JsonBody<Schemas["TransferQueue"]> }>;

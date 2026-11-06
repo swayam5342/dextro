@@ -19,6 +19,7 @@ var ErrSettingNotFound = errors.New("setting not found")
 
 const (
 	settingMaxUploadBytes = "max_upload_bytes"
+	settingGoogleLinks    = "google_links_enabled"
 	defaultMaxUploadBytes = 10 << 30
 )
 
@@ -88,6 +89,23 @@ func (s *Store) MaxUploadBytes(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("decode setting %q: %w", settingMaxUploadBytes, err)
 	}
 	return limit, nil
+}
+
+// GoogleLinksEnabled says whether people can make public links. It's off until the
+// admin says otherwise, because a public link is a decision for whoever runs the server.
+func (s *Store) GoogleLinksEnabled(ctx context.Context) (bool, error) {
+	raw, err := s.GetSetting(ctx, settingGoogleLinks)
+	if errors.Is(err, ErrSettingNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var enabled bool
+	if err := json.Unmarshal(raw, &enabled); err != nil {
+		return false, fmt.Errorf("decode setting %q: %w", settingGoogleLinks, err)
+	}
+	return enabled, nil
 }
 
 // JobRun is the last finish of a background job.

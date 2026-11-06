@@ -35,8 +35,9 @@ const (
 
 // Error codes the storage API adds to the shared ones. Clients may depend on these.
 const (
-	codeConnectionFailed = "connection_failed"
-	codePickerDisabled   = "picker_disabled"
+	codeConnectionFailed   = "connection_failed"
+	codeConnectionHasLinks = "connection_has_links"
+	codePickerDisabled     = "picker_disabled"
 )
 
 // Codes sent to the UI in the error query parameter after a Google redirect.
@@ -227,6 +228,9 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusNotFound, codePickerDisabled, "Adding files from Drive isn't set up on this server.")
 	case errors.Is(err, ErrConnectionNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
+	case errors.Is(err, ErrConnectionHasLinks):
+		httpx.WriteError(w, r, http.StatusConflict, codeConnectionHasLinks,
+			"Files in this account have Google links. Remove them first, or they'd keep working with nothing here to show it.")
 	case errors.Is(err, ErrConnectionFailed):
 		h.logger.WarnContext(r.Context(), "storage connection failed",
 			"request_id", httpx.RequestID(r.Context()), "error", err)

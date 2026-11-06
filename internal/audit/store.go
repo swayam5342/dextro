@@ -37,6 +37,10 @@ const (
 	ActionAPIKeyCreated    = "api_key.created"
 	ActionAPIKeyRevoked    = "api_key.revoked"
 	ActionFileDeleted      = "file.deleted"
+	ActionFileShared       = "file.shared"
+	ActionShareChanged     = "file.share_changed"
+	ActionFileUnshared     = "file.unshared"
+	ActionShareExpired     = "file.share_expired"
 	ActionFolderDeleted    = "folder.deleted"
 )
 

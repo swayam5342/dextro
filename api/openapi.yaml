@@ -765,6 +765,59 @@ paths:
                 $ref: "#/components/schemas/AuditPage"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/shares:
+    get:
+      operationId: listShares
+      summary: See every Google link on your files
+      description: Session only. API keys can't reach anything about links.
+      tags: [files]
+      responses:
+        "200":
+          description: The links, and whether new ones can be made.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareList"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{id}/share:
+    put:
+      operationId: putShare
+      summary: Make a Google link for a file, or change one
+      description: >
+        Anyone with the link can reach the file, with no sign-in, until the link is
+        removed. It's refused unless the admin has turned links on. Folders and files
+        added from Drive can't have one.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewShare"
+      responses:
+        "200":
+          description: The link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Share"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteShare
+      summary: Remove a file's Google link
+      description: Google is told first, so a link that's still working is never hidden.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The link no longer works.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/transfers:
     get:
       operationId: listTransfers
@@ -1282,6 +1335,51 @@ components:
         draining:
           type: boolean
           description: Being emptied, so new files stay out of it.
+    Share:
+      type: object
+      description: A public Google link on one file.
+      required: [file_id, name, role, url, expires_at, created_at]
+      properties:
+        file_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+          enum: [viewer, commenter, editor]
+        url:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When dextro removes the link. Null means it stays until removed.
+        created_at:
+          type: string
+          format: date-time
+    ShareList:
+      type: object
+      required: [enabled, shares]
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the admin allows links. Existing ones can still be removed.
+        shares:
+          type: array
+          items:
+            $ref: "#/components/schemas/Share"
+    NewShare:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [viewer, commenter, editor]
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
     Transfer:
       type: object
       description: A file moving between accounts.
@@ -1603,12 +1701,15 @@ components:
             $ref: "#/components/schemas/File"
     Settings:
       type: object
-      required: [max_upload_bytes]
+      required: [max_upload_bytes, google_links_enabled]
       properties:
         max_upload_bytes:
           type: integer
           format: int64
           description: The largest file anyone can upload.
+        google_links_enabled:
+          type: boolean
+          description: Whether people can make public Google links. Off until the admin says.
     SettingsUpdate:
       type: object
       description: Only the fields present are changed.
@@ -1616,6 +1717,8 @@ components:
         max_upload_bytes:
           type: integer
           format: int64
+        google_links_enabled:
+          type: boolean
     ManagedUser:
       type: object
       description: An account as the admin sees it. It says nothing about the person's files.

@@ -47,6 +47,16 @@ type File struct {
 	External     bool
 }
 
+type FileShare struct {
+	FileID    uuid.UUID
+	UserID    uuid.UUID
+	Role      string
+	Url       string
+	ExpiresAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type FileTransfer struct {
 	ID                 uuid.UUID
 	UserID             uuid.UUID

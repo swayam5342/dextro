@@ -279,3 +279,12 @@ func (s *Store) SetConnectionDrainingForOwner(ctx context.Context, userID, id uu
 	}
 	return nil
 }
+
+// CountSharesForConnection counts the public links on files in an account.
+func (s *Store) CountSharesForConnection(ctx context.Context, userID, id uuid.UUID) (int64, error) {
+	count, err := s.queries.CountSharesForConnection(ctx, dbgen.CountSharesForConnectionParams{UserID: userID, ConnectionID: id})
+	if err != nil {
+		return 0, fmt.Errorf("count shares: %w", err)
+	}
+	return count, nil
+}

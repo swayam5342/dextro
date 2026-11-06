@@ -25,6 +25,7 @@ const (
 	KindUploadCleanup  = "upload_cleanup"
 	KindFileSync       = "file_sync"
 	KindFileTransfers  = "file_transfers"
+	KindShareExpiry    = "share_expiry"
 )
 
 const (
@@ -38,6 +39,8 @@ const (
 	quotaSyncTimeout = 15 * time.Minute
 	maxAttempts      = 3
 	maxWorkers       = 2
+	// Often, because a public link that should have ended is the thing to avoid.
+	shareExpiryEvery = time.Minute
 	// Often, because someone is watching the Storage page. Finding nothing to do is one
 	// query.
 	fileTransfersEvery = 30 * time.Second
@@ -69,6 +72,7 @@ type Uploads interface {
 type Files interface {
 	SyncAll(ctx context.Context) (files.SyncResult, error)
 	RunTransfers(ctx context.Context) (files.TransferRun, error)
+	ExpireShares(ctx context.Context) (files.ShareRun, error)
 }
 
 // Runs remembers when each job last finished.
@@ -106,6 +110,10 @@ func (fileSyncArgs) Kind() string { return KindFileSync }
 type fileTransfersArgs struct{}
 
 func (fileTransfersArgs) Kind() string { return KindFileTransfers }
+
+type shareExpiryArgs struct{}
+
+func (shareExpiryArgs) Kind() string { return KindShareExpiry }
 
 type quotaSyncWorker struct {
 	river.WorkerDefaults[quotaSyncArgs]
@@ -190,6 +198,26 @@ func (w *fileTransfersWorker) Work(ctx context.Context, _ *river.Job[fileTransfe
 	return finish(ctx, w.deps, KindFileTransfers, err)
 }
 
+type shareExpiryWorker struct {
+	river.WorkerDefaults[shareExpiryArgs]
+	deps Deps
+}
+
+func (w *shareExpiryWorker) Timeout(*river.Job[shareExpiryArgs]) time.Duration {
+	return quotaSyncTimeout
+}
+
+func (w *shareExpiryWorker) Work(ctx context.Context, _ *river.Job[shareExpiryArgs]) error {
+	run, err := w.deps.Files.ExpireShares(ctx)
+	if run.Expired > 0 {
+		w.deps.Logger.InfoContext(ctx, "google links expired", "removed", run.Expired)
+	}
+	for _, failure := range run.Failures {
+		w.deps.Logger.WarnContext(ctx, "google link couldn't be removed", "error", failure)
+	}
+	return finish(ctx, w.deps, KindShareExpiry, err)
+}
+
 // finish records the outcome. A job stopped by the server shutting down didn't
 // fail, and river runs it again, so it isn't recorded.
 func finish(ctx context.Context, d Deps, name string, jobErr error) error {
@@ -235,6 +263,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 	river.AddWorker(workers, &uploadCleanupWorker{deps: d})
 	river.AddWorker(workers, &fileSyncWorker{deps: d})
 	river.AddWorker(workers, &fileTransfersWorker{deps: d})
+	river.AddWorker(workers, &shareExpiryWorker{deps: d})
 	client, err := river.NewClient(driver, &river.Config{
 		Logger: d.Logger,
 		Queues: map[string]river.QueueConfig{
@@ -247,6 +276,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 			every(sessionCleanupEvery, sessionCleanupArgs{}),
 			every(uploadCleanupEvery, uploadCleanupArgs{}),
 			every(fileSyncEvery, fileSyncArgs{}),
+			every(shareExpiryEvery, shareExpiryArgs{}),
 			river.NewPeriodicJob(
 				river.PeriodicInterval(fileTransfersEvery),
 				func() (river.JobArgs, *river.InsertOpts) {

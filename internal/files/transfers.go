@@ -37,6 +37,7 @@ const (
 	failureTarget        = "target_unavailable"
 	failureCopy          = "copy_failed"
 	failureVerify        = "verify_failed"
+	failureShared        = "file_shared"
 )
 
 // Errors for moving files between accounts.
@@ -121,6 +122,12 @@ func (s *Service) TransferFiles(ctx context.Context, userID uuid.UUID, ids []uui
 		if record.External {
 			return TransferResult{}, ErrExternalFile
 		}
+		// A move gives a file a new address, so its link would silently stop working.
+		if _, shared, err := s.store.ShareForOwner(ctx, userID, id); err != nil {
+			return TransferResult{}, err
+		} else if shared {
+			return TransferResult{}, ErrFileShared
+		}
 		if record.ConnectionID == target {
 			result.Skipped++
 			continue
@@ -155,6 +162,13 @@ func (s *Service) EmptyConnection(ctx context.Context, userID, connectionID uuid
 	// Nothing can be copied out of an account that doesn't answer.
 	if err := stored.Check(ctx); err != nil {
 		return TransferResult{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	links, err := s.store.CountSharesForConnection(ctx, userID, connectionID)
+	if err != nil {
+		return TransferResult{}, err
+	}
+	if links > 0 {
+		return TransferResult{}, ErrFileShared
 	}
 	objects, err := s.store.ObjectsForConnection(ctx, userID, connectionID)
 	if err != nil {
@@ -265,6 +279,11 @@ func (s *Service) moveFile(ctx context.Context, t transferRecord) error {
 	}
 	if record.ConnectionID != t.SourceConnectionID || record.External {
 		return errTransferGone
+	}
+	if _, shared, err := s.store.ShareForOwner(ctx, t.UserID, t.FileID); err != nil {
+		return err
+	} else if shared {
+		return failed(failureShared, ErrFileShared)
 	}
 	from, err := s.providers.Provider(ctx, t.UserID, t.SourceConnectionID)
 	if err != nil {

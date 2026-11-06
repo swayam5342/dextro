@@ -48,6 +48,9 @@ type Fake struct {
 	ExistsErr error
 	// FolderErr, if set, is what folder and move operations return.
 	FolderErr error
+	// ShareErr, if set, is what Share and Unshare return.
+	ShareErr error
+	shares   map[string]provider.ShareRole
 }
 
 type fakeSession struct {
@@ -361,6 +364,42 @@ func (f *Fake) Describe(_ context.Context, id string) (provider.Object, error) {
 		return provider.Object{}, provider.ErrObjectNotFound
 	}
 	return object.Object, nil
+}
+
+// Share implements provider.Provider.
+func (f *Fake) Share(_ context.Context, id string, role provider.ShareRole) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ShareErr != nil {
+		return "", f.ShareErr
+	}
+	if _, ok := f.objects[id]; !ok {
+		return "", provider.ErrObjectNotFound
+	}
+	if f.shares == nil {
+		f.shares = map[string]provider.ShareRole{}
+	}
+	f.shares[id] = role
+	return "https://drive.example/" + id, nil
+}
+
+// Unshare implements provider.Provider.
+func (f *Fake) Unshare(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ShareErr != nil {
+		return f.ShareErr
+	}
+	delete(f.shares, id)
+	return nil
+}
+
+// SharedAs says what role an object's public link has, if it has one.
+func (f *Fake) SharedAs(id string) (provider.ShareRole, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	role, ok := f.shares[id]
+	return role, ok
 }
 
 // AccessToken implements provider.Provider.

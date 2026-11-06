@@ -25,17 +25,20 @@ type fakeDrive struct {
 	t      *testing.T
 	server *httptest.Server
 
-	mu              sync.Mutex
-	files           map[string]*fakeFile
-	order           []string
-	nextID          int
-	uploads         map[string]*fakeFile
-	wantCode        string
-	gotVerifier     string
-	omitRefresh     bool
-	refreshRevoked  bool
-	refreshes       int
-	permissionCalls int
+	mu             sync.Mutex
+	files          map[string]*fakeFile
+	order          []string
+	nextID         int
+	uploads        map[string]*fakeFile
+	wantCode       string
+	gotVerifier    string
+	omitRefresh    bool
+	refreshRevoked bool
+	refreshes      int
+	// permissionFiles names each file whose permissions were touched.
+	permissionFiles []string
+	anyone          map[string]fakePermission
+	shareForbidden  bool
 	// limit and used are what the account reports. A limit of 0 means none.
 	limit int64
 	used  int64
@@ -76,6 +79,7 @@ type fakeFile struct {
 	ModifiedTime string   `json:"modifiedTime"`
 	Trashed      bool     `json:"trashed"`
 	Md5Checksum  string   `json:"md5Checksum,omitempty"`
+	WebViewLink  string   `json:"webViewLink,omitempty"`
 	body         []byte
 	discarded    int64
 }
@@ -98,7 +102,10 @@ func newFakeDrive(t *testing.T) *fakeDrive {
 	mux.HandleFunc("GET /drive/v3/files/{id}", f.authed(f.get))
 	mux.HandleFunc("DELETE /drive/v3/files/{id}", f.authed(f.delete))
 	mux.HandleFunc("PATCH /drive/v3/files/{id}", f.authed(f.update))
-	mux.HandleFunc("/drive/v3/files/{id}/permissions", f.permissions)
+	mux.HandleFunc("GET /drive/v3/files/{id}/permissions", f.authed(f.listPermissions))
+	mux.HandleFunc("POST /drive/v3/files/{id}/permissions", f.authed(f.createPermission))
+	mux.HandleFunc("PATCH /drive/v3/files/{id}/permissions/{permission}", f.authed(f.updatePermission))
+	mux.HandleFunc("DELETE /drive/v3/files/{id}/permissions/{permission}", f.authed(f.deletePermission))
 	mux.HandleFunc("POST /upload/drive/v3/files", f.authed(f.upload))
 	mux.HandleFunc("GET /thumb/{id}", f.authed(f.thumbnail))
 	mux.HandleFunc("/upload/session/{id}", f.authed(f.chunk))
@@ -215,6 +222,7 @@ func (f *fakeDrive) store(file *fakeFile, body []byte) *fakeFile {
 	f.nextID++
 	file.ID = "file-" + strconv.Itoa(f.nextID)
 	file.ModifiedTime = time.Now().UTC().Format(time.RFC3339)
+	file.WebViewLink = "https://drive.google.com/file/d/" + file.ID + "/view"
 	file.body = body
 	if file.MimeType != folderMime {
 		file.Size = strconv.FormatInt(int64(len(body))+file.discarded, 10)
@@ -314,12 +322,86 @@ func (f *fakeDrive) update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, file)
 }
 
-func (f *fakeDrive) permissions(w http.ResponseWriter, _ *http.Request) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.permissionCalls++
-	f.t.Error("the adapter touched a file's permissions")
-	w.WriteHeader(http.StatusForbidden)
+// fakePermission is a public link on a file.
+type fakePermission struct {
+	ID                 string `json:"id"`
+	Type               string `json:"type"`
+	Role               string `json:"role"`
+	AllowFileDiscovery *bool  `json:"allowFileDiscovery,omitempty"`
+}
+
+// permissionFile finds the file a request is about, and notes that it was touched.
+func (f *fakeDrive) permissionFile(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id := r.PathValue("id")
+	file, ok := f.files[id]
+	if !ok {
+		notFound(w)
+		return "", false
+	}
+	f.permissionFiles = append(f.permissionFiles, file.Name)
+	return id, true
+}
+
+func (f *fakeDrive) listPermissions(w http.ResponseWriter, r *http.Request) {
+	id, ok := f.permissionFile(w, r)
+	if !ok {
+		return
+	}
+	found := []fakePermission{{ID: "owner", Type: "user", Role: "owner"}}
+	if permission, ok := f.anyone[id]; ok {
+		found = append(found, permission)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"permissions": found})
+}
+
+func (f *fakeDrive) createPermission(w http.ResponseWriter, r *http.Request) {
+	id, ok := f.permissionFile(w, r)
+	if !ok {
+		return
+	}
+	if f.shareForbidden {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	var permission fakePermission
+	if err := json.NewDecoder(r.Body).Decode(&permission); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if _, exists := f.anyone[id]; exists {
+		f.t.Error("a second public permission on one file")
+	}
+	permission.ID = "anyoneWithLink"
+	if f.anyone == nil {
+		f.anyone = map[string]fakePermission{}
+	}
+	f.anyone[id] = permission
+	writeJSON(w, http.StatusOK, permission)
+}
+
+func (f *fakeDrive) updatePermission(w http.ResponseWriter, r *http.Request) {
+	id, ok := f.permissionFile(w, r)
+	if !ok {
+		return
+	}
+	var change fakePermission
+	if err := json.NewDecoder(r.Body).Decode(&change); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	permission := f.anyone[id]
+	permission.Role = change.Role
+	f.anyone[id] = permission
+	writeJSON(w, http.StatusOK, permission)
+}
+
+func (f *fakeDrive) deletePermission(w http.ResponseWriter, r *http.Request) {
+	id, ok := f.permissionFile(w, r)
+	if !ok {
+		return
+	}
+	delete(f.anyone, id)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (f *fakeDrive) upload(w http.ResponseWriter, r *http.Request) {

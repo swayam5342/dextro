@@ -28,6 +28,10 @@ const (
 	defaultPageSize = 1000
 	tokenTimeout    = 30 * time.Second
 	fileFields      = "id,name,size,mimeType,modifiedTime,parents,md5Checksum"
+	// permissionAnyone is Drive's type for a public link.
+	permissionAnyone = "anyone"
+	// permissionPageSize is more than a file of dextro's will ever have.
+	permissionPageSize = 100
 	// thumbnailSize is the long edge to ask Google for, sharp at the size of a grid tile.
 	thumbnailSize = "=s480"
 )
@@ -183,8 +187,8 @@ func (c *Client) Open(_ context.Context, s Settings, cr Credentials) (*Provider,
 	return &Provider{service: service, httpClient: httpClient, source: source, folderID: s.FolderID, pageSize: defaultPageSize}, nil
 }
 
-// Provider is dextro's folder in one Drive account. It never touches a file's
-// permissions, so everything stays private to the account's owner.
+// Provider is dextro's folder in one Drive account. Only Share and Unshare touch a
+// file's permissions, so everything else stays private to the account's owner.
 type Provider struct {
 	service    *drive.Service
 	httpClient *http.Client
@@ -443,4 +447,75 @@ func toObject(file *drive.File) provider.Object {
 func isNotFound(err error) bool {
 	var apiErr *googleapi.Error
 	return errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound
+}
+
+// anyoneLinks lists an object's public permissions.
+func (p *Provider) anyoneLinks(ctx context.Context, id string) ([]string, error) {
+	list, err := p.service.Permissions.List(id).Fields("permissions(id,type)").PageSize(permissionPageSize).Context(ctx).Do()
+	if isNotFound(err) {
+		return nil, provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list permissions: %w", err)
+	}
+	var found []string
+	for _, permission := range list.Permissions {
+		if permission.Type == permissionAnyone {
+			found = append(found, permission.Id)
+		}
+	}
+	return found, nil
+}
+
+// Share implements provider.Provider. The link can't be found by searching: someone has
+// to be given it.
+func (p *Provider) Share(ctx context.Context, id string, role provider.ShareRole) (string, error) {
+	existing, err := p.anyoneLinks(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if len(existing) > 0 {
+		_, err = p.service.Permissions.Update(id, existing[0], &drive.Permission{Role: string(role)}).Context(ctx).Do()
+	} else {
+		_, err = p.service.Permissions.Create(id, &drive.Permission{
+			Type:               permissionAnyone,
+			Role:               string(role),
+			AllowFileDiscovery: false,
+			ForceSendFields:    []string{"AllowFileDiscovery"},
+		}).Context(ctx).Do()
+	}
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusForbidden {
+		return "", fmt.Errorf("%w: %w", provider.ErrShareRefused, err)
+	}
+	if isNotFound(err) {
+		return "", provider.ErrObjectNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("set permission: %w", err)
+	}
+	file, err := p.service.Files.Get(id).Fields("webViewLink").Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("get link: %w", err)
+	}
+	return file.WebViewLink, nil
+}
+
+// Unshare implements provider.Provider. It finds the permission by its type rather than
+// a saved ID, so it also clears up after a crash that never learned the ID.
+func (p *Provider) Unshare(ctx context.Context, id string) error {
+	existing, err := p.anyoneLinks(ctx, id)
+	if errors.Is(err, provider.ErrObjectNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, permission := range existing {
+		err := p.service.Permissions.Delete(id, permission).Context(ctx).Do()
+		if err != nil && !isNotFound(err) {
+			return fmt.Errorf("delete permission: %w", err)
+		}
+	}
+	return nil
 }

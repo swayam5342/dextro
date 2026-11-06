@@ -13,6 +13,9 @@ var (
 	ErrObjectNotFound = errors.New("object not found")
 	// ErrNoThumbnail means the object exists but has no preview image, at least yet.
 	ErrNoThumbnail = errors.New("no thumbnail")
+	// ErrShareRefused means the account won't allow a public link, which a work or
+	// school account's admin can forbid.
+	ErrShareRefused = errors.New("public link refused")
 )
 
 // Object describes one stored file.
@@ -108,8 +111,18 @@ type ResumeState struct {
 	Object   *Object
 }
 
+// ShareRole is what anyone with a public link can do with a file.
+type ShareRole string
+
+// The roles a link can have.
+const (
+	ShareViewer    ShareRole = "reader"
+	ShareCommenter ShareRole = "commenter"
+	ShareEditor    ShareRole = "writer"
+)
+
 // Provider is a storage account. Implementations see only the area dextro owns
-// in that account, never set public permissions on anything, and keep no state
+// in that account, touch permissions only in Share and Unshare, and keep no state
 // between calls that would tie them to one request.
 type Provider interface {
 	// Check confirms the account is reachable with its credentials.
@@ -161,4 +174,11 @@ type Provider interface {
 	ResumableStatus(ctx context.Context, session string, total int64) (ResumeState, error)
 	// CancelResumable abandons an upload. One that's already gone is no error.
 	CancelResumable(ctx context.Context, session string) error
+	// Share lets anyone with the link reach one object, and returns the link. Calling it
+	// again changes the role and keeps the link. It's the only way anything here becomes
+	// public, and only ever for a person's explicit choice.
+	Share(ctx context.Context, id string, role ShareRole) (string, error)
+	// Unshare ends public access to an object. An object that has none, or is gone, is
+	// no error, so it's safe to repeat.
+	Unshare(ctx context.Context, id string) error
 }

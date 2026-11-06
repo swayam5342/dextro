@@ -24,6 +24,10 @@ const largeBody = 40 << 20
 
 // Run checks that a provider behaves as the provider.Provider contract says. The
 // provider must start empty and page listings at ListPageSize.
+// SharedPrefix starts the name of every file this suite shares. An adapter's own test can
+// use it to prove that nothing else had its permissions touched.
+const SharedPrefix = "public-link-"
+
 func Run(t *testing.T, p provider.Provider) {
 	t.Helper()
 	ctx := context.Background()
@@ -278,6 +282,43 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 		if one.Checksum == other.Checksum {
 			t.Errorf("different content, same checksum %q", one.Checksum)
+		}
+	})
+
+	t.Run("a public link can be made, changed and removed", func(t *testing.T) {
+		ctx := context.Background()
+		object, err := p.Put(ctx, provider.Upload{Name: SharedPrefix + "one.txt", ContentType: "text/plain", Body: strings.NewReader("x")})
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		link, err := p.Share(ctx, object.ID, provider.ShareViewer)
+		if err != nil {
+			t.Fatalf("Share: %v", err)
+		}
+		if link == "" {
+			t.Fatal("no link")
+		}
+		changed, err := p.Share(ctx, object.ID, provider.ShareEditor)
+		if err != nil {
+			t.Fatalf("Share again: %v", err)
+		}
+		if changed != link {
+			t.Errorf("link changed from %q to %q", link, changed)
+		}
+		if err := p.Unshare(ctx, object.ID); err != nil {
+			t.Fatalf("Unshare: %v", err)
+		}
+		if err := p.Unshare(ctx, object.ID); err != nil {
+			t.Errorf("Unshare again: %v", err)
+		}
+	})
+
+	t.Run("a missing object can't be shared, and unsharing it is no error", func(t *testing.T) {
+		if _, err := p.Share(context.Background(), "missing", provider.ShareViewer); !errors.Is(err, provider.ErrObjectNotFound) {
+			t.Errorf("Share: error = %v, want ErrObjectNotFound", err)
+		}
+		if err := p.Unshare(context.Background(), "missing"); err != nil {
+			t.Errorf("Unshare: %v", err)
 		}
 	})
 

@@ -50,6 +50,10 @@ func (f *fakeFiles) SyncAll(context.Context) (files.SyncResult, error) {
 	return files.SyncResult{}, nil
 }
 
+func (f *fakeFiles) ExpireShares(context.Context) (files.ShareRun, error) {
+	return files.ShareRun{}, nil
+}
+
 func (f *fakeFiles) RunTransfers(context.Context) (files.TransferRun, error) {
 	f.transfers.Add(1)
 	return files.TransferRun{}, nil
@@ -95,7 +99,7 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListJobRuns: %v", err)
 		}
-		if len(runs) == 5 {
+		if len(runs) == 6 {
 			if runs[0].Name != KindFileSync || !runs[0].Succeeded {
 				t.Errorf("file sync = %+v", runs[0])
 			}
@@ -108,8 +112,11 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 			if runs[3].Name != KindSessionCleanup || !runs[3].Succeeded {
 				t.Errorf("cleanup = %+v", runs[3])
 			}
-			if runs[4].Name != KindUploadCleanup || !runs[4].Succeeded {
-				t.Errorf("upload cleanup = %+v", runs[4])
+			if runs[4].Name != KindShareExpiry || !runs[4].Succeeded {
+				t.Errorf("share expiry = %+v", runs[4])
+			}
+			if runs[5].Name != KindUploadCleanup || !runs[5].Succeeded {
+				t.Errorf("upload cleanup = %+v", runs[5])
 			}
 			break
 		}

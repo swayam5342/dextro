@@ -15,6 +15,7 @@ var transferMessages = map[string]string{
 	failureSource:        "Its account couldn't be reached. Try again once it's working.",
 	failureTarget:        "The other account refused the file, or couldn't be reached.",
 	failureCopy:          "The copy stopped partway. The file is still in its old account.",
+	failureShared:        "This file has a Google link now, and a move would break it. Remove the link first.",
 	failureVerify:        "The copy didn't match the original, so it was thrown away. The file is still in its old account.",
 }
 

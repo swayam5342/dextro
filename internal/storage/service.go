@@ -32,6 +32,9 @@ const (
 var (
 	ErrConnectionFailed   = errors.New("connection failed")
 	ErrConnectionNotFound = errors.New("connection not found")
+	// ErrConnectionHasLinks means removing an account would leave public links working
+	// with nothing in dextro to show them.
+	ErrConnectionHasLinks = errors.New("connection has public links")
 	ErrPickerDisabled     = errors.New("picker isn't configured")
 )
 
@@ -293,6 +296,21 @@ func (s *Service) Test(ctx context.Context, userID, id uuid.UUID) error {
 // Delete removes a connection and forgets its credentials. It doesn't touch the
 // account's files, which belong to the user wherever they are.
 func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID, ip string) error {
+	links, err := s.store.CountSharesForConnection(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if links > 0 {
+		r, err := s.store.GetConnectionForOwner(ctx, userID, id)
+		if err != nil {
+			return err
+		}
+		// Links can't be removed from an account that doesn't answer, and that mustn't
+		// trap someone with a dead account. The audit log keeps how many were left.
+		if s.probe(ctx, r).err == nil {
+			return ErrConnectionHasLinks
+		}
+	}
 	return s.store.InTx(ctx, func(tx *Store) error {
 		if err := tx.DeleteConnectionForOwner(ctx, userID, id); err != nil {
 			return err
@@ -301,7 +319,7 @@ func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID, ip string) e
 			ActorID:  userID,
 			Action:   audit.ActionStorageRemoved,
 			IP:       ip,
-			Metadata: map[string]any{"connection_id": id},
+			Metadata: map[string]any{"connection_id": id, "links_left": links},
 		})
 	})
 }

@@ -34,6 +34,12 @@ const (
 	codeNoThumbnail         = "no_thumbnail"
 	codeInvalidChunk        = "invalid_chunk"
 	codeInvalidImport       = "invalid_import"
+	codeLinksDisabled       = "links_disabled"
+	codeInvalidShare        = "invalid_share"
+	codeShareNotFound       = "share_not_found"
+	codeShareRefused        = "share_refused"
+	codeFileMoving          = "file_moving"
+	codeFileShared          = "file_shared"
 	codeInvalidTransfer     = "invalid_transfer"
 	codeTransferNotFound    = "transfer_not_found"
 	codeExternalFile        = "external_file"
@@ -431,6 +437,18 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidUpload, "An upload needs a name and a size.")
 	case errors.Is(err, ErrInvalidImport):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidImport, "Pick between 1 and 100 files.")
+	case errors.Is(err, ErrLinksDisabled):
+		httpx.WriteError(w, r, http.StatusForbidden, codeLinksDisabled, "The admin hasn't turned on Google links for this server.")
+	case errors.Is(err, ErrInvalidShare):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidShare, "Choose a role, and an expiry that's in the future.")
+	case errors.Is(err, ErrShareNotFound):
+		httpx.WriteError(w, r, http.StatusNotFound, codeShareNotFound, "This file doesn't have a Google link.")
+	case errors.Is(err, provider.ErrShareRefused):
+		httpx.WriteError(w, r, http.StatusConflict, codeShareRefused, "Google refused the link. Work and school accounts can forbid public links.")
+	case errors.Is(err, ErrFileMoving):
+		httpx.WriteError(w, r, http.StatusConflict, codeFileMoving, "This file is moving to another account. Make the link once it's there.")
+	case errors.Is(err, ErrFileShared):
+		httpx.WriteError(w, r, http.StatusConflict, codeFileShared, "A move gives a file a new address, which would break its Google link. Remove the link first.")
 	case errors.Is(err, ErrInvalidTransfer):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidTransfer, "Choose between 1 and 200 files to move.")
 	case errors.Is(err, ErrTransferNotFound):
