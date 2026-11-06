@@ -161,7 +161,7 @@ make admin cmd="create-user someone@example.org"
 make admin cmd="links on"
 ```
 
-Without `make`, run `docker compose exec api /dextro <command>`. In Git Bash, put `MSYS_NO_PATHCONV=1` in front of it.
+Without `make`, run `docker compose exec api /dextro-cli <command>`. In Git Bash, put `MSYS_NO_PATHCONV=1` in front of it.
 
 These show accounts and counts, never what anyone stores, and changes appear in the audit log. In the app, **Server status** shows the same health information, and the **Audit log** records sign-ins, settings changes, links and permanent deletes.
 
@@ -216,7 +216,9 @@ Requirements: Go 1.27, Node 22 and pnpm.
 
 ```
 api/openapi.yaml     The API contract. Change this first, then run make generate.
-cmd/server           Starts everything. Wiring only.
+cmd/server           Starts the server. Wiring only.
+cmd/cli              The admin's command line, dextro-cli. Wiring only.
+internal/cli         The admin commands
 internal/files       Files, folders, the trash, uploads, zips, moves, links and sync
 internal/storage     Linked accounts and the storage pool
 internal/provider    What storage has to provide, and the Google Drive adapter
