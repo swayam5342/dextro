@@ -143,6 +143,7 @@ func toRecord(row dbgen.StorageConnection) record {
 			Name:      row.Name,
 			Provider:  ProviderKind(row.Provider),
 			CreatedAt: row.CreatedAt,
+			Draining:  row.Draining,
 		},
 		userID:   row.UserID,
 		settings: row.Settings,
@@ -243,6 +244,38 @@ func (s *Store) CreateUploadSession(ctx context.Context, userID, connectionID uu
 	})
 	if err != nil {
 		return fmt.Errorf("create upload: %w", err)
+	}
+	return nil
+}
+
+// CreateFileTransfer queues a file to move, and reports whether it was. A file that's
+// already waiting keeps its place.
+func (s *Store) CreateFileTransfer(ctx context.Context, userID, targetID uuid.UUID, file TransferFile) (bool, error) {
+	rows, err := s.queries.CreateFileTransfer(ctx, dbgen.CreateFileTransferParams{
+		UserID:             userID,
+		FileID:             file.ID,
+		SourceConnectionID: file.Source,
+		TargetConnectionID: targetID,
+		Size:               file.Size,
+	})
+	if err != nil {
+		return false, fmt.Errorf("create file transfer: %w", err)
+	}
+	return rows > 0, nil
+}
+
+// SetConnectionDrainingForOwner marks an account as being emptied, or not.
+func (s *Store) SetConnectionDrainingForOwner(ctx context.Context, userID, id uuid.UUID, draining bool) error {
+	rows, err := s.queries.SetConnectionDrainingForOwner(ctx, dbgen.SetConnectionDrainingForOwnerParams{
+		UserID:   userID,
+		ID:       id,
+		Draining: draining,
+	})
+	if err != nil {
+		return fmt.Errorf("set connection draining: %w", err)
+	}
+	if rows == 0 {
+		return ErrConnectionNotFound
 	}
 	return nil
 }

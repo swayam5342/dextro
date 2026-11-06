@@ -256,6 +256,31 @@ func Run(t *testing.T, p provider.Provider) {
 		}
 	})
 
+	t.Run("copies of the same content have the same checksum", func(t *testing.T) {
+		put := func(name, body string) provider.Object {
+			t.Helper()
+			object, err := p.Put(context.Background(), provider.Upload{Name: name, ContentType: "text/plain", Body: strings.NewReader(body)})
+			if err != nil {
+				t.Fatalf("Put: %v", err)
+			}
+			described, err := p.Describe(context.Background(), object.ID)
+			if err != nil {
+				t.Fatalf("Describe: %v", err)
+			}
+			return described
+		}
+		one, two, other := put("one.txt", "same"), put("two.txt", "same"), put("other.txt", "different")
+		if one.Checksum == "" {
+			t.Fatal("no checksum")
+		}
+		if one.Checksum != two.Checksum {
+			t.Errorf("%q and %q differ", one.Checksum, two.Checksum)
+		}
+		if one.Checksum == other.Checksum {
+			t.Errorf("different content, same checksum %q", one.Checksum)
+		}
+	})
+
 	t.Run("missing objects are reported as such", func(t *testing.T) {
 		object := put(t, "once.txt", "x")
 		if err := p.Delete(ctx, object.ID); err != nil {

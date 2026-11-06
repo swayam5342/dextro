@@ -32,6 +32,8 @@ const (
 	ActionStorageSynced    = "storage.synced"
 	ActionPickerOpened     = "storage.picker_opened"
 	ActionFilesAdded       = "storage.files_added"
+	ActionFilesTransferred = "storage.files_transferred"
+	ActionStorageEmptied   = "storage.emptied"
 	ActionAPIKeyCreated    = "api_key.created"
 	ActionAPIKeyRevoked    = "api_key.revoked"
 	ActionFileDeleted      = "file.deleted"

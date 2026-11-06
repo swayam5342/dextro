@@ -24,6 +24,7 @@ const (
 	KindSessionCleanup = "session_cleanup"
 	KindUploadCleanup  = "upload_cleanup"
 	KindFileSync       = "file_sync"
+	KindFileTransfers  = "file_transfers"
 )
 
 const (
@@ -37,6 +38,16 @@ const (
 	quotaSyncTimeout = 15 * time.Minute
 	maxAttempts      = 3
 	maxWorkers       = 2
+	// Often, because someone is watching the Storage page. Finding nothing to do is one
+	// query.
+	fileTransfersEvery = 30 * time.Second
+	// One file can take hours. River won't rescue a job inside this time.
+	fileTransfersTimeout = 12 * time.Hour
+	// Its own queue, with one worker, so moves run one at a time and a long copy doesn't
+	// hold up the other jobs. Runs aren't kept unique, because a crashed one would then
+	// block the next until river rescued it. Runs that pile up behind a long one find
+	// nothing to do.
+	queueTransfers = "file_transfers"
 )
 
 // Quotas is what the quota sync needs from the storage feature.
@@ -57,6 +68,7 @@ type Uploads interface {
 // Files is what the file sync needs from the files feature.
 type Files interface {
 	SyncAll(ctx context.Context) (files.SyncResult, error)
+	RunTransfers(ctx context.Context) (files.TransferRun, error)
 }
 
 // Runs remembers when each job last finished.
@@ -90,6 +102,10 @@ func (uploadCleanupArgs) Kind() string { return KindUploadCleanup }
 type fileSyncArgs struct{}
 
 func (fileSyncArgs) Kind() string { return KindFileSync }
+
+type fileTransfersArgs struct{}
+
+func (fileTransfersArgs) Kind() string { return KindFileTransfers }
 
 type quotaSyncWorker struct {
 	river.WorkerDefaults[quotaSyncArgs]
@@ -154,6 +170,26 @@ func (w *fileSyncWorker) Work(ctx context.Context, _ *river.Job[fileSyncArgs]) e
 	return finish(ctx, w.deps, KindFileSync, err)
 }
 
+type fileTransfersWorker struct {
+	river.WorkerDefaults[fileTransfersArgs]
+	deps Deps
+}
+
+func (w *fileTransfersWorker) Timeout(*river.Job[fileTransfersArgs]) time.Duration {
+	return fileTransfersTimeout
+}
+
+func (w *fileTransfersWorker) Work(ctx context.Context, _ *river.Job[fileTransfersArgs]) error {
+	run, err := w.deps.Files.RunTransfers(ctx)
+	if run.Moved > 0 || run.Failed > 0 || run.Removed > 0 {
+		w.deps.Logger.InfoContext(ctx, "file transfers ran", "moved", run.Moved, "failed", run.Failed, "removed", run.Removed)
+	}
+	for _, failure := range run.Failures {
+		w.deps.Logger.WarnContext(ctx, "file transfer failed", "error", failure)
+	}
+	return finish(ctx, w.deps, KindFileTransfers, err)
+}
+
 // finish records the outcome. A job stopped by the server shutting down didn't
 // fail, and river runs it again, so it isn't recorded.
 func finish(ctx context.Context, d Deps, name string, jobErr error) error {
@@ -198,15 +234,26 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 	river.AddWorker(workers, &sessionCleanupWorker{deps: d})
 	river.AddWorker(workers, &uploadCleanupWorker{deps: d})
 	river.AddWorker(workers, &fileSyncWorker{deps: d})
+	river.AddWorker(workers, &fileTransfersWorker{deps: d})
 	client, err := river.NewClient(driver, &river.Config{
-		Logger:  d.Logger,
-		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}},
+		Logger: d.Logger,
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: maxWorkers},
+			queueTransfers:     {MaxWorkers: 1},
+		},
 		Workers: workers,
 		PeriodicJobs: []*river.PeriodicJob{
 			every(quotaSyncEvery, quotaSyncArgs{}),
 			every(sessionCleanupEvery, sessionCleanupArgs{}),
 			every(uploadCleanupEvery, uploadCleanupArgs{}),
 			every(fileSyncEvery, fileSyncArgs{}),
+			river.NewPeriodicJob(
+				river.PeriodicInterval(fileTransfersEvery),
+				func() (river.JobArgs, *river.InsertOpts) {
+					return fileTransfersArgs{}, &river.InsertOpts{MaxAttempts: maxAttempts, Queue: queueTransfers}
+				},
+				&river.PeriodicJobOpts{RunOnStart: true},
+			),
 		},
 	})
 	if err != nil {

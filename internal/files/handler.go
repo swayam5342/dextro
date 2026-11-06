@@ -34,6 +34,11 @@ const (
 	codeNoThumbnail         = "no_thumbnail"
 	codeInvalidChunk        = "invalid_chunk"
 	codeInvalidImport       = "invalid_import"
+	codeInvalidTransfer     = "invalid_transfer"
+	codeTransferNotFound    = "transfer_not_found"
+	codeExternalFile        = "external_file"
+	codeNoOtherAccount      = "no_other_account"
+	codeAccountEmptying     = "account_emptying"
 	codeInvalidZip          = "invalid_zip"
 	codeZipTooLarge         = "zip_too_large"
 	codeOffsetMismatch      = "offset_mismatch"
@@ -426,6 +431,16 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidUpload, "An upload needs a name and a size.")
 	case errors.Is(err, ErrInvalidImport):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidImport, "Pick between 1 and 100 files.")
+	case errors.Is(err, ErrInvalidTransfer):
+		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidTransfer, "Choose between 1 and 200 files to move.")
+	case errors.Is(err, ErrTransferNotFound):
+		httpx.WriteError(w, r, http.StatusNotFound, codeTransferNotFound, "That move isn't in the queue any more.")
+	case errors.Is(err, ErrExternalFile):
+		httpx.WriteError(w, r, http.StatusConflict, codeExternalFile, "Files added from Drive stay in their own account.")
+	case errors.Is(err, storage.ErrNoOtherAccount):
+		httpx.WriteError(w, r, http.StatusConflict, codeNoOtherAccount, "There's no other working account to move these files to.")
+	case errors.Is(err, storage.ErrAccountDraining):
+		httpx.WriteError(w, r, http.StatusConflict, codeAccountEmptying, "That account is being emptied, so nothing new can go in it.")
 	case errors.Is(err, ErrInvalidZip):
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidZip, "Choose between 1 and 200 items to download.")
 	case errors.Is(err, ErrZipTooLarge):

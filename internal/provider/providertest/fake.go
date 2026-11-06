@@ -3,6 +3,8 @@ package providertest
 import (
 	"bytes"
 	"context"
+	"crypto/md5" //nolint:gosec // Drive's own checksum, for comparing copies.
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -61,6 +63,11 @@ type fakeObject struct {
 
 var _ provider.Provider = (*Fake)(nil)
 
+func checksum(body []byte) string {
+	sum := md5.Sum(body) //nolint:gosec // Drive's own checksum, for comparing copies.
+	return hex.EncodeToString(sum[:])
+}
+
 // NewFake returns an empty provider that lists pageSize objects at a time.
 func NewFake(pageSize int) *Fake {
 	return &Fake{pageSize: pageSize, objects: map[string]fakeObject{}, sessions: map[string]*fakeSession{}}
@@ -101,6 +108,7 @@ func (f *Fake) Put(_ context.Context, upload provider.Upload) (provider.Object, 
 		Name:       upload.Name,
 		Size:       int64(len(body)),
 		ModifiedAt: time.Now(),
+		Checksum:   checksum(body),
 
 		ContentType: upload.ContentType,
 		Parent:      f.parent(upload.Parent),
@@ -236,6 +244,7 @@ func (f *Fake) PutChunk(_ context.Context, session string, chunk provider.Chunk)
 			ID:          strconv.Itoa(f.nextID),
 			Name:        s.upload.Name,
 			Size:        int64(len(s.body)),
+			Checksum:    checksum(s.body),
 			ContentType: s.upload.ContentType,
 			Parent:      f.parent(s.upload.Parent),
 			ModifiedAt:  time.Now(),

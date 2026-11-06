@@ -100,6 +100,8 @@ type Providers interface {
 	OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string, error)
 	AllAccounts(ctx context.Context) ([]storage.Account, error)
 	AccountsFor(ctx context.Context, userID uuid.UUID) ([]storage.Account, error)
+	ReserveTransfers(ctx context.Context, userID uuid.UUID, request storage.TransferRequest) (int, error)
+	StopDraining(ctx context.Context, userID, id uuid.UUID) error
 }
 
 // Service holds the rules for files and folders.
@@ -108,11 +110,15 @@ type Service struct {
 	providers Providers
 	// locks holds a mutex per account, for making its folders one at a time.
 	locks sync.Map
+	// transferChunk and transferWait are how a move sends, and how long it first waits
+	// after a failure.
+	transferChunk int64
+	transferWait  time.Duration
 }
 
 // NewService returns a Service.
 func NewService(store *Store, providers Providers) *Service {
-	return &Service{store: store, providers: providers}
+	return &Service{store: store, providers: providers, transferChunk: transferChunkBytes, transferWait: time.Second}
 }
 
 func cleanName(raw string) (string, error) {

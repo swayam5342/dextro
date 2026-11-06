@@ -134,10 +134,17 @@ func (q *Queries) GetUploadSessionForOwner(ctx context.Context, arg GetUploadSes
 }
 
 const listReservedBytesForOwner = `-- name: ListReservedBytesForOwner :many
-SELECT connection_id, sum(size)::bigint AS reserved
-FROM upload_sessions
-WHERE user_id = $1 AND file_id IS NULL
-GROUP BY connection_id
+SELECT held.connection_id, sum(held.size)::bigint AS reserved
+FROM (
+    SELECT u.connection_id, u.size
+    FROM upload_sessions u
+    WHERE u.user_id = $1 AND u.file_id IS NULL
+    UNION ALL
+    SELECT t.target_connection_id, t.size
+    FROM file_transfers t
+    WHERE t.user_id = $1 AND t.status = 'waiting'
+) held
+GROUP BY held.connection_id
 `
 
 type ListReservedBytesForOwnerRow struct {
@@ -145,7 +152,8 @@ type ListReservedBytesForOwnerRow struct {
 	Reserved     int64
 }
 
-// A finished upload's space shows up in the account's own usage.
+// A finished upload's space shows up in the account's own usage. Files waiting to move
+// are held the same way, on the account they're moving to.
 func (q *Queries) ListReservedBytesForOwner(ctx context.Context, userID uuid.UUID) ([]ListReservedBytesForOwnerRow, error) {
 	rows, err := q.db.Query(ctx, listReservedBytesForOwner, userID)
 	if err != nil {

@@ -26,6 +26,9 @@ type Object struct {
 	ContentType string
 	// Parent is the folder it's in, as the provider knows it.
 	Parent string
+	// Checksum identifies the content, the same way in every account. Empty if the
+	// account doesn't say.
+	Checksum string
 	// Folder marks a folder rather than a file.
 	Folder     bool
 	ModifiedAt time.Time

@@ -125,6 +125,24 @@ func (e ManagedUserRole) Valid() bool {
 	}
 }
 
+// Defines values for TransferStatus.
+const (
+	Failed  TransferStatus = "failed"
+	Waiting TransferStatus = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the TransferStatus enum.
+func (e TransferStatus) Valid() bool {
+	switch e {
+	case Failed:
+		return true
+	case Waiting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserRole.
 const (
 	UserRoleAdmin UserRole = "admin"
@@ -193,6 +211,17 @@ type APIKeyInput struct {
 // APIKeyInputScopes defines model for APIKeyInput.Scopes.
 type APIKeyInputScopes string
 
+// AccountFiles defines model for AccountFiles.
+type AccountFiles struct {
+	ConnectionId openapi_types.UUID `json:"connection_id"`
+
+	// ExternalFiles Files added from Drive, which stay where they are.
+	ExternalFiles int `json:"external_files"`
+
+	// Files Files that can move, including any in the trash.
+	Files int `json:"files"`
+}
+
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
 	Action string `json:"action"`
@@ -229,10 +258,13 @@ type ChangePassword struct {
 
 // Connection A storage account. Credentials are never included.
 type Connection struct {
-	CreatedAt time.Time          `json:"created_at"`
-	Id        openapi_types.UUID `json:"id"`
-	Name      string             `json:"name"`
-	Provider  ConnectionProvider `json:"provider"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Draining Being emptied, so new files stay out of it.
+	Draining bool               `json:"draining"`
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+	Provider ConnectionProvider `json:"provider"`
 
 	// Summary What the connection points at, for showing to its owner.
 	Summary string `json:"summary"`
@@ -375,6 +407,12 @@ type NewPassword struct {
 	Password string `json:"password"`
 }
 
+// NewTransfers defines model for NewTransfers.
+type NewTransfers struct {
+	FileIds            []openapi_types.UUID `json:"file_ids"`
+	TargetConnectionId openapi_types.UUID   `json:"target_connection_id"`
+}
+
 // NewUpload defines model for NewUpload.
 type NewUpload struct {
 	// ConnectionId The account to use. Left out, the account with the most free space is chosen.
@@ -478,6 +516,46 @@ type SettingsUpdate struct {
 type SyncResult struct {
 	Added   int `json:"added"`
 	Removed int `json:"removed"`
+}
+
+// Transfer A file moving between accounts.
+type Transfer struct {
+	Copied int64 `json:"copied"`
+
+	// Failure Why it failed, safe to show.
+	Failure            *string            `json:"failure,omitempty"`
+	FileId             openapi_types.UUID `json:"file_id"`
+	Id                 openapi_types.UUID `json:"id"`
+	Name               string             `json:"name"`
+	Size               int64              `json:"size"`
+	SourceConnectionId openapi_types.UUID `json:"source_connection_id"`
+	Status             TransferStatus     `json:"status"`
+	TargetConnectionId openapi_types.UUID `json:"target_connection_id"`
+}
+
+// TransferStatus defines model for Transfer.Status.
+type TransferStatus string
+
+// TransferQueue defines model for TransferQueue.
+type TransferQueue struct {
+	Accounts []AccountFiles `json:"accounts"`
+	Failed   int            `json:"failed"`
+
+	// Removing Old copies of moved files still to be removed from their accounts.
+	Removing int `json:"removing"`
+
+	// Transfers The first hundred, waiting ones first.
+	Transfers    []Transfer `json:"transfers"`
+	Waiting      int        `json:"waiting"`
+	WaitingBytes int64      `json:"waiting_bytes"`
+}
+
+// TransferResult defines model for TransferResult.
+type TransferResult struct {
+	Queued int `json:"queued"`
+
+	// Skipped Files that stay where they are.
+	Skipped int `json:"skipped"`
 }
 
 // Trash defines model for Trash.
@@ -638,6 +716,9 @@ type MoveFolderJSONRequestBody = MoveFolderInput
 // ImportPickedJSONRequestBody defines body for ImportPicked for application/json ContentType.
 type ImportPickedJSONRequestBody = PickedFiles
 
+// CreateTransfersJSONRequestBody defines body for CreateTransfers for application/json ContentType.
+type CreateTransfersJSONRequestBody = NewTransfers
+
 // BeginUploadJSONRequestBody defines body for BeginUpload for application/json ContentType.
 type BeginUploadJSONRequestBody = NewUpload
 
@@ -766,6 +847,12 @@ type ServerInterface interface {
 	// DeleteConnection Remove a connection and forget its credentials
 	// (DELETE /api/v1/storage/connections/{id})
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// StopEmptyingConnection Stop emptying an account and use it again
+	// (DELETE /api/v1/storage/connections/{id}/empty)
+	StopEmptyingConnection(w http.ResponseWriter, r *http.Request, id Id)
+	// EmptyConnection Move everything out of an account
+	// (POST /api/v1/storage/connections/{id}/empty)
+	EmptyConnection(w http.ResponseWriter, r *http.Request, id Id)
 	// ImportPicked Add files chosen in Google's picker
 	// (POST /api/v1/storage/connections/{id}/import)
 	ImportPicked(w http.ResponseWriter, r *http.Request, id Id)
@@ -787,6 +874,18 @@ type ServerInterface interface {
 	// GetPool Report how full each linked account is, and the total
 	// (GET /api/v1/storage/pool)
 	GetPool(w http.ResponseWriter, r *http.Request)
+	// ListTransfers See files moving between accounts
+	// (GET /api/v1/transfers)
+	ListTransfers(w http.ResponseWriter, r *http.Request)
+	// CreateTransfers Move files to another account
+	// (POST /api/v1/transfers)
+	CreateTransfers(w http.ResponseWriter, r *http.Request)
+	// RetryTransfers Try every failed move again
+	// (POST /api/v1/transfers/retry)
+	RetryTransfers(w http.ResponseWriter, r *http.Request)
+	// DeleteTransfer Cancel a move, or clear one that failed
+	// (DELETE /api/v1/transfers/{id})
+	DeleteTransfer(w http.ResponseWriter, r *http.Request, id Id)
 	// EmptyTrash Permanently delete everything in the trash
 	// (DELETE /api/v1/trash)
 	EmptyTrash(w http.ResponseWriter, r *http.Request)
@@ -1066,6 +1165,18 @@ func (_ Unimplemented) DeleteConnection(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// StopEmptyingConnection Stop emptying an account and use it again
+// (DELETE /api/v1/storage/connections/{id}/empty)
+func (_ Unimplemented) StopEmptyingConnection(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// EmptyConnection Move everything out of an account
+// (POST /api/v1/storage/connections/{id}/empty)
+func (_ Unimplemented) EmptyConnection(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ImportPicked Add files chosen in Google's picker
 // (POST /api/v1/storage/connections/{id}/import)
 func (_ Unimplemented) ImportPicked(w http.ResponseWriter, r *http.Request, id Id) {
@@ -1105,6 +1216,30 @@ func (_ Unimplemented) ConnectGoogleDrive(w http.ResponseWriter, r *http.Request
 // GetPool Report how full each linked account is, and the total
 // (GET /api/v1/storage/pool)
 func (_ Unimplemented) GetPool(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTransfers See files moving between accounts
+// (GET /api/v1/transfers)
+func (_ Unimplemented) ListTransfers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTransfers Move files to another account
+// (POST /api/v1/transfers)
+func (_ Unimplemented) CreateTransfers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RetryTransfers Try every failed move again
+// (POST /api/v1/transfers/retry)
+func (_ Unimplemented) RetryTransfers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTransfer Cancel a move, or clear one that failed
+// (DELETE /api/v1/transfers/{id})
+func (_ Unimplemented) DeleteTransfer(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2124,6 +2259,58 @@ func (siw *ServerInterfaceWrapper) DeleteConnection(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// StopEmptyingConnection operation middleware
+func (siw *ServerInterfaceWrapper) StopEmptyingConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopEmptyingConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EmptyConnection operation middleware
+func (siw *ServerInterfaceWrapper) EmptyConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EmptyConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ImportPicked operation middleware
 func (siw *ServerInterfaceWrapper) ImportPicked(w http.ResponseWriter, r *http.Request) {
 
@@ -2293,6 +2480,74 @@ func (siw *ServerInterfaceWrapper) GetPool(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPool(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTransfers operation middleware
+func (siw *ServerInterfaceWrapper) ListTransfers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTransfers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTransfers operation middleware
+func (siw *ServerInterfaceWrapper) CreateTransfers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTransfers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryTransfers operation middleware
+func (siw *ServerInterfaceWrapper) RetryTransfers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryTransfers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTransfer operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTransfer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTransfer(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2766,6 +3021,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/transfers", wrapper.ListTransfers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/transfers", wrapper.CreateTransfers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/transfers/retry", wrapper.RetryTransfers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/transfers/{id}", wrapper.DeleteTransfer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/storage/connections/{id}/empty", wrapper.StopEmptyingConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/storage/connections/{id}/empty", wrapper.EmptyConnection)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/zip", wrapper.DownloadZip)

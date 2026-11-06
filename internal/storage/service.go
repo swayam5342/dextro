@@ -43,6 +43,7 @@ type Connection struct {
 	Provider  ProviderKind
 	Summary   string
 	CreatedAt time.Time
+	Draining  bool
 }
 
 // DriveAuth is Google's side of connecting a Drive account.

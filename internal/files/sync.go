@@ -67,6 +67,8 @@ type syncRun struct {
 	stored       provider.Provider
 	cutoff       time.Time
 	found        listing
+	// leaving is old copies of moved files, which aren't new files however they look.
+	leaving map[string]bool
 	// mapped says which dextro folder each of the account's folders is.
 	mapped map[string]uuid.UUID
 }
@@ -105,6 +107,12 @@ func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.
 	if err != nil {
 		return SyncResult{}, err
 	}
+	// Also before listing. A move writes its record and this in one step, so an old copy
+	// is in one of the two, and a copy listed after its removal finished is already gone.
+	leaving, err := s.store.PendingRemovalsForConnection(ctx, userID, connectionID)
+	if err != nil {
+		return SyncResult{}, err
+	}
 	rows, err := s.store.FolderObjectsForConnection(ctx, userID, connectionID)
 	if err != nil {
 		return SyncResult{}, err
@@ -121,6 +129,7 @@ func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.
 		stored:       stored,
 		cutoff:       time.Now().Add(-syncGrace),
 		found:        found,
+		leaving:      leaving,
 		mapped:       make(map[string]uuid.UUID, len(rows)),
 	}
 	for _, row := range rows {
@@ -205,7 +214,7 @@ func (r *syncRun) importEverything(ctx context.Context, known map[string]fileRec
 		}
 	}
 	for id, object := range r.found.files {
-		if _, ok := known[id]; ok || object.ModifiedAt.After(r.cutoff) {
+		if _, ok := known[id]; ok || r.leaving[id] || object.ModifiedAt.After(r.cutoff) {
 			continue
 		}
 		folder, inside, err := r.place(ctx, object.Parent)
@@ -240,7 +249,8 @@ func (r *syncRun) removeGoneFiles(ctx context.Context, known map[string]fileReco
 		if exists {
 			continue
 		}
-		err = r.s.store.DeleteFileForOwner(ctx, r.userID, record.ID)
+		// By its object, because a file that moved during this sync left this one behind.
+		err = r.s.store.DeleteFileForObject(ctx, r.userID, record.ID, r.connectionID, objectID)
 		if errors.Is(err, ErrFileNotFound) {
 			continue
 		}

@@ -15,7 +15,7 @@ import (
 const createConnection = `-- name: CreateConnection :one
 INSERT INTO storage_connections (id, user_id, provider, name, settings, secret_key_id, secret_ciphertext)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at
+RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at, draining
 `
 
 type CreateConnectionParams struct {
@@ -53,6 +53,7 @@ func (q *Queries) CreateConnection(ctx context.Context, arg CreateConnectionPara
 		&i.CheckOk,
 		&i.UsedBytes,
 		&i.FoldersSyncedAt,
+		&i.Draining,
 	)
 	return i, err
 }
@@ -76,7 +77,7 @@ func (q *Queries) DeleteConnectionForOwner(ctx context.Context, arg DeleteConnec
 }
 
 const getConnectionByNameForOwner = `-- name: GetConnectionByNameForOwner :one
-SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at, draining
 FROM storage_connections
 WHERE user_id = $1 AND name = $2
 `
@@ -103,12 +104,13 @@ func (q *Queries) GetConnectionByNameForOwner(ctx context.Context, arg GetConnec
 		&i.CheckOk,
 		&i.UsedBytes,
 		&i.FoldersSyncedAt,
+		&i.Draining,
 	)
 	return i, err
 }
 
 const getConnectionForOwner = `-- name: GetConnectionForOwner :one
-SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at, draining
 FROM storage_connections
 WHERE user_id = $1 AND id = $2
 `
@@ -135,6 +137,7 @@ func (q *Queries) GetConnectionForOwner(ctx context.Context, arg GetConnectionFo
 		&i.CheckOk,
 		&i.UsedBytes,
 		&i.FoldersSyncedAt,
+		&i.Draining,
 	)
 	return i, err
 }
@@ -159,7 +162,7 @@ func (q *Queries) GetConnectionTotals(ctx context.Context) (GetConnectionTotalsR
 }
 
 const listAllConnectionsForJobs = `-- name: ListAllConnectionsForJobs :many
-SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at, draining
 FROM storage_connections
 ORDER BY created_at, id
 `
@@ -188,6 +191,7 @@ func (q *Queries) ListAllConnectionsForJobs(ctx context.Context) ([]StorageConne
 			&i.CheckOk,
 			&i.UsedBytes,
 			&i.FoldersSyncedAt,
+			&i.Draining,
 		); err != nil {
 			return nil, err
 		}
@@ -200,7 +204,7 @@ func (q *Queries) ListAllConnectionsForJobs(ctx context.Context) ([]StorageConne
 }
 
 const listConnectionsForOwner = `-- name: ListConnectionsForOwner :many
-SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at
+SELECT id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at, draining
 FROM storage_connections
 WHERE user_id = $1
 ORDER BY created_at, id
@@ -229,6 +233,7 @@ func (q *Queries) ListConnectionsForOwner(ctx context.Context, userID uuid.UUID)
 			&i.CheckOk,
 			&i.UsedBytes,
 			&i.FoldersSyncedAt,
+			&i.Draining,
 		); err != nil {
 			return nil, err
 		}
@@ -295,6 +300,26 @@ func (q *Queries) RecordConnectionCheck(ctx context.Context, arg RecordConnectio
 	return err
 }
 
+const setConnectionDrainingForOwner = `-- name: SetConnectionDrainingForOwner :execrows
+UPDATE storage_connections
+SET draining = $3
+WHERE user_id = $1 AND id = $2
+`
+
+type SetConnectionDrainingForOwnerParams struct {
+	UserID   uuid.UUID
+	ID       uuid.UUID
+	Draining bool
+}
+
+func (q *Queries) SetConnectionDrainingForOwner(ctx context.Context, arg SetConnectionDrainingForOwnerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setConnectionDrainingForOwner, arg.UserID, arg.ID, arg.Draining)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateConnectionForOwner = `-- name: UpdateConnectionForOwner :one
 UPDATE storage_connections
 SET settings = $3,
@@ -302,7 +327,7 @@ SET settings = $3,
     secret_ciphertext = $5,
     updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at
+RETURNING id, user_id, provider, name, settings, secret_key_id, secret_ciphertext, created_at, updated_at, checked_at, check_ok, used_bytes, folders_synced_at, draining
 `
 
 type UpdateConnectionForOwnerParams struct {
@@ -336,6 +361,7 @@ func (q *Queries) UpdateConnectionForOwner(ctx context.Context, arg UpdateConnec
 		&i.CheckOk,
 		&i.UsedBytes,
 		&i.FoldersSyncedAt,
+		&i.Draining,
 	)
 	return i, err
 }

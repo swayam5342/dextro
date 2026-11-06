@@ -765,6 +765,98 @@ paths:
                 $ref: "#/components/schemas/AuditPage"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/transfers:
+    get:
+      operationId: listTransfers
+      summary: See files moving between accounts
+      tags: [files]
+      responses:
+        "200":
+          description: What's waiting, what failed, and what each account holds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferQueue"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createTransfers
+      summary: Move files to another account
+      description: >
+        Files move in the background, one at a time. Each is copied, checked against
+        the original, and only then removed from its old account. The space is held
+        on the target from now on. Files added from Drive can't move.
+      tags: [files]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewTransfers"
+      responses:
+        "200":
+          description: How many files were queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResult"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/transfers/retry:
+    post:
+      operationId: retryTransfers
+      summary: Try every failed move again
+      tags: [files]
+      responses:
+        "204":
+          description: They're waiting again.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/transfers/{id}:
+    delete:
+      operationId: deleteTransfer
+      summary: Cancel a move, or clear one that failed
+      description: The file stays where it is. A copy in progress is thrown away.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: It's gone from the queue.
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/storage/connections/{id}/empty:
+    post:
+      operationId: emptyConnection
+      summary: Move everything out of an account
+      description: >
+        Queues every file in the account, the trash included, across the user's other
+        accounts, and keeps new files out of it. It's refused if they won't all fit.
+        Files added from Drive stay, and are counted in skipped.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: How many files were queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResult"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: stopEmptyingConnection
+      summary: Stop emptying an account and use it again
+      description: Files already moved stay moved.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: The account is back in use.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/zip:
     get:
       operationId: downloadZip
@@ -1171,7 +1263,7 @@ components:
     Connection:
       type: object
       description: A storage account. Credentials are never included.
-      required: [id, name, provider, summary, created_at]
+      required: [id, name, provider, summary, created_at, draining]
       properties:
         id:
           type: string
@@ -1187,6 +1279,97 @@ components:
         created_at:
           type: string
           format: date-time
+        draining:
+          type: boolean
+          description: Being emptied, so new files stay out of it.
+    Transfer:
+      type: object
+      description: A file moving between accounts.
+      required: [id, file_id, name, size, copied, source_connection_id, target_connection_id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        copied:
+          type: integer
+          format: int64
+        source_connection_id:
+          type: string
+          format: uuid
+        target_connection_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [waiting, failed]
+        failure:
+          type: string
+          description: Why it failed, safe to show.
+    AccountFiles:
+      type: object
+      required: [connection_id, files, external_files]
+      properties:
+        connection_id:
+          type: string
+          format: uuid
+        files:
+          type: integer
+          description: Files that can move, including any in the trash.
+        external_files:
+          type: integer
+          description: Files added from Drive, which stay where they are.
+    TransferQueue:
+      type: object
+      required: [transfers, waiting, waiting_bytes, failed, removing, accounts]
+      properties:
+        transfers:
+          type: array
+          description: The first hundred, waiting ones first.
+          items:
+            $ref: "#/components/schemas/Transfer"
+        waiting:
+          type: integer
+        waiting_bytes:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+        removing:
+          type: integer
+          description: Old copies of moved files still to be removed from their accounts.
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountFiles"
+    NewTransfers:
+      type: object
+      required: [file_ids, target_connection_id]
+      properties:
+        file_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        target_connection_id:
+          type: string
+          format: uuid
+    TransferResult:
+      type: object
+      required: [queued, skipped]
+      properties:
+        queued:
+          type: integer
+        skipped:
+          type: integer
+          description: Files that stay where they are.
     GoogleRedirect:
       type: object
       required: [url]

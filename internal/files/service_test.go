@@ -1064,3 +1064,9 @@ func testFolderLoopCannotHang(t *testing.T, f *fixture) {
 		t.Fatalf("DeleteFolder: %v", err)
 	}
 }
+
+func (p *providers) ReserveTransfers(context.Context, uuid.UUID, storage.TransferRequest) (int, error) {
+	return 0, nil
+}
+
+func (p *providers) StopDraining(context.Context, uuid.UUID, uuid.UUID) error { return nil }

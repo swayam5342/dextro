@@ -47,6 +47,20 @@ type File struct {
 	External     bool
 }
 
+type FileTransfer struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	FileID             uuid.UUID
+	SourceConnectionID uuid.UUID
+	TargetConnectionID uuid.UUID
+	Size               int64
+	Copied             int64
+	Status             string
+	Failure            string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 type Folder struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -68,6 +82,15 @@ type JobRun struct {
 	Name       string
 	FinishedAt time.Time
 	Succeeded  bool
+}
+
+type PendingRemoval struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	ConnectionID uuid.UUID
+	ObjectID     string
+	RetryAt      time.Time
+	CreatedAt    time.Time
 }
 
 type Session struct {
@@ -101,6 +124,7 @@ type StorageConnection struct {
 	CheckOk          pgtype.Bool
 	UsedBytes        pgtype.Int8
 	FoldersSyncedAt  *time.Time
+	Draining         bool
 }
 
 type UploadSession struct {

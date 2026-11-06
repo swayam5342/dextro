@@ -41,12 +41,20 @@ WHERE user_id = $1 AND id = $2;
 DELETE FROM upload_sessions
 WHERE user_id = $1 AND id = $2 AND file_id IS NULL;
 
--- A finished upload's space shows up in the account's own usage.
+-- A finished upload's space shows up in the account's own usage. Files waiting to move
+-- are held the same way, on the account they're moving to.
 -- name: ListReservedBytesForOwner :many
-SELECT connection_id, sum(size)::bigint AS reserved
-FROM upload_sessions
-WHERE user_id = $1 AND file_id IS NULL
-GROUP BY connection_id;
+SELECT held.connection_id, sum(held.size)::bigint AS reserved
+FROM (
+    SELECT u.connection_id, u.size
+    FROM upload_sessions u
+    WHERE u.user_id = $1 AND u.file_id IS NULL
+    UNION ALL
+    SELECT t.target_connection_id, t.size
+    FROM file_transfers t
+    WHERE t.user_id = $1 AND t.status = 'waiting'
+) held
+GROUP BY held.connection_id;
 
 -- Lets one user's uploads take turns choosing an account. Accounts belong to one
 -- user, so nobody else's uploads are involved.

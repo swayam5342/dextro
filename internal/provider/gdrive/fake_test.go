@@ -1,6 +1,8 @@
 package gdrive
 
 import (
+	"crypto/md5" //nolint:gosec // Drive's own checksum.
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -73,6 +75,7 @@ type fakeFile struct {
 	Size         string   `json:"size,omitempty"`
 	ModifiedTime string   `json:"modifiedTime"`
 	Trashed      bool     `json:"trashed"`
+	Md5Checksum  string   `json:"md5Checksum,omitempty"`
 	body         []byte
 	discarded    int64
 }
@@ -215,6 +218,8 @@ func (f *fakeDrive) store(file *fakeFile, body []byte) *fakeFile {
 	file.body = body
 	if file.MimeType != folderMime {
 		file.Size = strconv.FormatInt(int64(len(body))+file.discarded, 10)
+		sum := md5.Sum(body) //nolint:gosec // Drive's own checksum.
+		file.Md5Checksum = hex.EncodeToString(sum[:])
 	}
 	f.files[file.ID] = file
 	f.order = append(f.order, file.ID)

@@ -85,6 +85,33 @@ func (q *Queries) CreateFolder(ctx context.Context, arg CreateFolderParams) (Fol
 	return i, err
 }
 
+const deleteFileForObjectForOwner = `-- name: DeleteFileForObjectForOwner :execrows
+DELETE FROM files
+WHERE user_id = $1 AND id = $2 AND connection_id = $3 AND object_id = $4
+`
+
+type DeleteFileForObjectForOwnerParams struct {
+	UserID       uuid.UUID
+	ID           uuid.UUID
+	ConnectionID uuid.UUID
+	ObjectID     string
+}
+
+// For a sync, whose view of an account can be out of date: a file that moved in the
+// meantime is safe in its new account, whatever became of this object.
+func (q *Queries) DeleteFileForObjectForOwner(ctx context.Context, arg DeleteFileForObjectForOwnerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFileForObjectForOwner,
+		arg.UserID,
+		arg.ID,
+		arg.ConnectionID,
+		arg.ObjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteFileForOwner = `-- name: DeleteFileForOwner :execrows
 DELETE FROM files WHERE user_id = $1 AND id = $2
 `
@@ -798,6 +825,41 @@ type SetFolderTrashedForOwnerParams struct {
 
 func (q *Queries) SetFolderTrashedForOwner(ctx context.Context, arg SetFolderTrashedForOwnerParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setFolderTrashedForOwner, arg.UserID, arg.ID, arg.TrashedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const swapFileObjectForOwner = `-- name: SwapFileObjectForOwner :execrows
+UPDATE files
+SET connection_id = $1, object_id = $2
+WHERE user_id = $3
+  AND id = $4
+  AND connection_id = $5
+  AND object_id = $6
+`
+
+type SwapFileObjectForOwnerParams struct {
+	TargetConnectionID uuid.UUID
+	NewObjectID        string
+	UserID             uuid.UUID
+	ID                 uuid.UUID
+	SourceConnectionID uuid.UUID
+	OldObjectID        string
+}
+
+// Only if the file is still where the copy was taken from, so a file deleted or moved
+// in the meantime isn't touched.
+func (q *Queries) SwapFileObjectForOwner(ctx context.Context, arg SwapFileObjectForOwnerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, swapFileObjectForOwner,
+		arg.TargetConnectionID,
+		arg.NewObjectID,
+		arg.UserID,
+		arg.ID,
+		arg.SourceConnectionID,
+		arg.OldObjectID,
+	)
 	if err != nil {
 		return 0, err
 	}

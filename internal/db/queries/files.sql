@@ -155,3 +155,19 @@ WHERE user_id = $1 AND connection_id = $2;
 INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (connection_id, object_id) DO NOTHING;
+
+-- Only if the file is still where the copy was taken from, so a file deleted or moved
+-- in the meantime isn't touched.
+-- name: SwapFileObjectForOwner :execrows
+UPDATE files
+SET connection_id = sqlc.arg(target_connection_id), object_id = sqlc.arg(new_object_id)
+WHERE user_id = sqlc.arg(user_id)
+  AND id = sqlc.arg(id)
+  AND connection_id = sqlc.arg(source_connection_id)
+  AND object_id = sqlc.arg(old_object_id);
+
+-- For a sync, whose view of an account can be out of date: a file that moved in the
+-- meantime is safe in its new account, whatever became of this object.
+-- name: DeleteFileForObjectForOwner :execrows
+DELETE FROM files
+WHERE user_id = $1 AND id = $2 AND connection_id = $3 AND object_id = $4;

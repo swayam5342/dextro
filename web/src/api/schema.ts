@@ -51,6 +51,46 @@ export interface components {
       /** What the connection points at, for showing to its owner. */
       summary: string;
       created_at: string;
+      /** Being emptied, so new files stay out of it. */
+      draining: boolean;
+    };
+    Transfer: {
+      id: string;
+      file_id: string;
+      name: string;
+      size: number;
+      copied: number;
+      source_connection_id: string;
+      target_connection_id: string;
+      status: "waiting" | "failed";
+      /** Why it failed, safe to show. */
+      failure?: string;
+    };
+    AccountFiles: {
+      connection_id: string;
+      /** Files that can move, including any in the trash. */
+      files: number;
+      /** Files added from Drive, which stay where they are. */
+      external_files: number;
+    };
+    TransferQueue: {
+      /** The first hundred, waiting ones first. */
+      transfers: components["schemas"]["Transfer"][];
+      waiting: number;
+      waiting_bytes: number;
+      failed: number;
+      /** Old copies of moved files still to be removed from their accounts. */
+      removing: number;
+      accounts: components["schemas"]["AccountFiles"][];
+    };
+    NewTransfers: {
+      file_ids: string[];
+      target_connection_id: string;
+    };
+    TransferResult: {
+      queued: number;
+      /** Files that stay where they are. */
+      skipped: number;
     };
     PoolAccount: {
       connection: components["schemas"]["Connection"];
@@ -438,6 +478,32 @@ export interface paths {
   };
   "/api/v1/folders/{id}/restore": {
     post: PathOperation;
+  };
+  "/api/v1/transfers": {
+    get: Operation<{ 200: JsonBody<Schemas["TransferQueue"]> }>;
+    post: JsonOperation<Schemas["NewTransfers"], { 200: JsonBody<Schemas["TransferResult"]> }>;
+  };
+  "/api/v1/transfers/retry": {
+    post: Operation<{ 204: NoContent }>;
+  };
+  "/api/v1/transfers/{id}": {
+    delete: PathOperation;
+  };
+  "/api/v1/storage/connections/{id}/empty": {
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: { id: string };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        200: JsonBody<Schemas["TransferResult"]>;
+        default: JsonBody<Schemas["Error"]>;
+      };
+    };
+    delete: PathOperation;
   };
   "/api/v1/zip": {
     get: {

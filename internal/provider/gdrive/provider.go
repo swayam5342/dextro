@@ -27,7 +27,7 @@ const (
 	chunkSize       = 8 << 20
 	defaultPageSize = 1000
 	tokenTimeout    = 30 * time.Second
-	fileFields      = "id,name,size,mimeType,modifiedTime,parents"
+	fileFields      = "id,name,size,mimeType,modifiedTime,parents,md5Checksum"
 	// thumbnailSize is the long edge to ask Google for, sharp at the size of a grid tile.
 	thumbnailSize = "=s480"
 )
@@ -430,6 +430,7 @@ func toObject(file *drive.File) provider.Object {
 		Name:        file.Name,
 		Size:        file.Size,
 		ContentType: file.MimeType,
+		Checksum:    file.Md5Checksum,
 		Folder:      file.MimeType == folderMimeType,
 		ModifiedAt:  modified,
 	}

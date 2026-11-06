@@ -23,6 +23,10 @@ var (
 	ErrNoStorage          = errors.New("no accounts linked")
 	ErrStorageFull        = errors.New("no account has room")
 	ErrStorageUnavailable = errors.New("no account can be reached")
+	// ErrAccountDraining means someone picked an account that's being emptied.
+	ErrAccountDraining = errors.New("account is being emptied")
+	// ErrNoOtherAccount means a file has nowhere to move to.
+	ErrNoOtherAccount = errors.New("no other account to move to")
 )
 
 // Chosen is the account an upload should go to.
@@ -165,12 +169,108 @@ func (s *Service) Reserve(ctx context.Context, userID uuid.UUID, preferred *uuid
 	return chosen, nil
 }
 
+// TransferFile is a file about to move out of its account.
+type TransferFile struct {
+	ID     uuid.UUID
+	Source uuid.UUID
+	Size   int64
+}
+
+// TransferRequest is a set of files to move. Target picks the account; left nil, they
+// spread across the others. Drain marks an account as being emptied, along with them.
+type TransferRequest struct {
+	Target *uuid.UUID
+	Drain  *uuid.UUID
+	Files  []TransferFile
+}
+
+// ReserveTransfers chooses where each file goes and holds the space, or refuses the
+// lot. A half-emptied account helps nobody, so it's better to find out now than to
+// fail hours in. It returns how many files were queued.
+func (s *Service) ReserveTransfers(ctx context.Context, userID uuid.UUID, request TransferRequest) (int, error) {
+	var candidates []probed
+	if len(request.Files) > 0 {
+		var err error
+		if candidates, err = s.candidates(ctx, userID, request.Target); err != nil {
+			return 0, err
+		}
+	}
+	queued := 0
+	err := s.store.InTx(ctx, func(tx *Store) error {
+		if err := tx.LockUploadReservations(ctx, userID); err != nil {
+			return err
+		}
+		reserved, err := tx.ReservedBytes(ctx, userID)
+		if err != nil {
+			return err
+		}
+		counted := slices.Clone(candidates)
+		for i := range counted {
+			counted[i].quota.Used += reserved[counted[i].record.ID]
+		}
+		// The largest first, because they're the hardest to place.
+		files := slices.SortedStableFunc(slices.Values(request.Files), func(a, b TransferFile) int {
+			return cmp.Compare(b.Size, a.Size)
+		})
+		for _, file := range files {
+			target, err := place(counted, file)
+			if err != nil {
+				return err
+			}
+			added, err := tx.CreateFileTransfer(ctx, userID, target, file)
+			if err != nil {
+				return err
+			}
+			if added {
+				queued++
+			}
+		}
+		if request.Drain != nil {
+			return tx.SetConnectionDrainingForOwner(ctx, userID, *request.Drain, true)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return queued, nil
+}
+
+// place takes the account with the most room that isn't where the file already is,
+// and counts the file as being there.
+func place(counted []probed, file TransferFile) (uuid.UUID, error) {
+	slices.SortStableFunc(counted, moreRoomFirst)
+	other := false
+	for i := range counted {
+		if counted[i].record.ID == file.Source {
+			continue
+		}
+		other = true
+		if hasRoom(counted[i].quota, file.Size) {
+			counted[i].quota.Used += file.Size
+			return counted[i].record.ID, nil
+		}
+	}
+	if !other {
+		return uuid.Nil, ErrNoOtherAccount
+	}
+	return uuid.Nil, ErrStorageFull
+}
+
+// StopDraining puts an account back in use.
+func (s *Service) StopDraining(ctx context.Context, userID, id uuid.UUID) error {
+	return s.store.SetConnectionDrainingForOwner(ctx, userID, id, false)
+}
+
 // candidates asks the accounts an upload could go to how full they are.
 func (s *Service) candidates(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID) ([]probed, error) {
 	if preferred != nil {
 		r, err := s.store.GetConnectionForOwner(ctx, userID, *preferred)
 		if err != nil {
 			return nil, err
+		}
+		if r.Draining {
+			return nil, ErrAccountDraining
 		}
 		result := s.probe(ctx, r)
 		if result.err != nil {
@@ -182,6 +282,8 @@ func (s *Service) candidates(ctx context.Context, userID uuid.UUID, preferred *u
 	if err != nil {
 		return nil, err
 	}
+	// An account being emptied has the most room, and would fill straight back up.
+	records = slices.DeleteFunc(records, func(r record) bool { return r.Draining })
 	if len(records) == 0 {
 		return nil, ErrNoStorage
 	}
@@ -240,8 +342,11 @@ func (s *Service) Pool(ctx context.Context, userID uuid.UUID) (Pool, error) {
 			free = max(free-account.Reserved, 0)
 			pool.Used += account.Used
 			pool.Limit += account.Limit
-			pool.Free += free
-			pool.Unlimited = pool.Unlimited || !limited
+			// Nothing new can go in an account being emptied.
+			if !account.Draining {
+				pool.Free += free
+				pool.Unlimited = pool.Unlimited || !limited
+			}
 		}
 		pool.Accounts = append(pool.Accounts, account)
 	}

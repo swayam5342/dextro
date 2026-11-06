@@ -40,11 +40,19 @@ func (f *fakeUploads) CleanupUploads(context.Context) (int, error) {
 	return 0, nil
 }
 
-type fakeFiles struct{ calls atomic.Int32 }
+type fakeFiles struct {
+	calls     atomic.Int32
+	transfers atomic.Int32
+}
 
 func (f *fakeFiles) SyncAll(context.Context) (files.SyncResult, error) {
 	f.calls.Add(1)
 	return files.SyncResult{}, nil
+}
+
+func (f *fakeFiles) RunTransfers(context.Context) (files.TransferRun, error) {
+	f.transfers.Add(1)
+	return files.TransferRun{}, nil
 }
 
 // Runs real river against real Postgres, so it proves the wiring: migrations,
@@ -87,18 +95,21 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListJobRuns: %v", err)
 		}
-		if len(runs) == 4 {
+		if len(runs) == 5 {
 			if runs[0].Name != KindFileSync || !runs[0].Succeeded {
 				t.Errorf("file sync = %+v", runs[0])
 			}
-			if runs[1].Name != KindQuotaSync || runs[1].Succeeded {
-				t.Errorf("a failed job should be recorded as failed: %+v", runs[1])
+			if runs[1].Name != KindFileTransfers || !runs[1].Succeeded {
+				t.Errorf("file transfers = %+v", runs[1])
 			}
-			if runs[2].Name != KindSessionCleanup || !runs[2].Succeeded {
-				t.Errorf("cleanup = %+v", runs[2])
+			if runs[2].Name != KindQuotaSync || runs[2].Succeeded {
+				t.Errorf("a failed job should be recorded as failed: %+v", runs[2])
 			}
-			if runs[3].Name != KindUploadCleanup || !runs[3].Succeeded {
-				t.Errorf("upload cleanup = %+v", runs[3])
+			if runs[3].Name != KindSessionCleanup || !runs[3].Succeeded {
+				t.Errorf("cleanup = %+v", runs[3])
+			}
+			if runs[4].Name != KindUploadCleanup || !runs[4].Succeeded {
+				t.Errorf("upload cleanup = %+v", runs[4])
 			}
 			break
 		}

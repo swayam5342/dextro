@@ -59,3 +59,8 @@ FROM storage_connections c
 JOIN users u ON u.id = c.user_id
 WHERE c.check_ok = false
 ORDER BY c.checked_at, c.id;
+
+-- name: SetConnectionDrainingForOwner :execrows
+UPDATE storage_connections
+SET draining = $3
+WHERE user_id = $1 AND id = $2;

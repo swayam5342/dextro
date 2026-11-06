@@ -268,6 +268,7 @@ func toAPI(c Connection) apigen.Connection {
 		Provider:  apigen.ConnectionProvider(c.Provider),
 		Summary:   c.Summary,
 		CreatedAt: c.CreatedAt,
+		Draining:  c.Draining,
 	}
 }
 
