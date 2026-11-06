@@ -8,6 +8,8 @@ services:
     build: ./web
     environment:
       DEXTRO_API_URL: http://api:8080
+      # Addresses of any proxy in front of this service, so its visitors' addresses are believed.
+      DEXTRO_TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     ports:
       - 127.0.0.1:3000:3000
     networks:

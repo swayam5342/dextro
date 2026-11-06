@@ -5,6 +5,7 @@
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
+import { BlockList, isIP } from "node:net";
 import path from "node:path";
 import { pipeline } from "node:stream";
 
@@ -78,11 +79,52 @@ function sendError(res, status, code, message) {
   res.end(JSON.stringify({ error: { code, message, request_id: "" } }));
 }
 
+/** Node reports an IPv4 client on a dual-stack socket as ::ffff:1.2.3.4. */
+function plainAddress(address) {
+  return address.startsWith("::ffff:") ? address.slice("::ffff:".length) : address;
+}
+
+const family = (address) => (isIP(address) === 6 ? "ipv6" : "ipv4");
+
+/** Reads a comma-separated list of addresses and ranges. A bad entry stops the server. */
+export function parseTrustedProxies(text = "") {
+  const proxies = new BlockList();
+  for (const entry of text.split(",").map((part) => part.trim()).filter(Boolean)) {
+    const [address, bits, ...rest] = entry.split("/");
+    if (isIP(address) === 0 || rest.length > 0) {
+      throw new Error(`DEXTRO_TRUSTED_PROXIES: ${entry} isn't an address or a range`);
+    }
+    if (bits === undefined) {
+      proxies.addAddress(address, family(address));
+    } else {
+      proxies.addSubnet(address, Number(bits), family(address));
+    }
+  }
+  return proxies;
+}
+
+/**
+ * Who's really making the request. The header is believed only from a trusted proxy, and
+ * read from the right, because a client can write anything at the start of it.
+ */
+export function clientAddress(req, proxies) {
+  let address = plainAddress(req.socket.remoteAddress ?? "");
+  const hops = String(req.headers["x-forwarded-for"] ?? "").split(",").map((hop) => plainAddress(hop.trim()));
+  while (isIP(address) !== 0 && proxies.check(address, family(address))) {
+    const hop = hops.pop();
+    if (!hop || isIP(hop) === 0) {
+      break;
+    }
+    address = hop;
+  }
+  return address;
+}
+
 /** Streams the request to the API and the response back, buffering neither. */
-function proxy(req, res, apiUrl, logger) {
+function proxy(req, res, apiUrl, proxies, logger) {
   const headers = withoutHopByHop(req.headers);
   // Overwritten, never appended to, so a client can't forge its own address.
-  headers["x-forwarded-for"] = req.socket.remoteAddress ?? "";
+  headers["x-forwarded-for"] = clientAddress(req, proxies);
 
   const upstream = http.request(
     { hostname: apiUrl.hostname, port: apiUrl.port, method: req.method, path: req.url, headers },
@@ -170,14 +212,14 @@ async function serveStatic(req, res, root, index, pathname) {
  * Creates the web server. It fails if root has no index.html, so a missing
  * build stops the process at startup.
  */
-export async function createApp({ root, apiUrl, logger = console }) {
+export async function createApp({ root, apiUrl, proxies = parseTrustedProxies(), logger = console }) {
   const resolvedRoot = path.resolve(root);
   const index = await readFile(path.join(resolvedRoot, "index.html"));
 
   const server = http.createServer((req, res) => {
     const { pathname } = new URL(req.url, "http://x");
     if (isApiPath(pathname)) {
-      proxy(req, res, apiUrl, logger);
+      proxy(req, res, apiUrl, proxies, logger);
       return;
     }
 

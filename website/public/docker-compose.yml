@@ -7,6 +7,9 @@ services:
     image: swayam5342/tributary-web:0.1.0
     environment:
       DEXTRO_API_URL: http://api:8080
+      # A proxy on this machine reaches the web service from this address. Nothing else can,
+      # because the port below is only open locally. A proxy elsewhere needs its own address here.
+      DEXTRO_TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.28.77.1}
     ports:
       # Only this machine can reach it. Put your HTTPS proxy in front of this port.
       - 127.0.0.1:${PORT:-3000}:3000

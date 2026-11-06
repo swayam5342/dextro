@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 
-import { createApp } from "./app.mjs";
+import { clientAddress, createApp, parseTrustedProxies } from "./app.mjs";
 
 const silent = { error() {} };
 
@@ -230,5 +230,63 @@ describe("web server", () => {
 
   it("refuses to start without a build", async () => {
     await assert.rejects(createApp({ root: path.join(dir, "nope"), apiUrl: new URL("http://127.0.0.1:1"), logger: silent }));
+  });
+});
+
+describe("the client's address", () => {
+  const request = (socket, forwarded) => ({
+    socket: { remoteAddress: socket },
+    headers: forwarded === undefined ? {} : { "x-forwarded-for": forwarded },
+  });
+  const proxies = parseTrustedProxies("172.28.77.1, 10.0.0.0/8, fd00::/8");
+
+  it("ignores the header from anyone who isn't trusted", () => {
+    assert.equal(clientAddress(request("203.0.113.9", "1.2.3.4"), proxies), "203.0.113.9");
+  });
+
+  it("ignores the header when nothing is trusted", () => {
+    assert.equal(clientAddress(request("172.28.77.1", "1.2.3.4"), parseTrustedProxies("")), "172.28.77.1");
+  });
+
+  it("believes a trusted proxy", () => {
+    assert.equal(clientAddress(request("172.28.77.1", "1.2.3.4"), proxies), "1.2.3.4");
+  });
+
+  it("matches a range", () => {
+    assert.equal(clientAddress(request("10.1.2.3", "1.2.3.4"), proxies), "1.2.3.4");
+  });
+
+  it("matches an IPv4 address written the IPv6 way", () => {
+    assert.equal(clientAddress(request("::ffff:172.28.77.1", "::ffff:1.2.3.4"), proxies), "1.2.3.4");
+  });
+
+  it("matches IPv6", () => {
+    assert.equal(clientAddress(request("fd00::1", "2001:db8::5"), proxies), "2001:db8::5");
+  });
+
+  // A client can put anything at the start. Only the end was written by a proxy.
+  it("takes the last address a proxy added, not a forged one before it", () => {
+    assert.equal(clientAddress(request("172.28.77.1", "6.6.6.6, 1.2.3.4"), proxies), "1.2.3.4");
+  });
+
+  it("walks back past a chain of trusted proxies", () => {
+    assert.equal(clientAddress(request("172.28.77.1", "6.6.6.6, 1.2.3.4, 10.0.0.2"), proxies), "1.2.3.4");
+  });
+
+  it("falls back to the proxy when it sends nothing", () => {
+    assert.equal(clientAddress(request("172.28.77.1"), proxies), "172.28.77.1");
+  });
+
+  it("falls back when the whole chain is trusted", () => {
+    assert.equal(clientAddress(request("172.28.77.1", "10.0.0.2"), proxies), "10.0.0.2");
+  });
+
+  it("stops at something that isn't an address", () => {
+    assert.equal(clientAddress(request("172.28.77.1", "1.2.3.4, nonsense"), proxies), "172.28.77.1");
+  });
+
+  it("refuses a setting it can't read, rather than trusting the wrong thing", () => {
+    assert.throws(() => parseTrustedProxies("not-an-address"));
+    assert.throws(() => parseTrustedProxies("10.0.0.0/99"));
   });
 });
