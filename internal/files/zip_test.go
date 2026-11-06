@@ -171,10 +171,10 @@ func testZipLeavesOutTrash(t *testing.T, f *uploadFixture) {
 	gone := f.put1(t, user, &folder.ID, "gone.txt")
 	f.put1(t, user, &folder.ID, "kept.txt")
 	inner := f.folder(t, user, &folder.ID, "Gone folder")
-	if err := f.service.TrashFile(f.ctx, user, gone.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, gone.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
-	if err := f.service.TrashFolder(f.ctx, user, inner.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, user, inner.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	got := f.zipped(t, user, nil, []uuid.UUID{folder.ID})
@@ -287,7 +287,7 @@ func testZipTrashedFolder(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	f.link(t, user, "a@gmail.com", 1<<30)
 	folder := f.folder(t, user, nil, "Gone")
-	if err := f.service.TrashFolder(f.ctx, user, folder.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, user, folder.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if _, err := f.service.PlanZip(f.ctx, user, nil, []uuid.UUID{folder.ID}); !errors.Is(err, ErrFolderNotFound) {

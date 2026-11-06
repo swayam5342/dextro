@@ -160,6 +160,15 @@ func (s *Store) WaitingTransferFiles(ctx context.Context, userID uuid.UUID) (map
 	return waiting, nil
 }
 
+// IsFileWaitingToMove says whether one file is queued.
+func (s *Store) IsFileWaitingToMove(ctx context.Context, userID, fileID uuid.UUID) (bool, error) {
+	waiting, err := s.queries.IsFileWaitingToMoveForOwner(ctx, dbgen.IsFileWaitingToMoveForOwnerParams{UserID: userID, FileID: fileID})
+	if err != nil {
+		return false, fmt.Errorf("check transfer: %w", err)
+	}
+	return waiting, nil
+}
+
 // TransferQueueForOwner reads everything the Storage page shows.
 func (s *Store) TransferQueueForOwner(ctx context.Context, userID uuid.UUID) (TransferQueue, error) {
 	rows, err := s.queries.ListFileTransfersForOwner(ctx, userID)

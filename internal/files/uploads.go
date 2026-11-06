@@ -99,7 +99,7 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 	}
 	if err != nil {
 		// Without an address the reservation only wastes space.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		cleanup, cancel := cleanupContext(ctx)
 		defer cancel()
 		return UploadSession{}, errors.Join(fmt.Errorf("%w: %w", ErrProviderFailed, err), s.store.DeleteUnfinishedUploadForOwner(cleanup, userID, id))
 	}
@@ -132,9 +132,9 @@ func (s *Service) openUpload(ctx context.Context, userID uuid.UUID, r uploadReco
 	if r.sealed == nil {
 		return nil, "", ErrUploadExpired
 	}
-	stored, err := s.providers.Provider(ctx, userID, r.ConnectionID)
+	stored, err := s.openAccount(ctx, userID, r.ConnectionID)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		return nil, "", err
 	}
 	address, err := s.providers.OpenUploadSession(r.ID, *r.sealed)
 	if err != nil {
@@ -159,7 +159,7 @@ func (s *Service) settle(ctx context.Context, userID uuid.UUID, r uploadRecord, 
 }
 
 func (s *Service) expireUpload(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	cleanup, cancel := cleanupContext(ctx)
 	defer cancel()
 	return errors.Join(ErrUploadExpired, s.store.DeleteUnfinishedUploadForOwner(cleanup, userID, id))
 }
@@ -271,7 +271,7 @@ func (s *Service) finishUpload(ctx context.Context, userID uuid.UUID, r uploadRe
 	})
 	if err != nil {
 		// Without a record nothing could ever find this object again.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		cleanup, cancel := cleanupContext(ctx)
 		defer cancel()
 		return UploadSession{}, errors.Join(err, stored.Delete(cleanup, object.ID))
 	}
@@ -297,7 +297,7 @@ func (s *Service) tellAccountToForget(ctx context.Context, userID uuid.UUID, r u
 	if err != nil {
 		return
 	}
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	cleanup, cancel := cleanupContext(ctx)
 	defer cancel()
 	_ = stored.CancelResumable(cleanup, address)
 }

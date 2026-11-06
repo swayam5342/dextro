@@ -7,10 +7,14 @@ ON CONFLICT (file_id) DO UPDATE
 SET updated_at = now()
 WHERE file_shares.url = '';
 
--- name: SaveShareForOwner :execrows
+-- name: SaveShareForOwner :one
 UPDATE file_shares
 SET role = $3, url = $4, expires_at = $5, updated_at = now()
-WHERE user_id = $1 AND file_id = $2;
+WHERE user_id = $1 AND file_id = $2
+RETURNING *;
+
+-- name: DelayShare :exec
+UPDATE file_shares SET updated_at = now() WHERE file_id = $1;
 
 -- name: GetShareForOwner :one
 SELECT * FROM file_shares WHERE user_id = $1 AND file_id = $2;
@@ -53,5 +57,5 @@ FROM file_shares s
 JOIN files f ON f.id = s.file_id
 WHERE (s.url <> '' AND s.expires_at <= now())
    OR (s.url = '' AND s.updated_at < sqlc.arg(abandoned_before))
-ORDER BY s.created_at, s.file_id
+ORDER BY s.updated_at, s.file_id
 LIMIT 200;

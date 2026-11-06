@@ -515,7 +515,7 @@ type PoolAccount struct {
 	// LimitBytes Null if the account has no limit, or can't be reached.
 	LimitBytes *int64 `json:"limit_bytes"`
 
-	// ReservedBytes Space held by uploads that haven't finished yet.
+	// ReservedBytes Space held by unfinished uploads and files waiting to move here.
 	ReservedBytes int64 `json:"reserved_bytes"`
 	UsedBytes     int64 `json:"used_bytes"`
 }

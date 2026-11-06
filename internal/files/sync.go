@@ -19,8 +19,8 @@ const (
 	syncGrace = 10 * time.Minute
 	// importedFallbackName stands in for a name dextro can't use.
 	importedFallbackName = "Recovered file"
-	// syncActor stands in for a client address on events from the background job.
-	syncActor = "job"
+	// jobActor stands in for a client address on events from the background jobs.
+	jobActor = "job"
 )
 
 // SyncResult says what a sync changed. Skipped counts accounts it couldn't reach, and
@@ -180,15 +180,22 @@ func (r *syncRun) place(ctx context.Context, objectID string) (*uuid.UUID, bool,
 	return &adopted, true, nil
 }
 
+// importedName is what to call something found in an account, whose name may not be one
+// dextro accepts.
+func importedName(raw string) string {
+	name, err := cleanName(raw)
+	if err != nil {
+		return importedFallbackName
+	}
+	return name
+}
+
 // adoptFolder finds the dextro folder at this place or makes it, so that the same
 // folder in several accounts becomes one folder.
 func (s *Service) adoptFolder(ctx context.Context, userID uuid.UUID, parent *uuid.UUID, rawName string) (uuid.UUID, error) {
-	name, err := cleanName(rawName)
-	if err != nil {
-		name = importedFallbackName
-	}
+	name := importedName(rawName)
 	var id uuid.UUID
-	err = s.store.InTx(ctx, func(tx *Store) error {
+	err := s.store.InTx(ctx, func(tx *Store) error {
 		if err := tx.LockFolderTreeForOwner(ctx, userID); err != nil {
 			return err
 		}
@@ -384,15 +391,11 @@ func (r *syncRun) sortFile(ctx context.Context, objectID string, record fileReco
 }
 
 func (s *Service) importObject(ctx context.Context, userID, connectionID uuid.UUID, object provider.Object, folder *uuid.UUID, external bool) (bool, error) {
-	name, err := cleanName(object.Name)
-	if err != nil {
-		name = importedFallbackName
-	}
 	return s.store.ImportFile(ctx, userID, fileRecord{
 		File: File{
 			ConnectionID: connectionID,
 			FolderID:     folder,
-			Name:         name,
+			Name:         importedName(object.Name),
 			Size:         object.Size,
 			ContentType:  cleanContentType(object.ContentType),
 			External:     external,
@@ -426,7 +429,7 @@ func (s *Service) SyncAll(ctx context.Context) (SyncResult, error) {
 	}
 	var total SyncResult
 	for _, account := range accounts {
-		result, err := s.SyncConnection(ctx, account.UserID, account.ID, syncActor)
+		result, err := s.SyncConnection(ctx, account.UserID, account.ID, jobActor)
 		total.Added += result.Added
 		total.Removed += result.Removed
 		if ctx.Err() != nil {

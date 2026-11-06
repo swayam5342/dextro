@@ -443,6 +443,7 @@ paths:
     post:
       operationId: trashFile
       summary: Move a file to the trash
+      description: Ends the file's Google link, if it has one. Restoring doesn't bring it back.
       tags: [files]
       parameters:
         - $ref: "#/components/parameters/Id"
@@ -544,6 +545,7 @@ paths:
     post:
       operationId: trashFolder
       summary: Move a folder and everything in it to the trash
+      description: Ends the Google links on everything inside it. Restoring doesn't bring them back.
       tags: [files]
       parameters:
         - $ref: "#/components/parameters/Id"
@@ -1095,8 +1097,7 @@ paths:
       summary: Make dextro match what's really in an account
       description: >
         Files in dextro's folder that dextro has no record of are added, and
-        records of files that are gone are removed. Files added back go to the
-        top level, because folders exist only in dextro.
+        records of files that are gone are removed. Files and folders come back in their right place.
       tags: [storage]
       parameters:
         - $ref: "#/components/parameters/Id"
@@ -1657,7 +1658,7 @@ components:
         reserved_bytes:
           type: integer
           format: int64
-          description: Space held by uploads that haven't finished yet.
+          description: Space held by unfinished uploads and files waiting to move here.
         limit_bytes:
           type: integer
           format: int64

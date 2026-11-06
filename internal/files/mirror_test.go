@@ -386,10 +386,10 @@ func testRestoredFolderMovesInDrive(t *testing.T, f *uploadFixture) {
 	f.link(t, user, "a@gmail.com", 1<<30)
 	outer := f.folder(t, user, nil, "Outer")
 	inner := f.folder(t, user, &outer.ID, "Inner")
-	if err := f.service.TrashFolder(f.ctx, user, inner.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, user, inner.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
-	if err := f.service.TrashFolder(f.ctx, user, outer.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, user, outer.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if err := f.service.RestoreFolder(f.ctx, user, inner.ID); err != nil {
@@ -402,7 +402,7 @@ func testRestoredFolderMovesInDrive(t *testing.T, f *uploadFixture) {
 
 func (f *uploadFixture) deleteFolder(t *testing.T, userID, id uuid.UUID) {
 	t.Helper()
-	if err := f.service.TrashFolder(f.ctx, userID, id); err != nil {
+	if err := f.service.TrashFolder(f.ctx, userID, id, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if err := f.service.DeleteFolder(f.ctx, userID, id, "ip"); err != nil {
@@ -634,7 +634,7 @@ func testRemovedFileStaysRemoved(t *testing.T, f *uploadFixture) {
 	if err := f.pool.QueryRow(f.ctx, `SELECT id FROM files WHERE object_id = $1`, object.ID).Scan(&id); err != nil {
 		t.Fatalf("find file: %v", err)
 	}
-	if err := f.service.TrashFile(f.ctx, user, id); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, id, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if err := f.service.DeleteFile(f.ctx, user, id, "ip"); err != nil {

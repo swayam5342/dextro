@@ -112,6 +112,11 @@ func (s *Service) TransferFiles(ctx context.Context, userID uuid.UUID, ids []uui
 	if len(ids) == 0 || len(ids) > maxTransferItems {
 		return TransferResult{}, ErrInvalidTransfer
 	}
+	// One already queued holds its space, and counting it again could report no room.
+	waiting, err := s.store.WaitingTransferFiles(ctx, userID)
+	if err != nil {
+		return TransferResult{}, err
+	}
 	var result TransferResult
 	moving := make([]storage.TransferFile, 0, len(ids))
 	for _, id := range ids {
@@ -128,7 +133,7 @@ func (s *Service) TransferFiles(ctx context.Context, userID uuid.UUID, ids []uui
 		} else if shared {
 			return TransferResult{}, ErrFileShared
 		}
-		if record.ConnectionID == target {
+		if record.ConnectionID == target || waiting[id] {
 			result.Skipped++
 			continue
 		}
@@ -340,12 +345,9 @@ func checkCopy(ctx context.Context, to provider.Provider, source, copied provide
 // discard throws away a copy nothing will use, even while shutting down: a sync would
 // otherwise bring it back as a file.
 func discard(ctx context.Context, to provider.Provider, id string) error {
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	cleanup, cancel := cleanupContext(ctx)
 	defer cancel()
-	if err := to.Delete(cleanup, id); err != nil && !errors.Is(err, provider.ErrObjectNotFound) {
-		return fmt.Errorf("discard copy: %w", err)
-	}
-	return nil
+	return deleteObject(cleanup, to, id)
 }
 
 func (s *Service) copyObject(ctx context.Context, t transferRecord, record fileRecord, from, to provider.Provider, source provider.Object, parent string) (provider.Object, error) {
@@ -362,7 +364,7 @@ func (s *Service) copyObject(ctx context.Context, t transferRecord, record fileR
 	}
 	object, err := s.sendChunks(ctx, t, from, to, source, session)
 	if err != nil {
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		cleanup, cancel := cleanupContext(ctx)
 		defer cancel()
 		return provider.Object{}, errors.Join(err, to.CancelResumable(cleanup, session))
 	}
@@ -382,56 +384,59 @@ func (s *Service) sendChunks(ctx context.Context, t transferRecord, from, to pro
 	}
 	defer closeStream()
 
+	send := func(offset, length int64) (provider.ResumeState, error) {
+		if stream == nil {
+			opened, err := from.Get(ctx, source.ID, &provider.ByteRange{Start: offset, End: source.Size - 1})
+			if err != nil {
+				return provider.ResumeState{}, err
+			}
+			stream = opened
+		}
+		return to.PutChunk(ctx, session, provider.Chunk{Offset: offset, Length: length, Total: source.Size, Body: io.LimitReader(stream, length)})
+	}
+
 	offset, stuck := int64(0), 0
 	for {
 		length := min(s.transferChunk, source.Size-offset)
-		var state provider.ResumeState
-		var err error
-		if stream == nil {
-			stream, err = from.Get(ctx, source.ID, &provider.ByteRange{Start: offset, End: source.Size - 1})
-		}
-		if err == nil {
-			state, err = to.PutChunk(ctx, session, provider.Chunk{Offset: offset, Length: length, Total: source.Size, Body: io.LimitReader(stream, length)})
-		}
-		if err == nil {
-			if state.Object != nil {
-				return *state.Object, nil
+		state, err := send(offset, length)
+		if err != nil {
+			closeStream()
+			stuck++
+			if ctx.Err() != nil {
+				return provider.Object{}, ctx.Err()
 			}
-			if state.Received != offset+length {
-				closeStream()
+			if stuck >= transferRetries || errors.Is(err, provider.ErrSessionExpired) {
+				return provider.Object{}, failed(failureCopy, err)
 			}
-			if state.Received > offset {
-				stuck = 0
+			select {
+			case <-time.After(s.transferWait << stuck):
+			case <-ctx.Done():
+				return provider.Object{}, ctx.Err()
 			}
-			offset = state.Received
-			if err := s.store.SetTransferCopied(ctx, t.ID, offset); err != nil {
-				return provider.Object{}, err
+			// A failed chunk can still have partly arrived, so ask.
+			status, statusErr := to.ResumableStatus(ctx, session, source.Size)
+			if statusErr != nil {
+				continue
 			}
+			if status.Object != nil {
+				return *status.Object, nil
+			}
+			offset = status.Received
 			continue
 		}
-
-		closeStream()
-		stuck++
-		if ctx.Err() != nil {
-			return provider.Object{}, ctx.Err()
+		if state.Object != nil {
+			return *state.Object, nil
 		}
-		if stuck >= transferRetries || errors.Is(err, provider.ErrSessionExpired) {
-			return provider.Object{}, failed(failureCopy, err)
+		if state.Received != offset+length {
+			closeStream()
 		}
-		select {
-		case <-time.After(s.transferWait << stuck):
-		case <-ctx.Done():
-			return provider.Object{}, ctx.Err()
+		if state.Received > offset {
+			stuck = 0
 		}
-		// A failed chunk can still have partly arrived, so ask.
-		status, statusErr := to.ResumableStatus(ctx, session, source.Size)
-		if statusErr != nil {
-			continue
+		offset = state.Received
+		if err := s.store.SetTransferCopied(ctx, t.ID, offset); err != nil {
+			return provider.Object{}, err
 		}
-		if status.Object != nil {
-			return *status.Object, nil
-		}
-		offset = status.Received
 	}
 }
 
@@ -477,8 +482,5 @@ func (s *Service) removeObject(ctx context.Context, removal pendingRemoval) erro
 	if err != nil {
 		return err
 	}
-	if err := stored.Delete(ctx, removal.objectID); err != nil && !errors.Is(err, provider.ErrObjectNotFound) {
-		return fmt.Errorf("delete object: %w", err)
-	}
-	return nil
+	return deleteObject(ctx, stored, removal.objectID)
 }

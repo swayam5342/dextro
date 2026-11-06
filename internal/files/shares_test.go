@@ -87,6 +87,7 @@ func TestShares(t *testing.T) {
 		{"a link ends at its expiry", testShareExpires},
 		{"a link not due yet stays", testShareNotDue},
 		{"a link that won't expire is tried again", testShareExpiryRetried},
+		{"a dead account costs one try and goes to the back", testShareExpiryDeadAccount},
 		{"a shared file can't move", testSharedFileCantMove},
 		{"an account with links can't be emptied", testSharedAccountCantEmpty},
 		{"a file shared after queueing doesn't move", testSharedAfterQueueing},
@@ -228,7 +229,7 @@ func testShareTrashed(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	a := f.link(t, user, "a@gmail.com", 1<<30)
 	file := f.putIn(t, user, a, nil, "a.txt", "x")
-	if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if _, err := f.service.ShareFile(f.ctx, user, file.ID, ShareInput{Role: "viewer"}, ""); !errors.Is(err, ErrFileNotFound) {
@@ -242,7 +243,7 @@ func testShareInTrashedFolder(t *testing.T, f *uploadFixture) {
 	a := f.link(t, user, "a@gmail.com", 1<<30)
 	folder := f.folder(t, user, nil, "Trip")
 	file := f.putIn(t, user, a, &folder.ID, "a.txt", "x")
-	if err := f.service.TrashFolder(f.ctx, user, folder.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, user, folder.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if _, err := f.service.ShareFile(f.ctx, user, file.ID, ShareInput{Role: "viewer"}, ""); !errors.Is(err, ErrFolderNotFound) {
@@ -388,7 +389,7 @@ func testUnshareFails(t *testing.T, f *uploadFixture) {
 
 func testTrashEndsLink(t *testing.T, f *uploadFixture) {
 	user, _, file, object := f.sharedFile(t)
-	if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if _, ok := f.public("a@gmail.com", object); ok {
@@ -402,7 +403,7 @@ func testTrashEndsLink(t *testing.T, f *uploadFixture) {
 func testTrashNeedsLinkGone(t *testing.T, f *uploadFixture) {
 	user, _, file, _ := f.sharedFile(t)
 	f.account("a@gmail.com").ShareErr = errors.New("backend error")
-	if err := f.service.TrashFile(f.ctx, user, file.ID); !errors.Is(err, ErrProviderFailed) {
+	if err := f.service.TrashFile(f.ctx, user, file.ID, ""); !errors.Is(err, ErrProviderFailed) {
 		t.Errorf("error = %v, want ErrProviderFailed", err)
 	}
 	f.account("a@gmail.com").ShareErr = nil
@@ -413,7 +414,7 @@ func testTrashNeedsLinkGone(t *testing.T, f *uploadFixture) {
 
 func testRestoreLeavesLinkGone(t *testing.T, f *uploadFixture) {
 	user, _, file, object := f.sharedFile(t)
-	if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if err := f.service.RestoreFile(f.ctx, user, file.ID); err != nil {
@@ -436,7 +437,7 @@ func testTrashFolderEndsLinks(t *testing.T, f *uploadFixture) {
 	for _, id := range []uuid.UUID{near.ID, far.ID, outside.ID} {
 		f.share(t, user, id, "viewer")
 	}
-	if err := f.service.TrashFolder(f.ctx, user, top.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, user, top.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	for _, id := range []uuid.UUID{near.ID, far.ID} {
@@ -471,7 +472,7 @@ func testShareRacesTrash(t *testing.T, f *uploadFixture) {
 	var once sync.Once
 	f.only("a@gmail.com", func(p provider.Provider) provider.Provider {
 		return shareHook{p, &once, func() {
-			if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+			if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 				t.Errorf("TrashFile: %v", err)
 			}
 		}}
@@ -548,6 +549,33 @@ func testShareExpiryRetried(t *testing.T, f *uploadFixture) {
 	}
 	if _, ok := f.public("a@gmail.com", object); ok {
 		t.Error("still public")
+	}
+}
+
+func testShareExpiryDeadAccount(t *testing.T, f *uploadFixture) {
+	f.allowLinks(t)
+	user := f.user(t)
+	dead := f.link(t, user, "dead@gmail.com", 1<<30)
+	good := f.link(t, user, "good@gmail.com", 1<<30)
+	one := f.putIn(t, user, dead, nil, "one.txt", "1")
+	two := f.putIn(t, user, dead, nil, "two.txt", "2")
+	three := f.putIn(t, user, good, nil, "three.txt", "3")
+	for _, id := range []uuid.UUID{one.ID, two.ID, three.ID} {
+		f.share(t, user, id, "viewer")
+	}
+	if _, err := f.pool.Exec(f.ctx, `UPDATE file_shares SET expires_at = now() - interval '1 second', updated_at = now() - interval '1 hour'`); err != nil {
+		t.Fatalf("expire: %v", err)
+	}
+	f.account("dead@gmail.com").ShareErr = errors.New("token expired")
+	run, err := f.service.ExpireShares(f.ctx)
+	if err != nil {
+		t.Fatalf("ExpireShares: %v", err)
+	}
+	if run.Expired != 1 || len(run.Failures) != 1 {
+		t.Errorf("run = %+v, want one link ended and one failed try", run)
+	}
+	if got := f.count(t, `SELECT count(*) FROM file_shares WHERE updated_at > now() - interval '1 minute'`); got != 2 {
+		t.Errorf("%d links went to the back, want both of the dead account's", got)
 	}
 }
 

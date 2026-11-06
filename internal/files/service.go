@@ -56,7 +56,7 @@ type File struct {
 	UpdatedAt time.Time
 }
 
-// Folder is a folder as its owner sees it. Folders exist only in dextro.
+// Folder is a folder as its owner sees it.
 type Folder struct {
 	ID        uuid.UUID
 	ParentID  *uuid.UUID
@@ -241,7 +241,7 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 	if err != nil {
 		// Without a record nothing could ever find this object again. The request
 		// may be why the save failed, so the cleanup doesn't depend on it.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		cleanup, cancel := cleanupContext(ctx)
 		defer cancel()
 		return File{}, errors.Join(err, stored.Delete(cleanup, object.ID))
 	}
@@ -263,9 +263,9 @@ func (s *Service) Open(ctx context.Context, userID, id uuid.UUID, rng *provider.
 	if err != nil {
 		return nil, err
 	}
-	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		return nil, err
 	}
 	reader, err := stored.Get(ctx, record.objectID, rng)
 	if errors.Is(err, provider.ErrObjectNotFound) {
@@ -283,9 +283,9 @@ func (s *Service) Thumbnail(ctx context.Context, userID, id uuid.UUID) (provider
 	if err != nil {
 		return provider.Thumbnail{}, err
 	}
-	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 	if err != nil {
-		return provider.Thumbnail{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		return provider.Thumbnail{}, err
 	}
 	thumbnail, err := stored.Thumbnail(ctx, record.objectID)
 	if errors.Is(err, provider.ErrNoThumbnail) || errors.Is(err, provider.ErrObjectNotFound) {
@@ -295,6 +295,30 @@ func (s *Service) Thumbnail(ctx context.Context, userID, id uuid.UUID) (provider
 		return provider.Thumbnail{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
 	}
 	return thumbnail, nil
+}
+
+// cleanupContext is for tidying up after a failure, which has to happen even if the
+// request or the server is going away.
+func cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+}
+
+// openAccount reaches an account a record says the file is in.
+func (s *Service) openAccount(ctx context.Context, userID, connectionID uuid.UUID) (provider.Provider, error) {
+	stored, err := s.providers.Provider(ctx, userID, connectionID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	return stored, nil
+}
+
+// deleteObject removes an object. One that's already gone counts as success, which is
+// what makes a failed delete safe to try again.
+func deleteObject(ctx context.Context, stored provider.Provider, id string) error {
+	if err := stored.Delete(ctx, id); err != nil && !errors.Is(err, provider.ErrObjectNotFound) {
+		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	return nil
 }
 
 // liveFile returns a file that isn't in the trash.
@@ -351,9 +375,9 @@ func (s *Service) MoveFile(ctx context.Context, userID, id uuid.UUID, target *uu
 }
 
 // TrashFile moves a file to the trash. Its stored object isn't touched.
-func (s *Service) TrashFile(ctx context.Context, userID, id uuid.UUID) error {
+func (s *Service) TrashFile(ctx context.Context, userID, id uuid.UUID, ip string) error {
 	// The trash exists only here, so the file is still in Drive and its link still works.
-	if err := s.revokeShare(ctx, userID, id, ""); err != nil {
+	if _, err := s.revokeShare(ctx, userID, id, ip); err != nil {
 		return err
 	}
 	now := time.Now()
@@ -407,12 +431,12 @@ func (s *Service) DeleteFile(ctx context.Context, userID, id uuid.UUID, ip strin
 func (s *Service) destroy(ctx context.Context, userID uuid.UUID, record fileRecord, ip string) error {
 	// Someone's own Drive file isn't dextro's to delete, so only the record goes.
 	if !record.External {
-		stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+		stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 		if err != nil {
-			return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+			return err
 		}
-		if err := stored.Delete(ctx, record.objectID); err != nil && !errors.Is(err, provider.ErrObjectNotFound) {
-			return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		if err := deleteObject(ctx, stored, record.objectID); err != nil {
+			return err
 		}
 	}
 	return s.store.InTx(ctx, func(tx *Store) error {
@@ -492,8 +516,8 @@ func (s *Service) MoveFolder(ctx context.Context, userID, id uuid.UUID, target *
 
 // TrashFolder moves a folder to the trash. Only the folder is marked: what's
 // inside goes with it, and comes back with it.
-func (s *Service) TrashFolder(ctx context.Context, userID, id uuid.UUID) error {
-	if err := s.revokeSharesUnderFolder(ctx, userID, id); err != nil {
+func (s *Service) TrashFolder(ctx context.Context, userID, id uuid.UUID, ip string) error {
+	if err := s.revokeSharesUnderFolder(ctx, userID, id, ip); err != nil {
 		return err
 	}
 	now := time.Now()

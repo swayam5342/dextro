@@ -303,7 +303,7 @@ func (h *Handler) MoveFile(w http.ResponseWriter, r *http.Request, id types.UUID
 
 // TrashFile implements apigen.ServerInterface.
 func (h *Handler) TrashFile(w http.ResponseWriter, r *http.Request, id types.UUID) {
-	h.noContent(w, r, h.service.TrashFile(r.Context(), userID(r), id))
+	h.noContent(w, r, h.service.TrashFile(r.Context(), userID(r), id, httpx.ClientIP(r.Context())))
 }
 
 // RestoreFile implements apigen.ServerInterface.
@@ -360,7 +360,7 @@ func (h *Handler) MoveFolder(w http.ResponseWriter, r *http.Request, id types.UU
 
 // TrashFolder implements apigen.ServerInterface.
 func (h *Handler) TrashFolder(w http.ResponseWriter, r *http.Request, id types.UUID) {
-	h.noContent(w, r, h.service.TrashFolder(r.Context(), userID(r), id))
+	h.noContent(w, r, h.service.TrashFolder(r.Context(), userID(r), id, httpx.ClientIP(r.Context())))
 }
 
 // RestoreFolder implements apigen.ServerInterface.

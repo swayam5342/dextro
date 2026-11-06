@@ -75,37 +75,31 @@ func (s *Store) SetSetting(ctx context.Context, key string, value json.RawMessag
 	return nil
 }
 
-// MaxUploadBytes returns the largest file anyone can upload.
-func (s *Store) MaxUploadBytes(ctx context.Context) (int64, error) {
-	raw, err := s.GetSetting(ctx, settingMaxUploadBytes)
+// readSetting returns a setting, or fallback if nobody has set it.
+func readSetting[T any](ctx context.Context, s *Store, key string, fallback T) (T, error) {
+	raw, err := s.GetSetting(ctx, key)
 	if errors.Is(err, ErrSettingNotFound) {
-		return defaultMaxUploadBytes, nil
+		return fallback, nil
 	}
 	if err != nil {
-		return 0, err
+		return fallback, err
 	}
-	var limit int64
-	if err := json.Unmarshal(raw, &limit); err != nil {
-		return 0, fmt.Errorf("decode setting %q: %w", settingMaxUploadBytes, err)
+	var value T
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fallback, fmt.Errorf("decode setting %q: %w", key, err)
 	}
-	return limit, nil
+	return value, nil
+}
+
+// MaxUploadBytes returns the largest file anyone can upload.
+func (s *Store) MaxUploadBytes(ctx context.Context) (int64, error) {
+	return readSetting[int64](ctx, s, settingMaxUploadBytes, defaultMaxUploadBytes)
 }
 
 // GoogleLinksEnabled says whether people can make public links. It's off until the
 // admin says otherwise, because a public link is a decision for whoever runs the server.
 func (s *Store) GoogleLinksEnabled(ctx context.Context) (bool, error) {
-	raw, err := s.GetSetting(ctx, settingGoogleLinks)
-	if errors.Is(err, ErrSettingNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var enabled bool
-	if err := json.Unmarshal(raw, &enabled); err != nil {
-		return false, fmt.Errorf("decode setting %q: %w", settingGoogleLinks, err)
-	}
-	return enabled, nil
+	return readSetting(ctx, s, settingGoogleLinks, false)
 }
 
 // JobRun is the last finish of a background job.

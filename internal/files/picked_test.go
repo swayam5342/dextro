@@ -192,7 +192,7 @@ func testDeletePickedKeepsDriveFile(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	connection := f.link(t, user, "a@gmail.com", 1<<30)
 	id, object := f.addedFile(t, user, connection)
-	if err := f.service.TrashFile(f.ctx, user, id); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, id, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if err := f.service.DeleteFile(f.ctx, user, id, "ip"); err != nil {
@@ -217,7 +217,7 @@ func testDeleteFolderKeepsPickedFile(t *testing.T, f *uploadFixture) {
 	if _, err := f.service.MoveFile(f.ctx, user, id, &folder.ID); err != nil {
 		t.Fatalf("MoveFile: %v", err)
 	}
-	if err := f.service.TrashFolder(f.ctx, user, folder.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, user, folder.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if err := f.service.DeleteFolder(f.ctx, user, folder.ID, "ip"); err != nil {
@@ -232,7 +232,7 @@ func testEmptyTrashKeepsPickedFile(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	connection := f.link(t, user, "a@gmail.com", 1<<30)
 	id, object := f.addedFile(t, user, connection)
-	if err := f.service.TrashFile(f.ctx, user, id); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, id, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if err := f.service.EmptyTrash(f.ctx, user, "ip"); err != nil {
@@ -248,7 +248,7 @@ func testDeleteUploadedStillDeletes(t *testing.T, f *uploadFixture) {
 	f.link(t, user, "a@gmail.com", 1<<30)
 	file := f.recorded(t, user, "a@gmail.com", "uploaded.txt")
 	object := f.objectID(t, user, file.ID)
-	if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if err := f.service.DeleteFile(f.ctx, user, file.ID, "ip"); err != nil {

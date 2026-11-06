@@ -183,6 +183,22 @@ func (q *Queries) GetFileTransferTotalsForOwner(ctx context.Context, userID uuid
 	return i, err
 }
 
+const isFileWaitingToMoveForOwner = `-- name: IsFileWaitingToMoveForOwner :one
+SELECT EXISTS (SELECT 1 FROM file_transfers WHERE user_id = $1 AND file_id = $2 AND status = 'waiting')
+`
+
+type IsFileWaitingToMoveForOwnerParams struct {
+	UserID uuid.UUID
+	FileID uuid.UUID
+}
+
+func (q *Queries) IsFileWaitingToMoveForOwner(ctx context.Context, arg IsFileWaitingToMoveForOwnerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isFileWaitingToMoveForOwner, arg.UserID, arg.FileID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const isObjectRecorded = `-- name: IsObjectRecorded :one
 SELECT EXISTS (SELECT 1 FROM files WHERE connection_id = $1 AND object_id = $2)
 `

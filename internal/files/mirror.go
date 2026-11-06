@@ -115,9 +115,9 @@ func (s *Service) changeFileInDrive(ctx context.Context, userID uuid.UUID, recor
 	if record.External {
 		return nil
 	}
-	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		return err
 	}
 	err = change(stored)
 	if errors.Is(err, provider.ErrObjectNotFound) {

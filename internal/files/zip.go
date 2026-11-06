@@ -40,19 +40,19 @@ type zipEntry struct {
 type ZipPlan struct {
 	Name    string
 	entries []zipEntry
-	used    map[string]int
+	used    map[string]bool
 }
 
 // unique returns a path nothing in the zip has yet. The check ignores case, because
 // unzipping on Windows or macOS would otherwise overwrite one file with another.
 func (p *ZipPlan) unique(dir, name string) string {
-	stem, extension := name, path.Ext(name)
-	stem = strings.TrimSuffix(stem, extension)
+	extension := path.Ext(name)
+	stem := strings.TrimSuffix(name, extension)
 	candidate := dir + name
 	for n := 2; ; n++ {
 		key := strings.ToLower(candidate)
-		if p.used[key] == 0 {
-			p.used[key] = 1
+		if !p.used[key] {
+			p.used[key] = true
 			return candidate
 		}
 		candidate = fmt.Sprintf("%s%s (%d)%s", dir, stem, n, extension)
@@ -74,7 +74,7 @@ func (s *Service) PlanZip(ctx context.Context, userID uuid.UUID, fileIDs, folder
 	if total == 0 || total > maxZipItems {
 		return ZipPlan{}, ErrInvalidZip
 	}
-	plan := ZipPlan{Name: defaultZipName, used: map[string]int{}}
+	plan := ZipPlan{Name: defaultZipName, used: map[string]bool{}}
 	for _, id := range fileIDs {
 		record, err := liveFile(ctx, s.store, userID, id)
 		if err != nil {

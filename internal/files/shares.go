@@ -107,14 +107,14 @@ func (s *Service) ShareFile(ctx context.Context, userID, id uuid.UUID, in ShareI
 	if _, err := requireLiveFolder(ctx, s.store, userID, record.FolderID); err != nil {
 		return Share{}, err
 	}
-	waiting, err := s.store.WaitingTransferFiles(ctx, userID)
+	moving, err := s.store.IsFileWaitingToMove(ctx, userID, id)
 	if err != nil {
 		return Share{}, err
 	}
-	if waiting[id] {
+	if moving {
 		return Share{}, ErrFileMoving
 	}
-	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 	if err != nil {
 		return Share{}, err
 	}
@@ -140,7 +140,7 @@ func (s *Service) ShareFile(ctx context.Context, userID, id uuid.UUID, in ShareI
 	saved, err := s.store.SaveShare(ctx, userID, id, in, url)
 	if errors.Is(err, ErrShareNotFound) {
 		// Trashed or removed while Google was answering, and it mustn't stay public.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		cleanup, cancel := cleanupContext(ctx)
 		defer cancel()
 		return Share{}, errors.Join(ErrFileNotFound, stored.Unshare(cleanup, record.objectID))
 	}
@@ -162,35 +162,42 @@ func (s *Service) ShareFile(ctx context.Context, userID, id uuid.UUID, in ShareI
 
 // UnshareFile removes a link.
 func (s *Service) UnshareFile(ctx context.Context, userID, id uuid.UUID, ip string) error {
-	if _, found, err := s.store.ShareForOwner(ctx, userID, id); err != nil {
-		return err
-	} else if !found {
+	found, err := s.revokeShare(ctx, userID, id, ip)
+	if err == nil && !found {
 		return ErrShareNotFound
 	}
-	return s.revokeShare(ctx, userID, id, ip)
+	return err
 }
 
-// revokeShare ends a link if the file has one. Google goes first, so a link that's still
-// working never disappears from the page that lists them.
-func (s *Service) revokeShare(ctx context.Context, userID, id uuid.UUID, ip string) error {
-	if _, found, err := s.store.ShareForOwner(ctx, userID, id); err != nil || !found {
+// endShare ends a link. Google goes first, so a link that's still working never
+// disappears from the page that lists them.
+func (s *Service) endShare(ctx context.Context, stored provider.Provider, userID, fileID uuid.UUID, objectID string) error {
+	if err := stored.Unshare(ctx, objectID); err != nil {
+		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	if err := s.store.DeleteShareForOwner(ctx, userID, fileID); err != nil && !errors.Is(err, ErrShareNotFound) {
 		return err
+	}
+	return nil
+}
+
+// revokeShare ends a link if the file has one, and says whether it did.
+func (s *Service) revokeShare(ctx context.Context, userID, id uuid.UUID, ip string) (bool, error) {
+	if _, found, err := s.store.ShareForOwner(ctx, userID, id); err != nil || !found {
+		return false, err
 	}
 	record, err := s.store.FileForOwner(ctx, userID, id)
 	if err != nil {
-		return err
+		return false, err
 	}
-	stored, err := s.providers.Provider(ctx, userID, record.ConnectionID)
+	stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+		return false, err
 	}
-	if err := stored.Unshare(ctx, record.objectID); err != nil {
-		return fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	if err := s.endShare(ctx, stored, userID, id, record.objectID); err != nil {
+		return false, err
 	}
-	if err := s.store.DeleteShareForOwner(ctx, userID, id); err != nil && !errors.Is(err, ErrShareNotFound) {
-		return err
-	}
-	return s.store.Audit().Record(ctx, audit.Event{
+	return true, s.store.Audit().Record(ctx, audit.Event{
 		ActorID:  userID,
 		Action:   audit.ActionFileUnshared,
 		IP:       ip,
@@ -201,13 +208,13 @@ func (s *Service) revokeShare(ctx context.Context, userID, id uuid.UUID, ip stri
 // revokeSharesUnderFolder ends every link inside a folder, however deep. Its contents
 // travel with it into the trash, but the trash exists only here, so without this their
 // links would keep working.
-func (s *Service) revokeSharesUnderFolder(ctx context.Context, userID, folderID uuid.UUID) error {
+func (s *Service) revokeSharesUnderFolder(ctx context.Context, userID, folderID uuid.UUID, ip string) error {
 	ids, err := s.store.SharedFilesUnderFolder(ctx, userID, folderID)
 	if err != nil {
 		return err
 	}
 	for _, id := range ids {
-		if err := s.revokeShare(ctx, userID, id, ""); err != nil {
+		if _, err := s.revokeShare(ctx, userID, id, ip); err != nil {
 			return err
 		}
 	}
@@ -223,16 +230,28 @@ func (s *Service) ExpireShares(ctx context.Context) (ShareRun, error) {
 		return ShareRun{}, err
 	}
 	var run ShareRun
+	// One failure means the rest of that account's links would fail too, and each one
+	// that's stuck goes to the back so it can't keep working links from their turn.
+	stuck := map[uuid.UUID]bool{}
 	for _, share := range due {
-		err := s.expireShare(ctx, share)
+		var err error
+		if !stuck[share.connectionID] {
+			err = s.expireShare(ctx, share)
+		}
 		if ctx.Err() != nil {
 			return run, ctx.Err()
 		}
-		if err != nil {
-			run.Failures = append(run.Failures, fmt.Errorf("link on file %s: %w", share.fileID, err))
+		if err == nil && !stuck[share.connectionID] {
+			run.Expired++
 			continue
 		}
-		run.Expired++
+		if err != nil {
+			stuck[share.connectionID] = true
+			run.Failures = append(run.Failures, fmt.Errorf("link on file %s: %w", share.fileID, err))
+		}
+		if err := s.store.DelayShare(ctx, share.fileID); err != nil {
+			return run, err
+		}
 	}
 	return run, nil
 }
@@ -242,10 +261,7 @@ func (s *Service) expireShare(ctx context.Context, share dueShare) error {
 	if err != nil {
 		return err
 	}
-	if err := stored.Unshare(ctx, share.objectID); err != nil {
-		return fmt.Errorf("unshare: %w", err)
-	}
-	if err := s.store.DeleteShareForOwner(ctx, share.userID, share.fileID); err != nil && !errors.Is(err, ErrShareNotFound) {
+	if err := s.endShare(ctx, stored, share.userID, share.fileID, share.objectID); err != nil {
 		return err
 	}
 	if share.unfinished {
@@ -254,7 +270,7 @@ func (s *Service) expireShare(ctx context.Context, share dueShare) error {
 	return s.store.Audit().Record(ctx, audit.Event{
 		ActorID:  share.userID,
 		Action:   audit.ActionShareExpired,
-		IP:       syncActor,
+		IP:       jobActor,
 		Metadata: map[string]any{"file_id": share.fileID.String()},
 	})
 }

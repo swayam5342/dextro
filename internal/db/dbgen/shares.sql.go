@@ -31,6 +31,15 @@ func (q *Queries) CountSharesForConnection(ctx context.Context, arg CountSharesF
 	return count, err
 }
 
+const delayShare = `-- name: DelayShare :exec
+UPDATE file_shares SET updated_at = now() WHERE file_id = $1
+`
+
+func (q *Queries) DelayShare(ctx context.Context, fileID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, delayShare, fileID)
+	return err
+}
+
 const deleteShareForOwner = `-- name: DeleteShareForOwner :execrows
 DELETE FROM file_shares WHERE user_id = $1 AND file_id = $2
 `
@@ -78,7 +87,7 @@ FROM file_shares s
 JOIN files f ON f.id = s.file_id
 WHERE (s.url <> '' AND s.expires_at <= now())
    OR (s.url = '' AND s.updated_at < $1)
-ORDER BY s.created_at, s.file_id
+ORDER BY s.updated_at, s.file_id
 LIMIT 200
 `
 
@@ -233,10 +242,11 @@ func (q *Queries) PrepareShare(ctx context.Context, arg PrepareShareParams) erro
 	return err
 }
 
-const saveShareForOwner = `-- name: SaveShareForOwner :execrows
+const saveShareForOwner = `-- name: SaveShareForOwner :one
 UPDATE file_shares
 SET role = $3, url = $4, expires_at = $5, updated_at = now()
 WHERE user_id = $1 AND file_id = $2
+RETURNING file_id, user_id, role, url, expires_at, created_at, updated_at
 `
 
 type SaveShareForOwnerParams struct {
@@ -247,16 +257,23 @@ type SaveShareForOwnerParams struct {
 	ExpiresAt *time.Time
 }
 
-func (q *Queries) SaveShareForOwner(ctx context.Context, arg SaveShareForOwnerParams) (int64, error) {
-	result, err := q.db.Exec(ctx, saveShareForOwner,
+func (q *Queries) SaveShareForOwner(ctx context.Context, arg SaveShareForOwnerParams) (FileShare, error) {
+	row := q.db.QueryRow(ctx, saveShareForOwner,
 		arg.UserID,
 		arg.FileID,
 		arg.Role,
 		arg.Url,
 		arg.ExpiresAt,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var i FileShare
+	err := row.Scan(
+		&i.FileID,
+		&i.UserID,
+		&i.Role,
+		&i.Url,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

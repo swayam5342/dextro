@@ -225,7 +225,7 @@ func testSyncRemovesTrashed(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	connection := f.link(t, user, "a@gmail.com", 1<<30)
 	file := f.recorded(t, user, "a@gmail.com", "gone.txt")
-	if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	record, err := NewStore(f.pool).FileForOwner(f.ctx, user, file.ID)
@@ -272,7 +272,7 @@ func testSyncKeepsWhatsThere(t *testing.T, f *uploadFixture) {
 		t.Fatalf("MoveFile: %v", err)
 	}
 	trashed := f.recorded(t, user, "a@gmail.com", "trashed.txt")
-	if err := f.service.TrashFile(f.ctx, user, trashed.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, trashed.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if got := f.sync(t, user, connection); got.Added != 0 || got.Removed != 0 {

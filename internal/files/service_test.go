@@ -405,7 +405,7 @@ func testUploadTrashedFolder(t *testing.T, f *fixture) {
 	a := f.account(t)
 	parent := f.folder(t, a, nil, "Parent")
 	child := f.folder(t, a, &parent.ID, "Child")
-	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	for _, id := range []uuid.UUID{parent.ID, child.ID} {
@@ -562,7 +562,7 @@ func testFilesAreIsolated(t *testing.T, f *fixture) {
 	mine, theirs := f.account(t), f.account(t)
 	file := f.put(t, theirs, nil, "theirs.txt")
 	trashed := f.put(t, theirs, nil, "trashed.txt")
-	if err := f.service.TrashFile(f.ctx, theirs.id, trashed.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, theirs.id, trashed.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 
@@ -571,7 +571,7 @@ func testFilesAreIsolated(t *testing.T, f *fixture) {
 		"Open":    func() error { _, err := f.service.Open(f.ctx, mine.id, file.ID, nil); return err },
 		"Rename":  func() error { _, err := f.service.RenameFile(f.ctx, mine.id, file.ID, "mine.txt"); return err },
 		"Move":    func() error { _, err := f.service.MoveFile(f.ctx, mine.id, file.ID, nil); return err },
-		"Trash":   func() error { return f.service.TrashFile(f.ctx, mine.id, file.ID) },
+		"Trash":   func() error { return f.service.TrashFile(f.ctx, mine.id, file.ID, "") },
 		"Restore": func() error { return f.service.RestoreFile(f.ctx, mine.id, trashed.ID) },
 		"Delete":  func() error { return f.service.DeleteFile(f.ctx, mine.id, trashed.ID, testIP) },
 	}
@@ -592,7 +592,7 @@ func testFoldersAreIsolated(t *testing.T, f *fixture) {
 	mine, theirs := f.account(t), f.account(t)
 	folder := f.folder(t, theirs, nil, "Theirs")
 	trashed := f.folder(t, theirs, nil, "Trashed")
-	if err := f.service.TrashFolder(f.ctx, theirs.id, trashed.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, theirs.id, trashed.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	own := f.folder(t, mine, nil, "Mine")
@@ -603,7 +603,7 @@ func testFoldersAreIsolated(t *testing.T, f *fixture) {
 		"Rename":    func() error { _, err := f.service.RenameFolder(f.ctx, mine.id, folder.ID, "x"); return err },
 		"Move":      func() error { _, err := f.service.MoveFolder(f.ctx, mine.id, folder.ID, nil); return err },
 		"Move into": func() error { _, err := f.service.MoveFolder(f.ctx, mine.id, own.ID, &folder.ID); return err },
-		"Trash":     func() error { return f.service.TrashFolder(f.ctx, mine.id, folder.ID) },
+		"Trash":     func() error { return f.service.TrashFolder(f.ctx, mine.id, folder.ID, "") },
 		"Restore":   func() error { return f.service.RestoreFolder(f.ctx, mine.id, trashed.ID) },
 		"Delete":    func() error { return f.service.DeleteFolder(f.ctx, mine.id, trashed.ID, testIP) },
 	}
@@ -665,7 +665,7 @@ func testMoveFileForeignFolder(t *testing.T, f *fixture) {
 func testTrashFile(t *testing.T, f *fixture) {
 	a := f.account(t)
 	file := f.put(t, a, nil, "x.txt")
-	if err := f.service.TrashFile(f.ctx, a.id, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, a.id, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if got := fileNames(f.list(t, a, nil).Files); got != "" {
@@ -693,10 +693,10 @@ func testRestoreFileToTop(t *testing.T, f *fixture) {
 	a := f.account(t)
 	folder := f.folder(t, a, nil, "Folder")
 	file := f.put(t, a, &folder.ID, "x.txt")
-	if err := f.service.TrashFile(f.ctx, a.id, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, a.id, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
-	if err := f.service.TrashFolder(f.ctx, a.id, folder.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, folder.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if err := f.service.RestoreFile(f.ctx, a.id, file.ID); err != nil {
@@ -710,7 +710,7 @@ func testRestoreFileToTop(t *testing.T, f *fixture) {
 func testTrashedFileIsFrozen(t *testing.T, f *fixture) {
 	a := f.account(t)
 	file := f.put(t, a, nil, "x.txt")
-	if err := f.service.TrashFile(f.ctx, a.id, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, a.id, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if _, err := f.service.RenameFile(f.ctx, a.id, file.ID, "y.txt"); !errors.Is(err, ErrFileNotFound) {
@@ -734,7 +734,7 @@ func testDeleteNeedsTrash(t *testing.T, f *fixture) {
 
 func (f *fixture) trashAndDelete(t *testing.T, a account, id uuid.UUID) error {
 	t.Helper()
-	if err := f.service.TrashFile(f.ctx, a.id, id); err != nil {
+	if err := f.service.TrashFile(f.ctx, a.id, id, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	return f.service.DeleteFile(f.ctx, a.id, id, testIP)
@@ -787,7 +787,7 @@ func testTrashFolder(t *testing.T, f *fixture) {
 	child := f.folder(t, a, &parent.ID, "Child")
 	f.put(t, a, &child.ID, "x.txt")
 
-	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if got := folderNames(f.list(t, a, nil).Folders); got != "" {
@@ -810,10 +810,10 @@ func testRestoreFolderToTop(t *testing.T, f *fixture) {
 	a := f.account(t)
 	parent := f.folder(t, a, nil, "Parent")
 	child := f.folder(t, a, &parent.ID, "Child")
-	if err := f.service.TrashFolder(f.ctx, a.id, child.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, child.ID, ""); err != nil {
 		t.Fatalf("TrashFolder child: %v", err)
 	}
-	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID, ""); err != nil {
 		t.Fatalf("TrashFolder parent: %v", err)
 	}
 	if err := f.service.RestoreFolder(f.ctx, a.id, child.ID); err != nil {
@@ -871,11 +871,11 @@ func testDeleteFolder(t *testing.T, f *fixture) {
 		t.Fatalf("Upload: %v", err)
 	}
 	trashedInside := f.put(t, a, &child.ID, "trashed-inside.txt")
-	if err := f.service.TrashFile(f.ctx, a.id, trashedInside.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, a.id, trashedInside.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 
-	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, parent.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if err := f.service.DeleteFolder(f.ctx, a.id, parent.ID, testIP); err != nil {
@@ -905,7 +905,7 @@ func testDeleteFolderRetry(t *testing.T, f *fixture) {
 	a := f.account(t)
 	folder := f.folder(t, a, nil, "Folder")
 	f.put(t, a, &folder.ID, "a.txt")
-	if err := f.service.TrashFolder(f.ctx, a.id, folder.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, folder.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	stored := f.providers.forConnection(a.connection)
@@ -946,10 +946,10 @@ func testEmptyTrash(t *testing.T, f *fixture) {
 	f.put(t, a, nil, "keep.txt")
 	theirs := f.put(t, other, nil, "theirs.txt")
 	for _, call := range []error{
-		f.service.TrashFile(f.ctx, a.id, loose.ID),
-		f.service.TrashFile(f.ctx, other.id, theirs.ID),
-		f.service.TrashFolder(f.ctx, a.id, child.ID),
-		f.service.TrashFolder(f.ctx, a.id, parent.ID),
+		f.service.TrashFile(f.ctx, a.id, loose.ID, ""),
+		f.service.TrashFile(f.ctx, other.id, theirs.ID, ""),
+		f.service.TrashFolder(f.ctx, a.id, child.ID, ""),
+		f.service.TrashFolder(f.ctx, a.id, parent.ID, ""),
 	} {
 		if call != nil {
 			t.Fatalf("trash: %v", call)
@@ -977,7 +977,7 @@ func testTrashListing(t *testing.T, f *fixture) {
 	a := f.account(t)
 	folder := f.folder(t, a, nil, "Folder")
 	f.put(t, a, &folder.ID, "inside.txt")
-	if err := f.service.TrashFolder(f.ctx, a.id, folder.ID); err != nil {
+	if err := f.service.TrashFolder(f.ctx, a.id, folder.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	trash, err := f.service.ListTrash(f.ctx, a.id)
@@ -1057,7 +1057,7 @@ func testFolderLoopCannotHang(t *testing.T, f *fixture) {
 	if _, err := f.service.List(ctx, a.id, &one.ID); errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
 		t.Fatalf("List hung: %v", err)
 	}
-	if err := f.service.TrashFolder(ctx, a.id, one.ID); err != nil {
+	if err := f.service.TrashFolder(ctx, a.id, one.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	if err := f.service.DeleteFolder(ctx, a.id, one.ID, testIP); err != nil {

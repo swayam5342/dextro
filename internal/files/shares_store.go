@@ -63,21 +63,28 @@ func (s *Store) PrepareShare(ctx context.Context, userID, fileID uuid.UUID, in S
 // SaveShare records what Google confirmed. ErrShareNotFound means the row went while
 // Google was answering.
 func (s *Store) SaveShare(ctx context.Context, userID, fileID uuid.UUID, in ShareInput, url string) (Share, error) {
-	rows, err := s.queries.SaveShareForOwner(ctx, dbgen.SaveShareForOwnerParams{
+	row, err := s.queries.SaveShareForOwner(ctx, dbgen.SaveShareForOwnerParams{
 		UserID:    userID,
 		FileID:    fileID,
 		Role:      in.Role,
 		Url:       url,
 		ExpiresAt: in.ExpiresAt,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Share{}, ErrShareNotFound
+	}
 	if err != nil {
 		return Share{}, fmt.Errorf("save share: %w", err)
 	}
-	if rows == 0 {
-		return Share{}, ErrShareNotFound
+	return toShare(row), nil
+}
+
+// DelayShare sends a link that couldn't be ended to the back of the queue.
+func (s *Store) DelayShare(ctx context.Context, fileID uuid.UUID) error {
+	if err := s.queries.DelayShare(ctx, fileID); err != nil {
+		return fmt.Errorf("delay share: %w", err)
 	}
-	saved, _, err := s.ShareForOwner(ctx, userID, fileID)
-	return saved, err
+	return nil
 }
 
 // DeleteShareForOwner forgets a link. Google has to have been told first.

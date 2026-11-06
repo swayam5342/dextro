@@ -37,7 +37,7 @@ type Chosen struct {
 
 // AccountUsage is one account in the pool. Available is false if the account
 // couldn't be reached, which usually means its token has expired. Reserved is held
-// by uploads that haven't finished.
+// by unfinished uploads and files waiting to move here.
 type AccountUsage struct {
 	Connection
 	Available bool
@@ -117,7 +117,7 @@ func moreRoomFirst(a, b probed) int {
 // Choose picks the account an upload should go to. An account the user picked is
 // used or refused, never swapped for another. Otherwise the account with the most
 // free space wins, and accounts that can't be reached are passed over so one
-// expired token doesn't stop every upload. Space held by unfinished uploads
+// expired token doesn't stop every upload. Space held for uploads and moves
 // doesn't count as free.
 func (s *Service) Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64) (Chosen, error) {
 	candidates, err := s.candidates(ctx, userID, preferred)
@@ -204,10 +204,7 @@ func (s *Service) ReserveTransfers(ctx context.Context, userID uuid.UUID, reques
 		if err != nil {
 			return err
 		}
-		counted := slices.Clone(candidates)
-		for i := range counted {
-			counted[i].quota.Used += reserved[counted[i].record.ID]
-		}
+		counted := withReserved(candidates, reserved)
 		// The largest first, because they're the hardest to place.
 		files := slices.SortedStableFunc(slices.Values(request.Files), func(a, b TransferFile) int {
 			return cmp.Compare(b.Size, a.Size)
@@ -303,12 +300,18 @@ func (s *Service) candidates(ctx context.Context, userID uuid.UUID, preferred *u
 	return working, nil
 }
 
-// pick takes the account with the most room once reservations are counted.
-func pick(candidates []probed, reserved map[uuid.UUID]int64, size int64) (Chosen, error) {
+// withReserved counts what's held on each account as already used.
+func withReserved(candidates []probed, reserved map[uuid.UUID]int64) []probed {
 	counted := slices.Clone(candidates)
 	for i := range counted {
 		counted[i].quota.Used += reserved[counted[i].record.ID]
 	}
+	return counted
+}
+
+// pick takes the account with the most room once reservations are counted.
+func pick(candidates []probed, reserved map[uuid.UUID]int64, size int64) (Chosen, error) {
+	counted := withReserved(candidates, reserved)
 	slices.SortStableFunc(counted, moreRoomFirst)
 	best := counted[0]
 	if !hasRoom(best.quota, size) {

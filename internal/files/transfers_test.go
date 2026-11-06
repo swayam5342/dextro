@@ -150,6 +150,7 @@ func TestTransfers(t *testing.T) {
 		{"an object a record points at is never removed", testRemovalGuard},
 		{"waiting files hold their space", testTransferHoldsSpace},
 		{"files that won't fit are refused", testTransferNoRoom},
+		{"asking twice doesn't need twice the room", testTransferAskedTwice},
 		{"a failed file holds no space", testFailedTransferHoldsNothing},
 		{"failed files can be tried again", testTransferRetry},
 		{"unlinking the target drops its moves", testTransferUnlinkTarget},
@@ -216,7 +217,7 @@ func testTransferKeepsTrash(t *testing.T, f *uploadFixture) {
 	a := f.link(t, user, "a@gmail.com", 1<<30)
 	f.link(t, user, "b@gmail.com", 1<<30)
 	file := f.putIn(t, user, a, nil, "a.txt", "hello")
-	if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+	if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
 	if _, err := f.service.EmptyConnection(f.ctx, user, a, ""); err != nil {
@@ -568,7 +569,7 @@ func testTransferFileDeleted(t *testing.T, f *uploadFixture) {
 	file := f.putIn(t, user, a, nil, "a.txt", "hello")
 	f.queue(t, user, b, file.ID)
 	f.duringCopy("b@gmail.com", func() {
-		if err := f.service.TrashFile(f.ctx, user, file.ID); err != nil {
+		if err := f.service.TrashFile(f.ctx, user, file.ID, ""); err != nil {
 			t.Errorf("TrashFile: %v", err)
 		}
 		if err := f.service.DeleteFile(f.ctx, user, file.ID, ""); err != nil {
@@ -785,6 +786,17 @@ func testTransferHoldsSpace(t *testing.T, f *uploadFixture) {
 	_, err = f.service.BeginUpload(f.ctx, user, BeginUploadInput{ConnectionID: &b, Name: "x", Size: 5})
 	if !errors.Is(err, storage.ErrStorageFull) {
 		t.Errorf("error = %v, want ErrStorageFull", err)
+	}
+}
+
+func testTransferAskedTwice(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	a := f.link(t, user, "a@gmail.com", 1<<30)
+	b := f.link(t, user, "b@gmail.com", 8)
+	file := f.putIn(t, user, a, nil, "a.txt", "hello")
+	f.queue(t, user, b, file.ID)
+	if got := f.queue(t, user, b, file.ID); got.Queued != 0 || got.Skipped != 1 {
+		t.Errorf("result = %+v", got)
 	}
 }
 

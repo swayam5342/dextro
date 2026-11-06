@@ -213,7 +213,7 @@ func (s *Store) LockUploadReservations(ctx context.Context, userID uuid.UUID) er
 	return nil
 }
 
-// ReservedBytes returns what a user's unfinished uploads hold, by account.
+// ReservedBytes returns what a user's unfinished uploads and waiting moves hold, by account.
 func (s *Store) ReservedBytes(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]int64, error) {
 	rows, err := s.queries.ListReservedBytesForOwner(ctx, userID)
 	if err != nil {

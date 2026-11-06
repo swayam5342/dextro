@@ -121,8 +121,8 @@ const (
 	ShareEditor    ShareRole = "writer"
 )
 
-// Provider is a storage account. Implementations see only the area dextro owns
-// in that account, touch permissions only in Share and Unshare, and keep no state
+// Provider is a storage account. Implementations see only what the account lets dextro
+// see, keep new objects in dextro's folder, touch permissions only in Share and Unshare, and keep no state
 // between calls that would tie them to one request.
 type Provider interface {
 	// Check confirms the account is reachable with its credentials.

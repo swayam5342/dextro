@@ -35,14 +35,15 @@ const (
 	// Often, because this is how a file deleted in Drive leaves the app. It's cheap:
 	// a listing is one request per thousand files.
 	fileSyncEvery = 5 * time.Minute
-	// A dead account can take a while to give up on, and there may be many.
-	quotaSyncTimeout = 15 * time.Minute
-	maxAttempts      = 3
-	maxWorkers       = 2
+	// jobTimeout is for jobs that visit every account. A dead one can take a while to
+	// give up on, and there may be many.
+	jobTimeout  = 15 * time.Minute
+	maxAttempts = 3
+	maxWorkers  = 2
 	// Often, because a public link that should have ended is the thing to avoid.
 	shareExpiryEvery = time.Minute
-	// Often, because someone is watching the Storage page. Finding nothing to do is one
-	// query.
+	// Often, because someone is watching the Storage page. Finding nothing to do is a
+	// couple of small queries.
 	fileTransfersEvery = 30 * time.Second
 	// One file can take hours. River won't rescue a job inside this time.
 	fileTransfersTimeout = 12 * time.Hour
@@ -111,6 +112,11 @@ type fileTransfersArgs struct{}
 
 func (fileTransfersArgs) Kind() string { return KindFileTransfers }
 
+// InsertOpts puts moves on their own queue.
+func (fileTransfersArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{Queue: queueTransfers}
+}
+
 type shareExpiryArgs struct{}
 
 func (shareExpiryArgs) Kind() string { return KindShareExpiry }
@@ -121,7 +127,7 @@ type quotaSyncWorker struct {
 }
 
 func (w *quotaSyncWorker) Timeout(*river.Job[quotaSyncArgs]) time.Duration {
-	return quotaSyncTimeout
+	return jobTimeout
 }
 
 func (w *quotaSyncWorker) Work(ctx context.Context, _ *river.Job[quotaSyncArgs]) error {
@@ -164,16 +170,14 @@ type fileSyncWorker struct {
 }
 
 func (w *fileSyncWorker) Timeout(*river.Job[fileSyncArgs]) time.Duration {
-	return quotaSyncTimeout
+	return jobTimeout
 }
 
 func (w *fileSyncWorker) Work(ctx context.Context, _ *river.Job[fileSyncArgs]) error {
 	result, err := w.deps.Files.SyncAll(ctx)
 	if err == nil {
 		w.deps.Logger.InfoContext(ctx, "file sync finished", "added", result.Added, "removed", result.Removed, "skipped", result.Skipped)
-		for _, failure := range result.Failures {
-			w.deps.Logger.WarnContext(ctx, "file sync skipped an account", "error", failure)
-		}
+		logFailures(ctx, w.deps, "file sync skipped an account", result.Failures)
 	}
 	return finish(ctx, w.deps, KindFileSync, err)
 }
@@ -192,9 +196,7 @@ func (w *fileTransfersWorker) Work(ctx context.Context, _ *river.Job[fileTransfe
 	if run.Moved > 0 || run.Failed > 0 || run.Removed > 0 {
 		w.deps.Logger.InfoContext(ctx, "file transfers ran", "moved", run.Moved, "failed", run.Failed, "removed", run.Removed)
 	}
-	for _, failure := range run.Failures {
-		w.deps.Logger.WarnContext(ctx, "file transfer failed", "error", failure)
-	}
+	logFailures(ctx, w.deps, "file transfer failed", run.Failures)
 	return finish(ctx, w.deps, KindFileTransfers, err)
 }
 
@@ -204,7 +206,7 @@ type shareExpiryWorker struct {
 }
 
 func (w *shareExpiryWorker) Timeout(*river.Job[shareExpiryArgs]) time.Duration {
-	return quotaSyncTimeout
+	return jobTimeout
 }
 
 func (w *shareExpiryWorker) Work(ctx context.Context, _ *river.Job[shareExpiryArgs]) error {
@@ -212,10 +214,14 @@ func (w *shareExpiryWorker) Work(ctx context.Context, _ *river.Job[shareExpiryAr
 	if run.Expired > 0 {
 		w.deps.Logger.InfoContext(ctx, "google links expired", "removed", run.Expired)
 	}
-	for _, failure := range run.Failures {
-		w.deps.Logger.WarnContext(ctx, "google link couldn't be removed", "error", failure)
-	}
+	logFailures(ctx, w.deps, "google link couldn't be removed", run.Failures)
 	return finish(ctx, w.deps, KindShareExpiry, err)
+}
+
+func logFailures(ctx context.Context, d Deps, message string, failures []error) {
+	for _, failure := range failures {
+		d.Logger.WarnContext(ctx, message, "error", failure)
+	}
 }
 
 // finish records the outcome. A job stopped by the server shutting down didn't
@@ -277,13 +283,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 			every(uploadCleanupEvery, uploadCleanupArgs{}),
 			every(fileSyncEvery, fileSyncArgs{}),
 			every(shareExpiryEvery, shareExpiryArgs{}),
-			river.NewPeriodicJob(
-				river.PeriodicInterval(fileTransfersEvery),
-				func() (river.JobArgs, *river.InsertOpts) {
-					return fileTransfersArgs{}, &river.InsertOpts{MaxAttempts: maxAttempts, Queue: queueTransfers}
-				},
-				&river.PeriodicJobOpts{RunOnStart: true},
-			),
+			every(fileTransfersEvery, fileTransfersArgs{}),
 		},
 	})
 	if err != nil {

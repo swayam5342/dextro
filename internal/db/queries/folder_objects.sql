@@ -47,8 +47,8 @@ DELETE FROM folder_objects WHERE folder_id = $1 AND connection_id = $2;
 -- name: DeleteFolderIfUnused :execrows
 DELETE FROM folders f
 WHERE f.user_id = $1 AND f.id = $2
-  AND NOT EXISTS (SELECT 1 FROM files x WHERE x.folder_id = f.id)
-  AND NOT EXISTS (SELECT 1 FROM folders c WHERE c.parent_id = f.id)
+  AND NOT EXISTS (SELECT 1 FROM files x WHERE x.user_id = $1 AND x.folder_id = f.id)
+  AND NOT EXISTS (SELECT 1 FROM folders c WHERE c.user_id = $1 AND c.parent_id = f.id)
   AND NOT EXISTS (SELECT 1 FROM folder_objects o WHERE o.folder_id = f.id);
 
 -- name: FindFolderByName :one

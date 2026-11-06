@@ -55,6 +55,9 @@ LIMIT 100;
 -- name: ListWaitingTransferFilesForOwner :many
 SELECT file_id FROM file_transfers WHERE user_id = $1 AND status = 'waiting';
 
+-- name: IsFileWaitingToMoveForOwner :one
+SELECT EXISTS (SELECT 1 FROM file_transfers WHERE user_id = $1 AND file_id = $2 AND status = 'waiting');
+
 -- name: GetFileTransferTotalsForOwner :one
 SELECT count(*) FILTER (WHERE status = 'waiting') AS waiting,
        coalesce(sum(size) FILTER (WHERE status = 'waiting'), 0)::bigint AS waiting_bytes,

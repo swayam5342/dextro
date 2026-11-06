@@ -108,10 +108,10 @@ func testSearchSkipsTrash(t *testing.T, s *server) {
 	a := s.account(t)
 	file := s.put(t, a, nil, "match.txt")
 	folder := s.folder(t, a, nil, "match folder")
-	if err := s.service.TrashFile(s.ctx, a.id, file.ID); err != nil {
+	if err := s.service.TrashFile(s.ctx, a.id, file.ID, ""); err != nil {
 		t.Fatalf("TrashFile: %v", err)
 	}
-	if err := s.service.TrashFolder(s.ctx, a.id, folder.ID); err != nil {
+	if err := s.service.TrashFolder(s.ctx, a.id, folder.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	results := s.search(t, a, "match")
@@ -128,7 +128,7 @@ func testSearchSkipsTrashedFolders(t *testing.T, s *server) {
 	s.put(t, a, &top.ID, "match-one.txt")
 	s.put(t, a, &low.ID, "match-two.txt")
 	s.put(t, a, nil, "match-kept.txt")
-	if err := s.service.TrashFolder(s.ctx, a.id, top.ID); err != nil {
+	if err := s.service.TrashFolder(s.ctx, a.id, top.ID, ""); err != nil {
 		t.Fatalf("TrashFolder: %v", err)
 	}
 	results := s.search(t, a, "match")
