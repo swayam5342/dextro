@@ -14,19 +14,22 @@ import (
 )
 
 const createUploadSession = `-- name: CreateUploadSession :exec
-INSERT INTO upload_sessions (id, user_id, connection_id, folder_id, name, content_type, size, last_modified)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO upload_sessions (id, user_id, connection_id, folder_id, name, content_type, size, last_modified, encrypted, key_id, key_ciphertext)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $11::text, $10)
 `
 
 type CreateUploadSessionParams struct {
-	ID           uuid.UUID
-	UserID       uuid.UUID
-	ConnectionID uuid.UUID
-	FolderID     uuid.NullUUID
-	Name         string
-	ContentType  string
-	Size         int64
-	LastModified int64
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	ConnectionID  uuid.UUID
+	FolderID      uuid.NullUUID
+	Name          string
+	ContentType   string
+	Size          int64
+	LastModified  int64
+	Encrypted     bool
+	KeyCiphertext []byte
+	KeyID         pgtype.Text
 }
 
 func (q *Queries) CreateUploadSession(ctx context.Context, arg CreateUploadSessionParams) error {
@@ -39,6 +42,9 @@ func (q *Queries) CreateUploadSession(ctx context.Context, arg CreateUploadSessi
 		arg.ContentType,
 		arg.Size,
 		arg.LastModified,
+		arg.Encrypted,
+		arg.KeyCiphertext,
+		arg.KeyID,
 	)
 	return err
 }
@@ -86,6 +92,9 @@ SET file_id = $3,
     received = size,
     secret_key_id = NULL,
     secret_ciphertext = NULL,
+    key_id = NULL,
+    key_ciphertext = NULL,
+    hash_state = NULL,
     updated_at = now()
 WHERE user_id = $1 AND id = $2
 `
@@ -103,7 +112,7 @@ func (q *Queries) FinishUploadSessionForOwner(ctx context.Context, arg FinishUpl
 }
 
 const getUploadSessionForOwner = `-- name: GetUploadSessionForOwner :one
-SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at FROM upload_sessions WHERE user_id = $1 AND id = $2
+SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at, encrypted, key_id, key_ciphertext, hash_state FROM upload_sessions WHERE user_id = $1 AND id = $2
 `
 
 type GetUploadSessionForOwnerParams struct {
@@ -129,6 +138,10 @@ func (q *Queries) GetUploadSessionForOwner(ctx context.Context, arg GetUploadSes
 		&i.FileID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Encrypted,
+		&i.KeyID,
+		&i.KeyCiphertext,
+		&i.HashState,
 	)
 	return i, err
 }
@@ -175,7 +188,7 @@ func (q *Queries) ListReservedBytesForOwner(ctx context.Context, userID uuid.UUI
 }
 
 const listStaleUploadSessions = `-- name: ListStaleUploadSessions :many
-SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at
+SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at, encrypted, key_id, key_ciphertext, hash_state
 FROM upload_sessions
 WHERE updated_at < $1
 ORDER BY updated_at, id
@@ -206,6 +219,10 @@ func (q *Queries) ListStaleUploadSessions(ctx context.Context, updatedAt time.Ti
 			&i.FileID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Encrypted,
+			&i.KeyID,
+			&i.KeyCiphertext,
+			&i.HashState,
 		); err != nil {
 			return nil, err
 		}
@@ -218,7 +235,7 @@ func (q *Queries) ListStaleUploadSessions(ctx context.Context, updatedAt time.Ti
 }
 
 const listUploadSessionsForOwner = `-- name: ListUploadSessionsForOwner :many
-SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at
+SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at, encrypted, key_id, key_ciphertext, hash_state
 FROM upload_sessions
 WHERE user_id = $1 AND file_id IS NULL AND secret_ciphertext IS NOT NULL
 ORDER BY created_at, id
@@ -248,6 +265,10 @@ func (q *Queries) ListUploadSessionsForOwner(ctx context.Context, userID uuid.UU
 			&i.FileID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Encrypted,
+			&i.KeyID,
+			&i.KeyCiphertext,
+			&i.HashState,
 		); err != nil {
 			return nil, err
 		}
@@ -271,7 +292,7 @@ func (q *Queries) LockUploadReservationsForOwner(ctx context.Context, userID str
 }
 
 const lockUploadSessionForOwner = `-- name: LockUploadSessionForOwner :one
-SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at FROM upload_sessions WHERE user_id = $1 AND id = $2 FOR UPDATE
+SELECT id, user_id, connection_id, folder_id, name, content_type, size, received, last_modified, secret_key_id, secret_ciphertext, file_id, created_at, updated_at, encrypted, key_id, key_ciphertext, hash_state FROM upload_sessions WHERE user_id = $1 AND id = $2 FOR UPDATE
 `
 
 type LockUploadSessionForOwnerParams struct {
@@ -297,6 +318,10 @@ func (q *Queries) LockUploadSessionForOwner(ctx context.Context, arg LockUploadS
 		&i.FileID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Encrypted,
+		&i.KeyID,
+		&i.KeyCiphertext,
+		&i.HashState,
 	)
 	return i, err
 }
@@ -304,18 +329,25 @@ func (q *Queries) LockUploadSessionForOwner(ctx context.Context, arg LockUploadS
 const setUploadReceivedForOwner = `-- name: SetUploadReceivedForOwner :exec
 UPDATE upload_sessions
 SET received = $3,
+    hash_state = $4,
     updated_at = now()
 WHERE user_id = $1 AND id = $2
 `
 
 type SetUploadReceivedForOwnerParams struct {
-	UserID   uuid.UUID
-	ID       uuid.UUID
-	Received int64
+	UserID    uuid.UUID
+	ID        uuid.UUID
+	Received  int64
+	HashState []byte
 }
 
 func (q *Queries) SetUploadReceivedForOwner(ctx context.Context, arg SetUploadReceivedForOwnerParams) error {
-	_, err := q.db.Exec(ctx, setUploadReceivedForOwner, arg.UserID, arg.ID, arg.Received)
+	_, err := q.db.Exec(ctx, setUploadReceivedForOwner,
+		arg.UserID,
+		arg.ID,
+		arg.Received,
+		arg.HashState,
+	)
 	return err
 }
 

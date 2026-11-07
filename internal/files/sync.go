@@ -235,7 +235,7 @@ func (r *syncRun) importEverything(ctx context.Context, known map[string]fileRec
 		if !inside {
 			continue
 		}
-		added, err := r.s.importObject(ctx, r.userID, r.connectionID, object, folder, false)
+		added, err := r.importFile(ctx, object, folder)
 		if err != nil {
 			return err
 		}
@@ -244,6 +244,34 @@ func (r *syncRun) importEverything(ctx context.Context, known map[string]fileRec
 		}
 	}
 	return nil
+}
+
+// importFile adds a file found in the account. An encrypted one says what it really is in
+// its header, which also holds the key that makes it readable again.
+func (r *syncRun) importFile(ctx context.Context, object provider.Object, folder *uuid.UUID) (bool, error) {
+	if object.ContentType != sealedContentType {
+		return r.s.importObject(ctx, r.userID, r.connectionID, object, folder, false)
+	}
+	key, contentType, err := readSealedHeader(ctx, r.stored, object.ID)
+	if errors.Is(err, errNotSealed) {
+		return r.s.importObject(ctx, r.userID, r.connectionID, object, folder, false)
+	}
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", ErrProviderFailed, err)
+	}
+	return r.s.store.ImportFile(ctx, r.userID, fileRecord{
+		File: File{
+			ConnectionID: r.connectionID,
+			FolderID:     folder,
+			Name:         importedName(object.Name),
+			Size:         plainSize(object.Size),
+			ContentType:  cleanContentType(contentType),
+			Encrypted:    true,
+		},
+		objectID: object.ID,
+		checksum: object.Checksum,
+		fileKey:  &key,
+	})
 }
 
 func (r *syncRun) removeGoneFiles(ctx context.Context, known map[string]fileRecord, result *SyncResult) error {

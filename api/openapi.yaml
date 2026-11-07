@@ -519,6 +519,31 @@ paths:
           description: The folder is gone.
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/folders/{id}/encryption:
+    put:
+      operationId: setFolderEncryption
+      summary: Encrypt new files in a folder, or stop
+      description: >
+        Applies to new files here and in the folders below. Files already stored stay
+        as they are. Encrypted files can't have thumbnails or Google links.
+      tags: [files]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FolderEncryption"
+      responses:
+        "200":
+          description: The folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folder"
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/folders/{id}/move:
     post:
       operationId: moveFolder
@@ -1663,8 +1688,11 @@ components:
           type: string
     File:
       type: object
-      required: [id, name, size, content_type, preview, connection_id, folder_id, starred, trashed_at, created_at, updated_at, external]
+      required: [id, name, size, content_type, preview, connection_id, folder_id, starred, trashed_at, created_at, updated_at, external, encrypted]
       properties:
+        encrypted:
+          type: boolean
+          description: The storage account only has encrypted bytes.
         starred:
           type: boolean
         external:
@@ -1713,8 +1741,11 @@ components:
             $ref: "#/components/schemas/File"
     Folder:
       type: object
-      required: [id, name, parent_id, trashed_at, created_at, updated_at]
+      required: [id, name, parent_id, encrypted, trashed_at, created_at, updated_at]
       properties:
+        encrypted:
+          type: boolean
+          description: This folder's own setting. A folder above it can also turn encryption on.
         id:
           type: string
           format: uuid
@@ -1734,10 +1765,19 @@ components:
         updated_at:
           type: string
           format: date-time
+    FolderEncryption:
+      type: object
+      required: [encrypted]
+      properties:
+        encrypted:
+          type: boolean
     FolderContents:
       type: object
-      required: [path, folders, files]
+      required: [path, folders, files, encrypted]
       properties:
+        encrypted:
+          type: boolean
+          description: Whether new files here are encrypted, by this folder or one above it.
         path:
           type: array
           description: The folders from the top level down to this one.
@@ -2202,6 +2242,12 @@ components:
         created_at:
           type: string
           format: date-time
+        piece_bytes:
+          type: integer
+          format: int64
+          description: >
+            How long the next piece has to be. Only set for a file going into an encrypted
+            folder, where pieces have to be exactly this long.
         file:
           $ref: "#/components/schemas/File"
     SyncResult:

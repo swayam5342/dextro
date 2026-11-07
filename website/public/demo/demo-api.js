@@ -26,7 +26,7 @@
   ];
   const LIMIT = 15 * GB;
 
-  const folder = (id, name, parent, days) => ({ id, name, parent_id: parent, trashed_at: null, created_at: earlier(days), updated_at: earlier(days) });
+  const folder = (id, name, parent, days) => ({ id, name, parent_id: parent, encrypted: false, trashed_at: null, created_at: earlier(days), updated_at: earlier(days) });
   const folders = [
     folder("survey", "Ganga survey", null, 40),
     folder("work", "Work", null, 30),
@@ -34,7 +34,7 @@
   ];
 
   const file = (id, name, size, type, preview, connection, parent, days) => ({
-    id, external: false, name, size, content_type: type, preview, connection_id: connection, folder_id: parent,
+    id, external: false, encrypted: false, name, size, content_type: type, preview, connection_id: connection, folder_id: parent,
     starred: false, trashed_at: null, created_at: earlier(days), updated_at: earlier(days),
   });
   const files = [
@@ -45,6 +45,8 @@
     file("tour", "Tributary tour.mp4", 2.6 * MB, "video/mp4", "video", "north", null, 12),
     file("budget", "Budget 2026.xlsx", 340 * 1024, "application/vnd.ms-excel", "none", "south", "work", 9),
     file("notes", "Meeting notes.docx", 88 * 1024, "application/msword", "none", "north", "work", 6),
+    file("rennell-copy", "Rennell, An Actual Survey (copy).jpg", 44 * MB, "image/jpeg", "image", "north", "work", 5),
+    file("survey-notes", "Survey notes.md", 4 * 1024, "text/markdown", "text", "north", "work", 3),
     file("inv-1", "Invoice 1041.pdf", 210 * 1024, "application/octet-stream", "none", "creek", "invoices", 20),
     file("inv-2", "Invoice 1042.pdf", 196 * 1024, "application/octet-stream", "none", "north", "invoices", 18),
     file("backup", "Laptop backup.zip", 1.8 * GB, "application/zip", "none", "south", null, 3),
@@ -128,6 +130,7 @@
       path,
       folders: folders.filter((f) => f.parent_id === (folderId ?? null) && !f.trashed_at),
       files: files.filter((f) => f.folder_id === (folderId ?? null) && !f.trashed_at),
+      encrypted: path.some((f) => f.encrypted),
     };
   }
 
@@ -152,6 +155,7 @@
 
   function storeUpload(upload) {
     const stored = file(newId(), upload.name, upload.size, upload.content_type || "application/octet-stream", "none", upload.connection_id, upload.folder_id ?? null, 0);
+    stored.encrypted = contents(upload.folder_id).encrypted;
     files.push(stored);
     return stored;
   }
@@ -172,6 +176,20 @@
     for (const child of folders.filter((f) => f.parent_id === id)) removeFolder(child.id);
     for (const f of files.filter((item) => item.folder_id === id)) removeFile(f.id);
     folders.splice(folders.findIndex((f) => f.id === id), 1);
+  }
+
+  /** The made-up files with the same content. */
+  const COPIES = new Set(["rennell-survey", "rennell-copy"]);
+  function duplicates() {
+    const copies = files.filter((f) => COPIES.has(f.id) && !f.trashed_at);
+    if (copies.length < 2) return { groups: [], reclaimable_bytes: 0 };
+    const where = (id) => {
+      const names = [];
+      for (let at = id; at; at = folders.find((f) => f.id === at)?.parent_id) names.unshift(folders.find((f) => f.id === at).name);
+      return names.join("/");
+    };
+    const group = { hash: "demo", size: copies[0].size, files: copies.map((f) => ({ file: f, location: where(f.folder_id) })) };
+    return { groups: [group], reclaimable_bytes: copies[0].size * (copies.length - 1) };
   }
 
   /** Every route the app calls. Each entry is [method, pattern, handler]. */
@@ -304,6 +322,14 @@
       return ok({ queued: body.file_ids.length, skipped: 0 });
     }],
 
+    ["GET", /^\/api\/v1\/duplicates$/, () => ok(duplicates())],
+    ["PUT", /^\/api\/v1\/folders\/([^/]+)\/encryption$/, ([, id], body) => {
+      const found = folders.find((f) => f.id === id);
+      if (!found) return missing();
+      found.encrypted = body.encrypted;
+      return ok(found);
+    }],
+    ["GET", /^\/api\/v1\/file-checks$/, () => ok({ checkable_files: files.length, checked_files: files.length, problems: [] })],
     ["GET", /^\/api\/v1\/uploads$/, () => ok([])],
     ["POST", /^\/api\/v1\/uploads$/, (_, body) => {
       const chosen = choose(body.connection_id, body.size, body.busy_connection_ids);
@@ -333,7 +359,8 @@
   window.fetch = async function (input, init) {
     const request = input instanceof Request ? input : new Request(input, init);
     const url = new URL(request.url, location.href);
-    if (url.origin !== location.origin || !url.pathname.startsWith("/api/")) {
+    // A file's bytes come from the site, because this only answers in JSON.
+    if (url.origin !== location.origin || !url.pathname.startsWith("/api/") || url.pathname.endsWith("/content")) {
       return realFetch(input, init);
     }
     const text = await request.clone().text();

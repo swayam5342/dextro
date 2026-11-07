@@ -107,6 +107,10 @@ func toAPIUpload(s UploadSession) apigen.UploadSession {
 		file := toAPIFile(*s.File)
 		body.File = &file
 	}
+	if s.Encrypted && s.File == nil && s.Received < s.Size {
+		piece := nextSealedPiece(s.Received, s.Size)
+		body.PieceBytes = &piece
+	}
 	return body
 }
 

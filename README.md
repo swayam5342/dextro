@@ -136,6 +136,8 @@ The admin can change the upload limit and turn Google links on or off in **Serve
 
 ### Running on a real address
 
+Files can be encrypted before they reach Google: choose **Encrypt new files** from a folder's menu. Only your server can read them, and everything but thumbnails and Google links keeps working. Back up `ENCRYPTION_KEYS` somewhere safe, because encrypted files can't be recovered without it.
+
 For more uploads at once, run the app over HTTPS, because browsers only use HTTP/2 there: 12 can run instead of 4, up to 3 per account. `make cert` makes a local certificate, and `COMPOSE_PROFILES=https` with `PUBLIC_URL=https://127.0.0.1` in `.env` adds nginx in front. Add the new address to Google's redirect URIs too.
 
 Session cookies are always `Secure`. Chrome accepts them on `http://127.0.0.1`, but any other address needs HTTPS, or sign-in won't stick. If you change `PUBLIC_URL`, update the redirect URIs in Google to match.

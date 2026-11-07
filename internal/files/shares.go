@@ -103,6 +103,10 @@ func (s *Service) ShareFile(ctx context.Context, userID, id uuid.UUID, in ShareI
 	if record.External {
 		return Share{}, ErrExternalFile
 	}
+	// Google would be handing out encrypted bytes that nobody could open.
+	if record.Encrypted {
+		return Share{}, ErrFileEncrypted
+	}
 	// A file in a trashed folder is in the trash too, whatever its own flag says.
 	if _, err := requireLiveFolder(ctx, s.store, userID, record.FolderID); err != nil {
 		return Share{}, err

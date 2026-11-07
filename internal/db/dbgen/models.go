@@ -33,22 +33,25 @@ type AuditEvent struct {
 }
 
 type File struct {
-	ID           uuid.UUID
-	UserID       uuid.UUID
-	ConnectionID uuid.UUID
-	FolderID     uuid.NullUUID
-	ObjectID     string
-	Name         string
-	Size         int64
-	ContentType  string
-	TrashedAt    *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	External     bool
-	StarredAt    *time.Time
-	Checksum     pgtype.Text
-	ContentHash  pgtype.Text
-	CheckedAt    *time.Time
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	ConnectionID  uuid.UUID
+	FolderID      uuid.NullUUID
+	ObjectID      string
+	Name          string
+	Size          int64
+	ContentType   string
+	TrashedAt     *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	External      bool
+	StarredAt     *time.Time
+	Checksum      pgtype.Text
+	ContentHash   pgtype.Text
+	CheckedAt     *time.Time
+	Encrypted     bool
+	KeyID         pgtype.Text
+	KeyCiphertext []byte
 }
 
 type FileProblem struct {
@@ -94,6 +97,7 @@ type Folder struct {
 	TrashedAt *time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Encrypted bool
 }
 
 type FolderObject struct {
@@ -174,6 +178,10 @@ type UploadSession struct {
 	FileID           uuid.NullUUID
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	Encrypted        bool
+	KeyID            pgtype.Text
+	KeyCiphertext    []byte
+	HashState        []byte
 }
 
 type User struct {

@@ -10,6 +10,8 @@ import {
   FolderPlus,
   LayoutGrid,
   Link2,
+  Lock,
+  LockOpen,
   List,
   Pencil,
   RefreshCw,
@@ -44,6 +46,7 @@ import {
   useCreateFolder,
   useMoveToTrash,
   useRename,
+  useSetFolderEncryption,
   useRestore,
   useSetStarred,
   zipUrl,
@@ -82,6 +85,7 @@ type Action =
   | { type: "account"; fileIds: string[]; name: string; from: string[] }
   | { type: "share"; fileId: string; name: string }
   | { type: "trash"; items: Item[]; name: string; viewed?: File }
+  | { type: "encrypt"; folder: Folder }
   | { type: "new-folder" };
 
 const VIEW_KEY = "dextro.view";
@@ -131,6 +135,7 @@ function Browser({
   const [viewing, setViewing] = useState<string | null>(null);
   const createFolder = useCreateFolder();
   const rename = useRename();
+  const encryption = useSetFolderEncryption();
   const setStarred = useSetStarred();
   const trash = useMoveToTrash();
   const restore = useRestore();
@@ -331,6 +336,7 @@ function Browser({
   function folderProps(target: Folder) {
     const item: Item = { kind: "folder", id: target.id };
     return {
+      encrypted: target.encrypted,
       selected: chosen.has(itemKey(item)),
       selecting,
       entries: folderEntries(target),
@@ -350,6 +356,7 @@ function Browser({
       drag: dragFrom(item),
       shared: shares.has(file.id),
       starred: file.starred,
+      encrypted: file.encrypted,
       onToggle: () => toggle(item),
     };
   }
@@ -362,6 +369,11 @@ function Browser({
       { label: "Select", icon: CheckSquare, run: () => toggle(item) },
       { label: "Rename", icon: Pencil, run: () => setAction({ type: "rename", item, name: target.name }) },
       { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: target.name }) },
+      {
+        label: target.encrypted ? "Stop encrypting new files" : "Encrypt new files",
+        icon: target.encrypted ? LockOpen : Lock,
+        run: () => setAction({ type: "encrypt", folder: target }),
+      },
       { label: "Move to trash", icon: Trash2, run: () => setAction({ type: "trash", items: [item], name: target.name }) },
     ];
   }
@@ -401,7 +413,7 @@ function Browser({
       { label: "Move", icon: FolderInput, run: () => setAction({ type: "move", items: [item], name: file.name }) },
       // An added file is the person's own, and stays in the account it came from.
       ...(canChangeAccount && !file.external && !shared ? [toAccount] : []),
-      ...((links?.enabled || shared) && !file.external ? [linkEntry] : []),
+      ...((links?.enabled || shared) && !file.external && !file.encrypted ? [linkEntry] : []),
       { label: "Move to trash", icon: Trash2, run: () => setAction({ type: "trash", items: [item], name: file.name }) },
     ];
   }
@@ -518,6 +530,12 @@ function Browser({
             ))}
           </div>
         </div>
+      )}
+      {!flat && folder.data?.encrypted && (
+        <p className="-mt-2.5 mb-[18px] flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <Lock className="size-3.5" />
+          New files here are encrypted.
+        </p>
       )}
 
       {!selecting && !query && !folderId && (
@@ -669,6 +687,22 @@ function Browser({
               void moveToTrash(action.items);
             }
           }}
+        />
+      )}
+      {action?.type === "encrypt" && (
+        <ConfirmDialog
+          title={action.folder.encrypted ? `Stop encrypting new files in ${action.folder.name}?` : `Encrypt new files in ${action.folder.name}?`}
+          text={
+            action.folder.encrypted
+              ? "New files here will go to Google as they are. Files already encrypted stay encrypted and keep working."
+              : "New files here and in the folders inside will be encrypted before they reach Google, so only this server can read them. Their names stay visible in Drive. Files already here stay as they are. Encrypted files have no thumbnails or Google links, and if this server's ENCRYPTION_KEYS is ever lost, they can't be recovered."
+          }
+          action={action.folder.encrypted ? "Stop encrypting" : "Encrypt new files"}
+          safe
+          pending={encryption.isPending}
+          error={encryption.error?.message}
+          onClose={close}
+          onConfirm={() => encryption.mutate({ id: action.folder.id, encrypted: !action.folder.encrypted }, { onSuccess: close })}
         />
       )}
       {action?.type === "share" && <ShareDialog fileId={action.fileId} name={action.name} onClose={close} />}

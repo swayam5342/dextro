@@ -50,6 +50,7 @@ type FilesHandlers interface {
 	RenameFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
 	DeleteFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
 	MoveFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
+	SetFolderEncryption(w http.ResponseWriter, r *http.Request, id types.UUID)
 	TrashFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
 	RestoreFolder(w http.ResponseWriter, r *http.Request, id types.UUID)
 	ListTrash(w http.ResponseWriter, r *http.Request)

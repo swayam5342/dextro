@@ -126,6 +126,12 @@ func (p *providers) Reserve(context.Context, uuid.UUID, *uuid.UUID, storage.Rese
 
 func (p *providers) SealUploadSession(uuid.UUID, string) secrets.Sealed { return secrets.Sealed{} }
 
+func (p *providers) SealFileKey([]byte, string) secrets.Sealed { return secrets.Sealed{} }
+
+func (p *providers) OpenFileKey(secrets.Sealed, string) ([]byte, error) {
+	return nil, errors.New("not used by these tests")
+}
+
 func (p *providers) OpenUploadSession(uuid.UUID, secrets.Sealed) (string, error) {
 	return "", errors.New("not used by these tests")
 }

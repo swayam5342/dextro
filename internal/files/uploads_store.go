@@ -21,6 +21,9 @@ type uploadRecord struct {
 	contentType string
 	sealed      *secrets.Sealed
 	fileID      *uuid.UUID
+	// fileKey and hashState are only for encrypted files. See sealed.go.
+	fileKey   *secrets.Sealed
+	hashState []byte
 }
 
 func toUploadRecord(row dbgen.UploadSession) uploadRecord {
@@ -33,9 +36,12 @@ func toUploadRecord(row dbgen.UploadSession) uploadRecord {
 			Received:     row.Received,
 			LastModified: row.LastModified,
 			CreatedAt:    row.CreatedAt,
+			Encrypted:    row.Encrypted,
 		},
 		userID:      row.UserID,
 		contentType: row.ContentType,
+		fileKey:     sealedKey(row.KeyID, row.KeyCiphertext),
+		hashState:   row.HashState,
 	}
 	if row.FolderID.Valid {
 		r.FolderID = &row.FolderID.UUID
@@ -118,8 +124,8 @@ func (s *Store) SetUploadSecretForOwner(ctx context.Context, userID, id uuid.UUI
 }
 
 // SetUploadReceivedForOwner saves how much the account has kept.
-func (s *Store) SetUploadReceivedForOwner(ctx context.Context, userID, id uuid.UUID, received int64) error {
-	err := s.queries.SetUploadReceivedForOwner(ctx, dbgen.SetUploadReceivedForOwnerParams{UserID: userID, ID: id, Received: received})
+func (s *Store) SetUploadReceivedForOwner(ctx context.Context, userID, id uuid.UUID, received int64, hashState []byte) error {
+	err := s.queries.SetUploadReceivedForOwner(ctx, dbgen.SetUploadReceivedForOwnerParams{UserID: userID, ID: id, Received: received, HashState: hashState})
 	if err != nil {
 		return fmt.Errorf("save upload progress: %w", err)
 	}

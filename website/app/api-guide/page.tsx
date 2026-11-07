@@ -160,6 +160,7 @@ export default function ApiGuide() {
         For a large file, send it in pieces, so a dropped connection only costs you one piece. Start an upload, then send each piece with
         its <code>offset</code>. The answer's <code>received</code> says where the next piece has to start, which can be less than you
         sent, and <code>file</code> appears when it's finished. Every piece but the last must be a multiple of 256 KiB, and at most 64 MiB.
+        In an encrypted folder the answer also has <code>piece_bytes</code>, and the next piece has to be exactly that long.
       </p>
       <p>
         To pick up after a problem, ask for the upload by its ID and carry on from <code>received</code>. Space for the whole file is held

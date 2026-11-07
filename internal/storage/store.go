@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/swayam5342/tributary/internal/audit"
 	"github.com/swayam5342/tributary/internal/db/dbgen"
@@ -272,20 +273,37 @@ func (s *Store) SetLastUploadConnection(ctx context.Context, userID, connectionI
 }
 
 // CreateUploadSession saves an upload, which is what holds its space.
+func fileKeyID(r Reservation) string {
+	if r.FileKey == nil {
+		return ""
+	}
+	return r.FileKey.KeyID
+}
+
+func fileKeyCiphertext(r Reservation) []byte {
+	if r.FileKey == nil {
+		return nil
+	}
+	return r.FileKey.Ciphertext
+}
+
 func (s *Store) CreateUploadSession(ctx context.Context, userID, connectionID uuid.UUID, r Reservation) error {
 	folder := uuid.NullUUID{}
 	if r.FolderID != nil {
 		folder = uuid.NullUUID{UUID: *r.FolderID, Valid: true}
 	}
 	err := s.queries.CreateUploadSession(ctx, dbgen.CreateUploadSessionParams{
-		ID:           r.ID,
-		UserID:       userID,
-		ConnectionID: connectionID,
-		FolderID:     folder,
-		Name:         r.Name,
-		ContentType:  r.ContentType,
-		Size:         r.Size,
-		LastModified: r.LastModified,
+		ID:            r.ID,
+		UserID:        userID,
+		ConnectionID:  connectionID,
+		FolderID:      folder,
+		Name:          r.Name,
+		ContentType:   r.ContentType,
+		Size:          r.Size,
+		LastModified:  r.LastModified,
+		Encrypted:     r.FileKey != nil,
+		KeyID:         pgtype.Text{String: fileKeyID(r), Valid: r.FileKey != nil},
+		KeyCiphertext: fileKeyCiphertext(r),
 	})
 	if err != nil {
 		return fmt.Errorf("create upload: %w", err)

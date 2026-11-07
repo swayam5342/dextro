@@ -26,7 +26,7 @@
   ];
   const LIMIT = 15 * GB;
 
-  const folder = (id, name, parent, days) => ({ id, name, parent_id: parent, trashed_at: null, created_at: earlier(days), updated_at: earlier(days) });
+  const folder = (id, name, parent, days) => ({ id, name, parent_id: parent, encrypted: false, trashed_at: null, created_at: earlier(days), updated_at: earlier(days) });
   const folders = [
     folder("survey", "Ganga survey", null, 40),
     folder("work", "Work", null, 30),
@@ -34,7 +34,7 @@
   ];
 
   const file = (id, name, size, type, preview, connection, parent, days) => ({
-    id, external: false, name, size, content_type: type, preview, connection_id: connection, folder_id: parent,
+    id, external: false, encrypted: false, name, size, content_type: type, preview, connection_id: connection, folder_id: parent,
     starred: false, trashed_at: null, created_at: earlier(days), updated_at: earlier(days),
   });
   const files = [
@@ -130,6 +130,7 @@
       path,
       folders: folders.filter((f) => f.parent_id === (folderId ?? null) && !f.trashed_at),
       files: files.filter((f) => f.folder_id === (folderId ?? null) && !f.trashed_at),
+      encrypted: path.some((f) => f.encrypted),
     };
   }
 
@@ -154,6 +155,7 @@
 
   function storeUpload(upload) {
     const stored = file(newId(), upload.name, upload.size, upload.content_type || "application/octet-stream", "none", upload.connection_id, upload.folder_id ?? null, 0);
+    stored.encrypted = contents(upload.folder_id).encrypted;
     files.push(stored);
     return stored;
   }
@@ -321,6 +323,12 @@
     }],
 
     ["GET", /^\/api\/v1\/duplicates$/, () => ok(duplicates())],
+    ["PUT", /^\/api\/v1\/folders\/([^/]+)\/encryption$/, ([, id], body) => {
+      const found = folders.find((f) => f.id === id);
+      if (!found) return missing();
+      found.encrypted = body.encrypted;
+      return ok(found);
+    }],
     ["GET", /^\/api\/v1\/file-checks$/, () => ok({ checkable_files: files.length, checked_files: files.length, problems: [] })],
     ["GET", /^\/api\/v1\/uploads$/, () => ok([])],
     ["POST", /^\/api\/v1\/uploads$/, (_, body) => {

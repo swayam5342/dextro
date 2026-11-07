@@ -409,6 +409,9 @@ type File struct {
 	ContentType  string             `json:"content_type"`
 	CreatedAt    time.Time          `json:"created_at"`
 
+	// Encrypted The storage account only has encrypted bytes.
+	Encrypted bool `json:"encrypted"`
+
 	// External Someone's own Drive file, which deleting forever leaves in Drive.
 	External bool                `json:"external"`
 	FolderId *openapi_types.UUID `json:"folder_id"`
@@ -458,7 +461,10 @@ type FileProblemKind string
 
 // Folder defines model for Folder.
 type Folder struct {
-	CreatedAt time.Time           `json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Encrypted This folder's own setting. A folder above it can also turn encryption on.
+	Encrypted bool                `json:"encrypted"`
 	Id        openapi_types.UUID  `json:"id"`
 	Name      string              `json:"name"`
 	ParentId  *openapi_types.UUID `json:"parent_id"`
@@ -468,11 +474,18 @@ type Folder struct {
 
 // FolderContents defines model for FolderContents.
 type FolderContents struct {
-	Files   []File   `json:"files"`
-	Folders []Folder `json:"folders"`
+	// Encrypted Whether new files here are encrypted, by this folder or one above it.
+	Encrypted bool     `json:"encrypted"`
+	Files     []File   `json:"files"`
+	Folders   []Folder `json:"folders"`
 
 	// Path The folders from the top level down to this one.
 	Path []Folder `json:"path"`
+}
+
+// FolderEncryption defines model for FolderEncryption.
+type FolderEncryption struct {
+	Encrypted bool `json:"encrypted"`
 }
 
 // FolderInput defines model for FolderInput.
@@ -789,6 +802,9 @@ type UploadSession struct {
 	LastModified int64               `json:"last_modified"`
 	Name         string              `json:"name"`
 
+	// PieceBytes How long the next piece has to be. Only set for a file going into an encrypted folder, where pieces have to be exactly this long.
+	PieceBytes *int64 `json:"piece_bytes,omitempty"`
+
 	// Received How much the storage account has kept.
 	Received int64 `json:"received"`
 	Size     int64 `json:"size"`
@@ -925,6 +941,9 @@ type CreateFolderJSONRequestBody = FolderInput
 
 // RenameFolderJSONRequestBody defines body for RenameFolder for application/json ContentType.
 type RenameFolderJSONRequestBody = NameInput
+
+// SetFolderEncryptionJSONRequestBody defines body for SetFolderEncryption for application/json ContentType.
+type SetFolderEncryptionJSONRequestBody = FolderEncryption
 
 // MoveFolderJSONRequestBody defines body for MoveFolder for application/json ContentType.
 type MoveFolderJSONRequestBody = MoveFolderInput
@@ -1072,6 +1091,9 @@ type ServerInterface interface {
 	// RenameFolder Rename a folder
 	// (PATCH /api/v1/folders/{id})
 	RenameFolder(w http.ResponseWriter, r *http.Request, id Id)
+	// SetFolderEncryption Encrypt new files in a folder, or stop
+	// (PUT /api/v1/folders/{id}/encryption)
+	SetFolderEncryption(w http.ResponseWriter, r *http.Request, id Id)
 	// MoveFolder Move a folder into another folder
 	// (POST /api/v1/folders/{id}/move)
 	MoveFolder(w http.ResponseWriter, r *http.Request, id Id)
@@ -1435,6 +1457,12 @@ func (_ Unimplemented) DeleteFolder(w http.ResponseWriter, r *http.Request, id I
 // RenameFolder Rename a folder
 // (PATCH /api/v1/folders/{id})
 func (_ Unimplemented) RenameFolder(w http.ResponseWriter, r *http.Request, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetFolderEncryption Encrypt new files in a folder, or stop
+// (PUT /api/v1/folders/{id}/encryption)
+func (_ Unimplemented) SetFolderEncryption(w http.ResponseWriter, r *http.Request, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2637,6 +2665,32 @@ func (siw *ServerInterfaceWrapper) RenameFolder(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// SetFolderEncryption operation middleware
+func (siw *ServerInterfaceWrapper) SetFolderEncryption(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFolderEncryption(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MoveFolder operation middleware
 func (siw *ServerInterfaceWrapper) MoveFolder(w http.ResponseWriter, r *http.Request) {
 
@@ -3589,6 +3643,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/folders/{id}", wrapper.RenameFolder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/folders/{id}/encryption", wrapper.SetFolderEncryption)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/folders/{id}/move", wrapper.MoveFolder)

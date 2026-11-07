@@ -103,24 +103,27 @@ func TestJobsRunAndRecordTheirOutcome(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListJobRuns: %v", err)
 		}
-		if len(runs) == 6 {
-			if runs[0].Name != KindFileSync || !runs[0].Succeeded {
-				t.Errorf("file sync = %+v", runs[0])
+		if len(runs) == 7 {
+			if runs[0].Name != KindFileCheck || !runs[0].Succeeded {
+				t.Errorf("file check = %+v", runs[0])
 			}
-			if runs[1].Name != KindFileTransfers || !runs[1].Succeeded {
-				t.Errorf("file transfers = %+v", runs[1])
+			if runs[1].Name != KindFileSync || !runs[1].Succeeded {
+				t.Errorf("file sync = %+v", runs[1])
 			}
-			if runs[2].Name != KindQuotaSync || runs[2].Succeeded {
-				t.Errorf("a failed job should be recorded as failed: %+v", runs[2])
+			if runs[2].Name != KindFileTransfers || !runs[2].Succeeded {
+				t.Errorf("file transfers = %+v", runs[2])
 			}
-			if runs[3].Name != KindSessionCleanup || !runs[3].Succeeded {
-				t.Errorf("cleanup = %+v", runs[3])
+			if runs[3].Name != KindQuotaSync || runs[3].Succeeded {
+				t.Errorf("a failed job should be recorded as failed: %+v", runs[3])
 			}
-			if runs[4].Name != KindShareExpiry || !runs[4].Succeeded {
-				t.Errorf("share expiry = %+v", runs[4])
+			if runs[4].Name != KindSessionCleanup || !runs[4].Succeeded {
+				t.Errorf("cleanup = %+v", runs[4])
 			}
-			if runs[5].Name != KindUploadCleanup || !runs[5].Succeeded {
-				t.Errorf("upload cleanup = %+v", runs[5])
+			if runs[5].Name != KindShareExpiry || !runs[5].Succeeded {
+				t.Errorf("share expiry = %+v", runs[5])
+			}
+			if runs[6].Name != KindUploadCleanup || !runs[6].Succeeded {
+				t.Errorf("upload cleanup = %+v", runs[6])
 			}
 			break
 		}

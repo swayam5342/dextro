@@ -14,7 +14,8 @@ import (
 
 const acceptFileChecksumForOwner = `-- name: AcceptFileChecksumForOwner :exec
 UPDATE files
-SET checksum = $1, content_hash = $1
+SET checksum = $1,
+    content_hash = CASE WHEN encrypted THEN content_hash ELSE $1 END
 WHERE user_id = $2 AND id = $3
 `
 
@@ -107,7 +108,7 @@ func (q *Queries) GetFileProblemForOwner(ctx context.Context, arg GetFileProblem
 }
 
 const listAllFoldersForOwner = `-- name: ListAllFoldersForOwner :many
-SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at FROM folders WHERE user_id = $1
+SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at, encrypted FROM folders WHERE user_id = $1
 `
 
 func (q *Queries) ListAllFoldersForOwner(ctx context.Context, userID uuid.UUID) ([]Folder, error) {
@@ -127,6 +128,7 @@ func (q *Queries) ListAllFoldersForOwner(ctx context.Context, userID uuid.UUID) 
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Encrypted,
 		); err != nil {
 			return nil, err
 		}
@@ -144,7 +146,7 @@ WITH RECURSIVE hidden AS (
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at, files.checksum, files.content_hash, files.checked_at
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at, files.checksum, files.content_hash, files.checked_at, files.encrypted, files.key_id, files.key_ciphertext
 FROM files
 WHERE files.user_id = $1
   AND files.size > 0
@@ -192,6 +194,9 @@ func (q *Queries) ListDuplicateFilesForOwner(ctx context.Context, userID uuid.UU
 			&i.Checksum,
 			&i.ContentHash,
 			&i.CheckedAt,
+			&i.Encrypted,
+			&i.KeyID,
+			&i.KeyCiphertext,
 		); err != nil {
 			return nil, err
 		}
@@ -242,7 +247,7 @@ func (q *Queries) ListFileProblemsForOwner(ctx context.Context, userID uuid.UUID
 }
 
 const listFilesToCheck = `-- name: ListFilesToCheck :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at, encrypted, key_id, key_ciphertext
 FROM files
 WHERE checksum IS NOT NULL AND NOT external
 ORDER BY checked_at NULLS FIRST, id
@@ -277,6 +282,9 @@ func (q *Queries) ListFilesToCheck(ctx context.Context, limit int32) ([]File, er
 			&i.Checksum,
 			&i.ContentHash,
 			&i.CheckedAt,
+			&i.Encrypted,
+			&i.KeyID,
+			&i.KeyCiphertext,
 		); err != nil {
 			return nil, err
 		}
@@ -335,7 +343,7 @@ func (q *Queries) RecordFileProblem(ctx context.Context, arg RecordFileProblemPa
 const setFileChecksumForObject = `-- name: SetFileChecksumForObject :exec
 UPDATE files
 SET checksum = $1,
-    content_hash = coalesce(content_hash, $1)
+    content_hash = CASE WHEN encrypted THEN content_hash ELSE coalesce(content_hash, $1) END
 WHERE user_id = $2
   AND id = $3
   AND connection_id = $4

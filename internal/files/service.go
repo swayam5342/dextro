@@ -51,7 +51,9 @@ type File struct {
 	Size         int64
 	ContentType  string
 	// External marks someone's own Drive file. Deleting it leaves it in Drive.
-	External  bool
+	External bool
+	// Encrypted means the account only has encrypted bytes, and Tributary holds the key.
+	Encrypted bool
 	Starred   bool
 	TrashedAt *time.Time
 	CreatedAt time.Time
@@ -60,19 +62,23 @@ type File struct {
 
 // Folder is a folder as its owner sees it.
 type Folder struct {
-	ID        uuid.UUID
-	ParentID  *uuid.UUID
-	Name      string
+	ID       uuid.UUID
+	ParentID *uuid.UUID
+	Name     string
+	// Encrypted is this folder's own setting. See encryptsNewFiles for what it means.
+	Encrypted bool
 	TrashedAt *time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-// Contents is what's in a folder. Path runs from the top level down to it.
+// Contents is what's in a folder. Path runs from the top level down to it. Encrypted
+// says whether new files here are encrypted, which a folder above can decide.
 type Contents struct {
-	Path    []Folder
-	Folders []Folder
-	Files   []File
+	Path      []Folder
+	Folders   []Folder
+	Files     []File
+	Encrypted bool
 }
 
 // Listing is a set of folders and files, as the trash and search return. In the
@@ -106,6 +112,8 @@ type Providers interface {
 	Choose(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, size int64) (storage.Chosen, error)
 	Reserve(ctx context.Context, userID uuid.UUID, preferred *uuid.UUID, r storage.Reservation) (storage.Chosen, error)
 	SealUploadSession(id uuid.UUID, address string) secrets.Sealed
+	SealFileKey(key []byte, context string) secrets.Sealed
+	OpenFileKey(sealed secrets.Sealed, context string) ([]byte, error)
 	OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string, error)
 	AllAccounts(ctx context.Context) ([]storage.Account, error)
 	AccountsFor(ctx context.Context, userID uuid.UUID) ([]storage.Account, error)
@@ -177,7 +185,7 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, id *uuid.UUID) (Co
 	if err != nil {
 		return Contents{}, err
 	}
-	return Contents{Path: path, Folders: folders, Files: files}, nil
+	return Contents{Path: path, Folders: folders, Files: files, Encrypted: encryptsNewFiles(path)}, nil
 }
 
 // limitedReader fails as soon as a body passes the limit. The size limit has to
@@ -207,7 +215,8 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 	if err != nil {
 		return File{}, err
 	}
-	if _, err := requireLiveFolder(ctx, s.store, userID, in.FolderID); err != nil {
+	path, err := requireLiveFolder(ctx, s.store, userID, in.FolderID)
+	if err != nil {
 		return File{}, err
 	}
 	limit, err := s.store.Settings().MaxUploadBytes(ctx)
@@ -229,7 +238,16 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 
 	contentType := cleanContentType(in.ContentType)
 	body := &limitedReader{r: in.Body, limit: limit}
-	object, err := stored.Put(ctx, provider.Upload{Name: name, ContentType: contentType, Parent: parent, Body: body})
+	upload := provider.Upload{Name: name, ContentType: contentType, Parent: parent, Body: body}
+	var sealing *sealedUpload
+	if encryptsNewFiles(path) {
+		if sealing, err = s.sealUpload(contentType, body); err != nil {
+			return File{}, err
+		}
+		upload.ContentType = sealedContentType
+		upload.Body = sealing.reader
+	}
+	object, err := stored.Put(ctx, upload)
 	if body.exceeded {
 		return File{}, ErrFileTooLarge
 	}
@@ -237,7 +255,7 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 		return File{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
 	}
 
-	file, err := s.store.CreateFile(ctx, userID, fileRecord{
+	record := fileRecord{
 		File: File{
 			ConnectionID: chosen.ConnectionID,
 			FolderID:     in.FolderID,
@@ -248,7 +266,14 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 		objectID:    object.ID,
 		checksum:    object.Checksum,
 		contentHash: object.Checksum,
-	})
+	}
+	if sealing != nil {
+		record.Size = plainSize(object.Size)
+		record.Encrypted = true
+		record.fileKey = &sealing.key
+		record.contentHash = sealing.contentHash()
+	}
+	file, err := s.store.CreateFile(ctx, userID, record)
 	if err != nil {
 		// Without a record nothing could ever find this object again. The request
 		// may be why the save failed, so the cleanup doesn't depend on it.
@@ -278,6 +303,9 @@ func (s *Service) Open(ctx context.Context, userID, id uuid.UUID, rng *provider.
 	if err != nil {
 		return nil, err
 	}
+	if record.Encrypted {
+		return s.openSealed(ctx, stored, record, rng)
+	}
 	reader, err := stored.Get(ctx, record.objectID, rng)
 	if errors.Is(err, provider.ErrObjectNotFound) {
 		return nil, ErrObjectMissing
@@ -293,6 +321,10 @@ func (s *Service) Thumbnail(ctx context.Context, userID, id uuid.UUID) (provider
 	record, err := s.store.FileForOwner(ctx, userID, id)
 	if err != nil {
 		return provider.Thumbnail{}, err
+	}
+	// The account only has encrypted bytes, so it can't make a picture of them.
+	if record.Encrypted {
+		return provider.Thumbnail{}, provider.ErrNoThumbnail
 	}
 	stored, err := s.openAccount(ctx, userID, record.ConnectionID)
 	if err != nil {

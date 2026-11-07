@@ -88,6 +88,22 @@ export const fileChecksQuery = queryOptions({
   },
 });
 
+export function useSetFolderEncryption() {
+  const refresh = useRefreshFiles();
+  return useMutation({
+    mutationFn: async ({ id, encrypted }: { id: string; encrypted: boolean }) => {
+      const { data, error } = await api.PUT("/api/v1/folders/{id}/encryption", {
+        params: { path: { id } },
+        body: { encrypted },
+      });
+      if (!data) {
+        throw toApiError(error);
+      }
+    },
+    onSuccess: refresh,
+  });
+}
+
 export function useDismissProblem() {
   const refresh = useRefreshFiles();
   return useMutation({

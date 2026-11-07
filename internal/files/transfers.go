@@ -352,13 +352,13 @@ func discard(ctx context.Context, to provider.Provider, id string) error {
 
 func (s *Service) copyObject(ctx context.Context, t transferRecord, record fileRecord, from, to provider.Provider, source provider.Object, parent string) (provider.Object, error) {
 	if source.Size == 0 {
-		object, err := to.Put(ctx, provider.Upload{Name: record.Name, ContentType: record.ContentType, Parent: parent, Body: strings.NewReader("")})
+		object, err := to.Put(ctx, provider.Upload{Name: record.Name, ContentType: storedType(record), Parent: parent, Body: strings.NewReader("")})
 		if err != nil {
 			return provider.Object{}, failed(failureTarget, err)
 		}
 		return object, nil
 	}
-	session, err := to.BeginResumable(ctx, provider.Resumable{Name: record.Name, ContentType: record.ContentType, Size: source.Size, Parent: parent})
+	session, err := to.BeginResumable(ctx, provider.Resumable{Name: record.Name, ContentType: storedType(record), Size: source.Size, Parent: parent})
 	if err != nil {
 		return provider.Object{}, failed(failureTarget, err)
 	}

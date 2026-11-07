@@ -50,6 +50,7 @@ const (
 	codeZipTooLarge         = "zip_too_large"
 	codeOffsetMismatch      = "offset_mismatch"
 	codeUploadExpired       = "upload_expired"
+	codeFileEncrypted       = "file_encrypted"
 )
 
 // contentPolicy goes on every response that carries a user's file, so that even
@@ -132,9 +133,10 @@ func (h *Handler) ListFolder(w http.ResponseWriter, r *http.Request, params apig
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, apigen.FolderContents{
-		Path:    toAPIFolders(contents.Path),
-		Folders: toAPIFolders(contents.Folders),
-		Files:   toAPIFiles(contents.Files),
+		Path:      toAPIFolders(contents.Path),
+		Folders:   toAPIFolders(contents.Folders),
+		Files:     toAPIFiles(contents.Files),
+		Encrypted: contents.Encrypted,
 	})
 }
 
@@ -378,6 +380,20 @@ func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request, id types.UU
 	h.noContent(w, r, h.service.DeleteFile(r.Context(), userID(r), id, httpx.ClientIP(r.Context())))
 }
 
+// SetFolderEncryption implements apigen.ServerInterface.
+func (h *Handler) SetFolderEncryption(w http.ResponseWriter, r *http.Request, id types.UUID) {
+	var body apigen.FolderEncryption
+	if !httpx.DecodeJSON(w, r, &body) {
+		return
+	}
+	folder, err := h.service.SetFolderEncryption(r.Context(), userID(r), id, body.Encrypted, httpx.ClientIP(r.Context()))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toAPIFolder(folder))
+}
+
 // CreateFolder implements apigen.ServerInterface.
 func (h *Handler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 	var body apigen.FolderInput
@@ -515,6 +531,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusBadRequest, codeInvalidTransfer, "Choose between 1 and 200 files to move.")
 	case errors.Is(err, ErrTransferNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, codeTransferNotFound, "That move isn't in the queue any more.")
+	case errors.Is(err, ErrFileEncrypted):
+		httpx.WriteError(w, r, http.StatusConflict, codeFileEncrypted, "Google only has this file encrypted, so a link to it couldn't be opened.")
 	case errors.Is(err, ErrExternalFile):
 		httpx.WriteError(w, r, http.StatusConflict, codeExternalFile, "Files added from Drive stay in their own account.")
 	case errors.Is(err, storage.ErrNoOtherAccount):
@@ -555,6 +573,7 @@ func toAPIFile(f File) apigen.File {
 		External:     f.External,
 		Starred:      f.Starred,
 		Preview:      previewOf(f.ContentType, f.Name),
+		Encrypted:    f.Encrypted,
 		ConnectionId: f.ConnectionID,
 		FolderId:     f.FolderID,
 		TrashedAt:    f.TrashedAt,
@@ -576,6 +595,7 @@ func toAPIFolder(f Folder) apigen.Folder {
 		Id:        f.ID,
 		Name:      f.Name,
 		ParentId:  f.ParentID,
+		Encrypted: f.Encrypted,
 		TrashedAt: f.TrashedAt,
 		CreatedAt: f.CreatedAt,
 		UpdatedAt: f.UpdatedAt,

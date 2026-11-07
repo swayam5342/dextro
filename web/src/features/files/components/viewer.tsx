@@ -119,6 +119,7 @@ export function Viewer({ file, previous, next, accountName, trashError, onShow, 
     ["Type", file.content_type],
     ["Stored in", accountName(file.connection_id)],
     ["Added", formatDate(file.created_at)],
+    ...(file.encrypted ? ([["Encryption", "Google only has this file encrypted"]] as [string, string][]) : []),
   ];
 
   return (

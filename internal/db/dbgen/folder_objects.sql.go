@@ -96,7 +96,7 @@ func (q *Queries) DeleteFolderObject(ctx context.Context, arg DeleteFolderObject
 }
 
 const findFolderByName = `-- name: FindFolderByName :one
-SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at
+SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at, encrypted
 FROM folders
 WHERE user_id = $1
   AND parent_id IS NOT DISTINCT FROM $2::uuid
@@ -122,6 +122,7 @@ func (q *Queries) FindFolderByName(ctx context.Context, arg FindFolderByNamePara
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Encrypted,
 	)
 	return i, err
 }

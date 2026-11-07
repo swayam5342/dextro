@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/swayam5342/tributary/internal/provider"
+	"github.com/swayam5342/tributary/internal/secrets"
 )
 
 // quotaTimeout is how long a slow account can hold up an upload before it's
@@ -171,6 +172,8 @@ type Reservation struct {
 	// Busy is the accounts the uploader already has enough going to. Round robin takes
 	// them last.
 	Busy []uuid.UUID
+	// FileKey is set if the file is being encrypted, and is its sealed key.
+	FileKey *secrets.Sealed
 }
 
 // Reserve chooses an account as Choose does and holds the space on it, so that two

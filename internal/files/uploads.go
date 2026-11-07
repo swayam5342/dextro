@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/swayam5342/tributary/internal/provider"
+	"github.com/swayam5342/tributary/internal/secrets"
 	"github.com/swayam5342/tributary/internal/storage"
 )
 
@@ -56,6 +57,8 @@ type UploadSession struct {
 	LastModified int64
 	CreatedAt    time.Time
 	File         *File
+	// Encrypted means each piece has to be the length the session says.
+	Encrypted bool
 }
 
 // BeginUpload chooses an account, holds the space on it, and opens a session.
@@ -67,7 +70,8 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 	if in.Size <= 0 {
 		return UploadSession{}, ErrInvalidUpload
 	}
-	if _, err := requireLiveFolder(ctx, s.store, userID, in.FolderID); err != nil {
+	path, err := requireLiveFolder(ctx, s.store, userID, in.FolderID)
+	if err != nil {
 		return UploadSession{}, err
 	}
 	limit, err := s.store.Settings().MaxUploadBytes(ctx)
@@ -80,6 +84,15 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 
 	id := uuid.New()
 	contentType := cleanContentType(in.ContentType)
+	// The account hears about the stored object, not the file.
+	stored := provider.Resumable{Name: name, ContentType: contentType, Size: in.Size}
+	var fileKey *secrets.Sealed
+	if encryptsNewFiles(path) {
+		sealed := s.providers.SealFileKey(newFileKey(), fileKeyContext)
+		fileKey = &sealed
+		stored.ContentType = sealedContentType
+		stored.Size = storedSize(in.Size)
+	}
 	chosen, err := s.providers.Reserve(ctx, userID, in.ConnectionID, storage.Reservation{
 		ID:           id,
 		FolderID:     in.FolderID,
@@ -88,6 +101,7 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 		Size:         in.Size,
 		LastModified: in.LastModified,
 		Busy:         in.Busy,
+		FileKey:      fileKey,
 	})
 	if err != nil {
 		return UploadSession{}, err
@@ -95,7 +109,8 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 	var address string
 	parent, err := s.driveFolder(ctx, userID, chosen.ConnectionID, chosen.Provider, in.FolderID)
 	if err == nil {
-		address, err = chosen.Provider.BeginResumable(ctx, provider.Resumable{Name: name, ContentType: contentType, Size: in.Size, Parent: parent})
+		stored.Parent = parent
+		address, err = chosen.Provider.BeginResumable(ctx, stored)
 	}
 	if err == nil {
 		err = s.store.SetUploadSecretForOwner(ctx, userID, id, s.providers.SealUploadSession(id, address))
@@ -114,6 +129,7 @@ func (s *Service) BeginUpload(ctx context.Context, userID uuid.UUID, in BeginUpl
 		Size:         in.Size,
 		LastModified: in.LastModified,
 		CreatedAt:    time.Now(),
+		Encrypted:    fileKey != nil,
 	}, nil
 }
 
@@ -149,15 +165,21 @@ func (s *Service) openUpload(ctx context.Context, userID uuid.UUID, r uploadReco
 // settle saves what the account says about an upload. The account is the only
 // one who knows how much it kept, and it may have finished the file even if the
 // browser never heard.
-func (s *Service) settle(ctx context.Context, userID uuid.UUID, r uploadRecord, stored provider.Provider, state provider.ResumeState) (UploadSession, error) {
+func (s *Service) settle(ctx context.Context, userID uuid.UUID, r uploadRecord, stored provider.Provider, state provider.ResumeState, hashed *pieceHash) (UploadSession, error) {
 	if state.Object != nil {
-		return s.finishUpload(ctx, userID, r, stored, *state.Object)
+		return s.finishUpload(ctx, userID, r, stored, *state.Object, hashed.contentHash())
 	}
-	if err := s.store.SetUploadReceivedForOwner(ctx, userID, r.ID, state.Received); err != nil {
+	received := state.Received
+	var hashState []byte
+	if r.Encrypted {
+		received = plainOffset(state.Received)
+		hashState = hashed.stateAt(received, r)
+	}
+	if err := s.store.SetUploadReceivedForOwner(ctx, userID, r.ID, received, hashState); err != nil {
 		return UploadSession{}, err
 	}
 	session := r.UploadSession
-	session.Received = state.Received
+	session.Received = received
 	return session, nil
 }
 
@@ -183,21 +205,29 @@ func (s *Service) UploadProgress(ctx context.Context, userID, id uuid.UUID) (Upl
 	if err != nil {
 		return UploadSession{}, err
 	}
-	state, err := stored.ResumableStatus(ctx, address, r.Size)
+	total := r.Size
+	if r.Encrypted {
+		total = storedSize(r.Size)
+	}
+	state, err := stored.ResumableStatus(ctx, address, total)
 	if errors.Is(err, provider.ErrSessionExpired) {
 		return UploadSession{}, s.expireUpload(ctx, userID, id)
 	}
 	if err != nil {
 		return UploadSession{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
 	}
-	return s.settle(ctx, userID, r, stored, state)
+	return s.settle(ctx, userID, r, stored, state, nil)
 }
 
 func checkChunk(r uploadRecord, offset, length int64) error {
 	if offset < 0 || length <= 0 || length > maxChunkBytes || offset+length > r.Size {
 		return ErrInvalidChunk
 	}
-	if offset+length < r.Size && length%provider.ChunkAlignment != 0 {
+	if r.Encrypted {
+		if offset == r.Received && length != nextSealedPiece(offset, r.Size) {
+			return ErrInvalidChunk
+		}
+	} else if offset+length < r.Size && length%provider.ChunkAlignment != 0 {
 		return ErrInvalidChunk
 	}
 	if offset != r.Received {
@@ -226,24 +256,26 @@ func (s *Service) PutUploadChunk(ctx context.Context, userID, id uuid.UUID, offs
 	if err != nil {
 		return UploadSession{}, err
 	}
-	state, err := stored.PutChunk(ctx, address, provider.Chunk{
-		Offset: offset,
-		Length: length,
-		Total:  r.Size,
-		Body:   io.LimitReader(body, length),
-	})
+	chunk := provider.Chunk{Offset: offset, Length: length, Total: r.Size, Body: io.LimitReader(body, length)}
+	var hashed *pieceHash
+	if r.Encrypted {
+		if chunk, hashed, err = s.sealChunk(r, chunk); err != nil {
+			return UploadSession{}, err
+		}
+	}
+	state, err := stored.PutChunk(ctx, address, chunk)
 	if errors.Is(err, provider.ErrSessionExpired) {
 		return UploadSession{}, s.expireUpload(ctx, userID, id)
 	}
 	if err != nil {
 		return UploadSession{}, fmt.Errorf("%w: %w", ErrProviderFailed, err)
 	}
-	return s.settle(ctx, userID, r, stored, state)
+	return s.settle(ctx, userID, r, stored, state, hashed)
 }
 
 // finishUpload records the file. A browser can ask about an upload while its last
 // chunk is finishing, so the row is locked and the first one in wins.
-func (s *Service) finishUpload(ctx context.Context, userID uuid.UUID, r uploadRecord, stored provider.Provider, object provider.Object) (UploadSession, error) {
+func (s *Service) finishUpload(ctx context.Context, userID uuid.UUID, r uploadRecord, stored provider.Provider, object provider.Object, sealedHash string) (UploadSession, error) {
 	var finished UploadSession
 	err := s.store.InTx(ctx, func(tx *Store) error {
 		locked, err := tx.LockUploadSessionForOwner(ctx, userID, r.ID)
@@ -254,7 +286,7 @@ func (s *Service) finishUpload(ctx context.Context, userID uuid.UUID, r uploadRe
 			finished = locked.UploadSession
 			return nil
 		}
-		file, err := tx.CreateFile(ctx, userID, fileRecord{
+		record := fileRecord{
 			File: File{
 				ConnectionID: r.ConnectionID,
 				FolderID:     r.FolderID,
@@ -265,7 +297,14 @@ func (s *Service) finishUpload(ctx context.Context, userID uuid.UUID, r uploadRe
 			objectID:    object.ID,
 			checksum:    object.Checksum,
 			contentHash: object.Checksum,
-		})
+		}
+		if r.Encrypted {
+			record.Size = r.Size
+			record.Encrypted = true
+			record.fileKey = r.fileKey
+			record.contentHash = sealedHash
+		}
+		file, err := tx.CreateFile(ctx, userID, record)
 		if err != nil {
 			return err
 		}

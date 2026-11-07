@@ -1,6 +1,6 @@
 -- name: CreateUploadSession :exec
-INSERT INTO upload_sessions (id, user_id, connection_id, folder_id, name, content_type, size, last_modified)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+INSERT INTO upload_sessions (id, user_id, connection_id, folder_id, name, content_type, size, last_modified, encrypted, key_id, key_ciphertext)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, sqlc.narg('key_id')::text, $10);
 
 -- name: SetUploadSecretForOwner :execrows
 UPDATE upload_sessions
@@ -24,6 +24,7 @@ ORDER BY created_at, id;
 -- name: SetUploadReceivedForOwner :exec
 UPDATE upload_sessions
 SET received = $3,
+    hash_state = $4,
     updated_at = now()
 WHERE user_id = $1 AND id = $2;
 
@@ -34,6 +35,9 @@ SET file_id = $3,
     received = size,
     secret_key_id = NULL,
     secret_ciphertext = NULL,
+    key_id = NULL,
+    key_ciphertext = NULL,
+    hash_state = NULL,
     updated_at = now()
 WHERE user_id = $1 AND id = $2;
 

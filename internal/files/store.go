@@ -13,6 +13,7 @@ import (
 	"github.com/swayam5342/tributary/internal/admin"
 	"github.com/swayam5342/tributary/internal/audit"
 	"github.com/swayam5342/tributary/internal/db/dbgen"
+	"github.com/swayam5342/tributary/internal/secrets"
 )
 
 // database is a pool or a transaction.
@@ -30,6 +31,8 @@ type fileRecord struct {
 	// what's in the file. Either can be empty.
 	checksum    string
 	contentHash string
+	// fileKey is the sealed key of an encrypted file.
+	fileKey *secrets.Sealed
 }
 
 // Store reads and writes files and folders. Every function takes the owner's ID.
@@ -63,16 +66,19 @@ func (s *Store) Settings() *admin.Store {
 // CreateFile saves a stored object's details.
 func (s *Store) CreateFile(ctx context.Context, userID uuid.UUID, r fileRecord) (File, error) {
 	row, err := s.queries.CreateFile(ctx, dbgen.CreateFileParams{
-		ID:           uuid.New(),
-		UserID:       userID,
-		ConnectionID: r.ConnectionID,
-		FolderID:     nullable(r.FolderID),
-		ObjectID:     r.objectID,
-		Name:         r.Name,
-		Size:         r.Size,
-		ContentType:  r.ContentType,
-		Checksum:     optional(r.checksum),
-		ContentHash:  optional(r.contentHash),
+		ID:            uuid.New(),
+		UserID:        userID,
+		ConnectionID:  r.ConnectionID,
+		FolderID:      nullable(r.FolderID),
+		ObjectID:      r.objectID,
+		Name:          r.Name,
+		Size:          r.Size,
+		ContentType:   r.ContentType,
+		Checksum:      optional(r.checksum),
+		ContentHash:   optional(r.contentHash),
+		Encrypted:     r.Encrypted,
+		KeyID:         keyID(r.fileKey),
+		KeyCiphertext: keyCiphertext(r.fileKey),
 	})
 	if err != nil {
 		return File{}, fmt.Errorf("create file: %w", err)
@@ -321,6 +327,27 @@ func optional(value string) pgtype.Text {
 	return pgtype.Text{String: value, Valid: value != ""}
 }
 
+func keyID(key *secrets.Sealed) pgtype.Text {
+	if key == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: key.KeyID, Valid: true}
+}
+
+func keyCiphertext(key *secrets.Sealed) []byte {
+	if key == nil {
+		return nil
+	}
+	return key.Ciphertext
+}
+
+func sealedKey(id pgtype.Text, ciphertext []byte) *secrets.Sealed {
+	if !id.Valid {
+		return nil
+	}
+	return &secrets.Sealed{KeyID: id.String, Ciphertext: ciphertext}
+}
+
 func toRecord(row dbgen.File) fileRecord {
 	return fileRecord{
 		File: File{
@@ -331,6 +358,7 @@ func toRecord(row dbgen.File) fileRecord {
 			Size:         row.Size,
 			ContentType:  row.ContentType,
 			External:     row.External,
+			Encrypted:    row.Encrypted,
 			Starred:      row.StarredAt != nil,
 			TrashedAt:    row.TrashedAt,
 			CreatedAt:    row.CreatedAt,
@@ -339,6 +367,7 @@ func toRecord(row dbgen.File) fileRecord {
 		objectID:    row.ObjectID,
 		checksum:    row.Checksum.String,
 		contentHash: row.ContentHash.String,
+		fileKey:     sealedKey(row.KeyID, row.KeyCiphertext),
 	}
 }
 
@@ -355,10 +384,23 @@ func toFolder(row dbgen.Folder) Folder {
 		ID:        row.ID,
 		ParentID:  pointer(row.ParentID),
 		Name:      row.Name,
+		Encrypted: row.Encrypted,
 		TrashedAt: row.TrashedAt,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
+}
+
+// SetFolderEncryptedForOwner turns a folder's encryption on or off.
+func (s *Store) SetFolderEncryptedForOwner(ctx context.Context, userID, id uuid.UUID, encrypted bool) (Folder, error) {
+	row, err := s.queries.SetFolderEncryptedForOwner(ctx, dbgen.SetFolderEncryptedForOwnerParams{UserID: userID, ID: id, Encrypted: encrypted})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Folder{}, ErrFolderNotFound
+	}
+	if err != nil {
+		return Folder{}, fmt.Errorf("set folder encryption: %w", err)
+	}
+	return toFolder(row), nil
 }
 
 // ObjectsForConnection returns a user's files in one account, by object ID.
@@ -378,17 +420,20 @@ func (s *Store) ObjectsForConnection(ctx context.Context, userID, connectionID u
 // It says whether it added one.
 func (s *Store) ImportFile(ctx context.Context, userID uuid.UUID, r fileRecord) (bool, error) {
 	rows, err := s.queries.ImportFile(ctx, dbgen.ImportFileParams{
-		ID:           uuid.New(),
-		UserID:       userID,
-		ConnectionID: r.ConnectionID,
-		FolderID:     nullable(r.FolderID),
-		ObjectID:     r.objectID,
-		Name:         r.Name,
-		Size:         r.Size,
-		ContentType:  r.ContentType,
-		External:     r.External,
-		Checksum:     optional(r.checksum),
-		ContentHash:  optional(r.contentHash),
+		ID:            uuid.New(),
+		UserID:        userID,
+		ConnectionID:  r.ConnectionID,
+		FolderID:      nullable(r.FolderID),
+		ObjectID:      r.objectID,
+		Name:          r.Name,
+		Size:          r.Size,
+		ContentType:   r.ContentType,
+		External:      r.External,
+		Checksum:      optional(r.checksum),
+		ContentHash:   optional(r.contentHash),
+		Encrypted:     r.Encrypted,
+		KeyID:         keyID(r.fileKey),
+		KeyCiphertext: keyCiphertext(r.fileKey),
 	})
 	if err != nil {
 		return false, fmt.Errorf("import file: %w", err)

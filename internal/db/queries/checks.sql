@@ -3,7 +3,7 @@
 -- name: SetFileChecksumForObject :exec
 UPDATE files
 SET checksum = sqlc.arg(checksum),
-    content_hash = coalesce(content_hash, sqlc.arg(checksum))
+    content_hash = CASE WHEN encrypted THEN content_hash ELSE coalesce(content_hash, sqlc.arg(checksum)) END
 WHERE user_id = sqlc.arg(user_id)
   AND id = sqlc.arg(id)
   AND connection_id = sqlc.arg(connection_id)
@@ -45,7 +45,8 @@ DELETE FROM file_problems WHERE user_id = $1 AND id = $2;
 
 -- name: AcceptFileChecksumForOwner :exec
 UPDATE files
-SET checksum = sqlc.arg(checksum), content_hash = sqlc.arg(checksum)
+SET checksum = sqlc.arg(checksum),
+    content_hash = CASE WHEN encrypted THEN content_hash ELSE sqlc.arg(checksum) END
 WHERE user_id = sqlc.arg(user_id) AND id = sqlc.arg(id);
 
 -- name: CountFileChecksForOwner :one

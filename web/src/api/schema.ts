@@ -253,6 +253,8 @@ export interface components {
       received: number;
       last_modified: number;
       created_at: string;
+      /** How long the next piece has to be. Only set for a file going into an encrypted folder. */
+      piece_bytes?: number;
       /** Present once the upload has finished. */
       file?: components["schemas"]["File"];
     };
@@ -289,6 +291,8 @@ export interface components {
       content_type: string;
       /** How the file can be shown inline, if at all. */
       preview: "image" | "video" | "pdf" | "text" | "none";
+      /** The storage account only has encrypted bytes. */
+      encrypted: boolean;
       connection_id: string;
       folder_id: string | null;
       starred: boolean;
@@ -303,6 +307,8 @@ export interface components {
       id: string;
       name: string;
       parent_id: string | null;
+      /** This folder's own setting. A folder above it can also turn encryption on. */
+      encrypted: boolean;
       trashed_at: string | null;
       created_at: string;
       updated_at: string;
@@ -312,6 +318,8 @@ export interface components {
       path: components["schemas"]["Folder"][];
       folders: components["schemas"]["Folder"][];
       files: components["schemas"]["File"][];
+      /** Whether new files here are encrypted, by this folder or one above it. */
+      encrypted: boolean;
     };
     Trash: {
       folders: components["schemas"]["Folder"][];
@@ -552,6 +560,9 @@ export interface paths {
   "/api/v1/folders/{id}": {
     patch: IdJsonOperation<Schemas["NameInput"], { 200: JsonBody<Schemas["Folder"]> }>;
     delete: PathOperation;
+  };
+  "/api/v1/folders/{id}/encryption": {
+    put: IdJsonOperation<{ encrypted: boolean }, { 200: JsonBody<Schemas["Folder"]> }>;
   };
   "/api/v1/folders/{id}/move": {
     post: IdJsonOperation<Schemas["MoveFolderInput"], { 200: JsonBody<Schemas["Folder"]> }>;

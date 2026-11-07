@@ -113,6 +113,8 @@ interface Job {
   pausedByNetwork?: boolean;
   /** The account it's counted against while it sends. */
   slot?: string;
+  /** How long the next piece has to be, if the server cares. */
+  piece?: number;
 }
 
 /** Means the upload was paused or cancelled, which is nobody's error. */
@@ -349,6 +351,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
           const session = await beginSession(job, file, busy);
           job.sessionId = session.id;
           job.connectionId = session.connection_id;
+          job.piece = session.piece_bytes;
           update(job.id, { connectionId: session.connection_id });
           // Cancelled while this was starting, so nobody else knows to give the space back.
           if (job.stopping === "cancel") {
@@ -365,12 +368,13 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
             return;
           }
           offset = session.received;
+          job.piece = session.piece_bytes;
           inSync = true;
           update(job.id, { loaded: offset, status: "uploading", error: undefined });
         }
 
         const start = offset;
-        const end = Math.min(start + CHUNK_BYTES, job.size);
+        const end = Math.min(start + (job.piece ?? CHUNK_BYTES), job.size);
         const id = job.sessionId;
         const session = await transfer<Session>(
           job,
@@ -383,6 +387,7 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
         }
         // What the account kept, which can be less than what was just sent.
         offset = session.received;
+        job.piece = session.piece_bytes;
         attempt = 0;
         update(job.id, { loaded: offset, status: "uploading", error: undefined });
       } catch (error) {

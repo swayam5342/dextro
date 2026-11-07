@@ -242,6 +242,20 @@ func (s *Service) OpenUploadSession(id uuid.UUID, sealed secrets.Sealed) (string
 	return string(address), nil
 }
 
+// SealFileKey encrypts the key of an encrypted file with the server's keyring.
+func (s *Service) SealFileKey(key []byte, context string) secrets.Sealed {
+	return s.keyring.Encrypt(key, context)
+}
+
+// OpenFileKey decrypts the key of an encrypted file.
+func (s *Service) OpenFileKey(sealed secrets.Sealed, context string) ([]byte, error) {
+	key, err := s.keyring.Decrypt(sealed, context)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt file key: %w", err)
+	}
+	return key, nil
+}
+
 // PickerConfig is what Google's picker needs from this server's Cloud project.
 type PickerConfig struct {
 	APIKey string

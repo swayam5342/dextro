@@ -1,6 +1,6 @@
 -- name: CreateFile :one
-INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, checksum, content_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, sqlc.narg('checksum')::text, sqlc.narg('content_hash')::text)
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, checksum, content_hash, encrypted, key_id, key_ciphertext)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, sqlc.narg('checksum')::text, sqlc.narg('content_hash')::text, $9, sqlc.narg('key_id')::text, $10)
 RETURNING *;
 
 -- name: GetFileForOwner :one
@@ -81,9 +81,15 @@ WITH RECURSIVE path AS (
       -- The depth changes every row, so only a limit can end a walk round a loop.
       AND path.depth < 1000
 )
-SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at
+SELECT id, user_id, parent_id, name, trashed_at, created_at, updated_at, encrypted
 FROM path
 ORDER BY depth;
+
+-- name: SetFolderEncryptedForOwner :one
+UPDATE folders
+SET encrypted = $3, updated_at = now()
+WHERE user_id = $1 AND id = $2
+RETURNING *;
 
 -- name: RenameFolderForOwner :one
 UPDATE folders
@@ -189,8 +195,8 @@ FROM files
 WHERE user_id = $1 AND connection_id = $2;
 
 -- name: ImportFile :execrows
-INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external, checksum, content_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, sqlc.narg('checksum')::text, sqlc.narg('content_hash')::text)
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external, checksum, content_hash, encrypted, key_id, key_ciphertext)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, sqlc.narg('checksum')::text, sqlc.narg('content_hash')::text, $10, sqlc.narg('key_id')::text, $11)
 ON CONFLICT (connection_id, object_id) DO NOTHING;
 
 -- Only if the file is still where the copy was taken from, so a file deleted or moved

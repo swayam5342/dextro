@@ -6,6 +6,7 @@ import {
   Check,
   Folder as FolderIcon,
   Link2,
+  Lock,
   MoreVertical,
   Play,
   Star,
@@ -37,9 +38,9 @@ export interface MenuEntry {
 
 const SHOW_ON_TOUCH = "[@media(hover:none)]:opacity-100";
 
-/** Text can be shown in the viewer, but it has no picture to show on a tile. */
+/** Text can be shown in the viewer, and an account can't picture what it can't read. */
 function hasThumbnail(file: File): boolean {
-  return file.preview !== "none" && file.preview !== "text";
+  return file.preview !== "none" && file.preview !== "text" && !file.encrypted;
 }
 
 export function Breadcrumbs({
@@ -151,6 +152,14 @@ function LinkBadge({ className }: { className?: string }) {
   return (
     <span role="img" aria-label="Has a Google link" title="Has a Google link" className={cn("grid size-6 shrink-0 place-items-center rounded-full", className)}>
       <Link2 className="size-3.5" />
+    </span>
+  );
+}
+
+function LockBadge({ className, label }: { className?: string; label: string }) {
+  return (
+    <span role="img" aria-label={label} title={label} className={cn("grid size-6 shrink-0 place-items-center rounded-full", className)}>
+      <Lock className="size-3.5" />
     </span>
   );
 }
@@ -277,6 +286,7 @@ export function FolderTile({
               <span className="block truncate font-medium">{folder.name}</span>
               <span className="hidden truncate text-xs text-faint md:block">{formatDate(folder.created_at)}</span>
             </span>
+            {folder.encrypted && <LockBadge label="New files here are encrypted" className="text-muted-foreground" />}
           </Link>
           <PickButton name={folder.name} selected={selected} visible={selecting} onToggle={onToggle} />
           <DotsMenu
@@ -364,6 +374,7 @@ export function FileTile({
             </span>
           )}
           {shared && <LinkBadge className="pointer-events-none absolute right-2 bottom-2 bg-media-scrim text-on-media" />}
+          {file.encrypted && <LockBadge label="Encrypted" className="pointer-events-none absolute right-2 bottom-2 bg-media-scrim text-on-media" />}
           {file.starred && <StarBadge className="pointer-events-none absolute bottom-2 left-2 bg-media-scrim text-on-media" />}
           <PickButton
             name={file.name}
@@ -422,6 +433,7 @@ interface ListRowProps {
   lit?: boolean;
   shared?: boolean;
   starred?: boolean;
+  encrypted?: boolean;
   onToggle: () => void;
 }
 
@@ -439,6 +451,7 @@ export function ListRow({
   lit,
   shared,
   starred,
+  encrypted,
   onToggle,
 }: ListRowProps) {
   const cell = "border-t px-3 py-2 whitespace-nowrap text-muted-foreground group-hover:bg-row-hover";
@@ -461,6 +474,7 @@ export function ListRow({
               {open}
               {starred && <StarBadge className="text-muted-foreground" />}
               {shared && <LinkBadge className="text-muted-foreground" />}
+              {encrypted && <LockBadge label="Encrypted" className="text-muted-foreground" />}
             </span>
           </td>
           <td className={cn(cell, "text-right")}>{size}</td>

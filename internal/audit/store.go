@@ -44,6 +44,7 @@ const (
 	ActionFileUnshared     = "file.unshared"
 	ActionShareExpired     = "file.share_expired"
 	ActionFolderDeleted    = "folder.deleted"
+	ActionFolderEncryption = "folder.encryption_changed"
 )
 
 // Event is one recorded action. Metadata must never hold secrets or tokens.
