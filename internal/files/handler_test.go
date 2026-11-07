@@ -313,12 +313,12 @@ func testInlineAllowlist(t *testing.T, s *server) {
 		{"video/webm", apigen.Video},
 		{"application/pdf", apigen.Pdf},
 		// These can all run scripts, or be made to.
-		{"image/svg+xml", apigen.None},
-		{"text/html", apigen.None},
+		{"image/svg+xml", apigen.Text},
+		{"text/html", apigen.Text},
 		{"application/xhtml+xml", apigen.None},
-		{"text/xml", apigen.None},
-		{"application/javascript", apigen.None},
-		{"text/plain", apigen.None},
+		{"text/xml", apigen.Text},
+		{"application/javascript", apigen.Text},
+		{"text/plain", apigen.Text},
 		{"application/octet-stream", apigen.None},
 	}
 	for _, tt := range tests {
@@ -330,7 +330,8 @@ func testInlineAllowlist(t *testing.T, s *server) {
 			rec := c.json(http.MethodGet, contentURL(file, "?disposition=inline"), nil)
 			wantStatus(t, rec, http.StatusOK)
 			disposition := rec.Header().Get("Content-Disposition")
-			if tt.preview == apigen.None {
+			// Text is read by the app and shown as text, so it's still only ever a download.
+			if tt.preview == apigen.None || tt.preview == apigen.Text {
 				if !strings.HasPrefix(disposition, "attachment") || rec.Header().Get("Content-Type") != "application/octet-stream" {
 					t.Errorf("headers = %v", rec.Header())
 				}
@@ -653,4 +654,26 @@ func testBadIDs(t *testing.T, s *server) {
 	c := s.client(t)
 	wantStatus(t, c.json(http.MethodGet, "/api/v1/files/not-a-uuid", nil), http.StatusBadRequest)
 	wantStatus(t, c.json(http.MethodGet, "/api/v1/files?folder_id=not-a-uuid", nil), http.StatusBadRequest)
+}
+
+func TestPreviewOf(t *testing.T) {
+	tests := []struct {
+		contentType string
+		name        string
+		want        apigen.FilePreview
+	}{
+		{"image/png", "a.png", apigen.Image},
+		{"text/plain", "a.txt", apigen.Text},
+		{"text/html", "page.html", apigen.Text},
+		{"application/json", "a", apigen.Text},
+		{"image/svg+xml", "a.svg", apigen.Text},
+		{"application/octet-stream", "main.GO", apigen.Text},
+		{"application/octet-stream", "a.bin", apigen.None},
+		{"application/zip", "a.zip", apigen.None},
+	}
+	for _, tt := range tests {
+		if got := previewOf(tt.contentType, tt.name); got != tt.want {
+			t.Errorf("previewOf(%q, %q) = %q, want %q", tt.contentType, tt.name, got, tt.want)
+		}
+	}
 }

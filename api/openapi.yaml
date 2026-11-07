@@ -1682,8 +1682,10 @@ components:
           type: string
         preview:
           type: string
-          enum: [image, video, pdf, none]
-          description: How the file can be shown inline, if at all.
+          enum: [image, video, pdf, text, none]
+          description: >
+            How the file can be shown, if at all. Text is read and shown as text by the app:
+            it's never served inline.
         connection_id:
           type: string
           format: uuid

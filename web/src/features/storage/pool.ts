@@ -92,6 +92,14 @@ export function accountAlert(pool: Pool | undefined): { text: string; action: st
   return undefined;
 }
 
+/** Shown when nothing is wrong with an account, because a lost file matters just as much. */
+export function problemAlert(problems: number): { text: string; action: string } | undefined {
+  if (problems === 0) {
+    return undefined;
+  }
+  return { text: `${count(problems, "file")} ${problems === 1 ? "needs" : "need"} your attention.`, action: "See storage" };
+}
+
 /** What a sync did, in words. */
 export function syncText({ added, removed, failed = 0 }: { added: number; removed: number; failed?: number }): string {
   const parts = [];

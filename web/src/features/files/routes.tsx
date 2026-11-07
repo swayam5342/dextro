@@ -2,6 +2,7 @@ import { createRoute } from "@tanstack/react-router";
 
 import { authedRoute } from "@/features/auth/routes";
 
+import { DuplicatesPage } from "./components/duplicates-page";
 import { FilesPage } from "./components/files-page";
 import { LinksPage } from "./components/links-page";
 import { TrashPage } from "./components/trash-page";
@@ -33,6 +34,12 @@ export const starredRoute = createRoute({
   component: function StarredRoute() {
     return <FilesPage folderId={undefined} query={undefined} list="starred" />;
   },
+});
+
+export const duplicatesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/duplicates",
+  component: DuplicatesPage,
 });
 
 export const trashRoute = createRoute({

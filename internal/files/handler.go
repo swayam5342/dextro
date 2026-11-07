@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -70,9 +71,39 @@ var inlineTypes = map[string]apigen.FilePreview{
 	"application/pdf": apigen.Pdf,
 }
 
-func previewOf(contentType string) apigen.FilePreview {
+// textTypes are shown as plain text by the app, along with anything under text/. The bytes
+// are still served as a download: the app reads them and puts them on the page as text, so
+// nothing in the file can run.
+var textTypes = map[string]bool{
+	"application/json":       true,
+	"application/xml":        true,
+	"application/yaml":       true,
+	"application/x-yaml":     true,
+	"application/toml":       true,
+	"application/sql":        true,
+	"application/javascript": true,
+	"application/typescript": true,
+	"application/x-sh":       true,
+	"image/svg+xml":          true,
+}
+
+// textExtensions catch the code and config files that browsers upload with no useful type.
+var textExtensions = map[string]bool{
+	".bash": true, ".bat": true, ".c": true, ".cfg": true, ".cjs": true, ".conf": true, ".cpp": true,
+	".cs": true, ".css": true, ".csv": true, ".dart": true, ".go": true, ".h": true, ".hpp": true,
+	".html": true, ".ini": true, ".java": true, ".js": true, ".json": true, ".jsx": true, ".kt": true,
+	".log": true, ".lua": true, ".md": true, ".mjs": true, ".php": true, ".ps1": true, ".py": true,
+	".r": true, ".rb": true, ".rs": true, ".scss": true, ".sh": true, ".sql": true, ".svelte": true,
+	".swift": true, ".toml": true, ".ts": true, ".tsv": true, ".tsx": true, ".txt": true, ".vue": true,
+	".xml": true, ".yaml": true, ".yml": true,
+}
+
+func previewOf(contentType, name string) apigen.FilePreview {
 	if preview, ok := inlineTypes[contentType]; ok {
 		return preview
+	}
+	if strings.HasPrefix(contentType, "text/") || textTypes[contentType] || textExtensions[strings.ToLower(path.Ext(name))] {
+		return apigen.Text
 	}
 	return apigen.None
 }
@@ -160,7 +191,8 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request, id types.
 	}
 	defer func() { _ = reader.Close() }()
 
-	inline := params.Disposition != nil && *params.Disposition == apigen.Inline && previewOf(file.ContentType) != apigen.None
+	_, allowed := inlineTypes[file.ContentType]
+	inline := params.Disposition != nil && *params.Disposition == apigen.Inline && allowed
 	header := w.Header()
 	header.Set("Content-Security-Policy", contentPolicy)
 	header.Set("Content-Disposition", contentDisposition(inline, file.Name))
@@ -522,7 +554,7 @@ func toAPIFile(f File) apigen.File {
 		ContentType:  f.ContentType,
 		External:     f.External,
 		Starred:      f.Starred,
-		Preview:      previewOf(f.ContentType),
+		Preview:      previewOf(f.ContentType, f.Name),
 		ConnectionId: f.ConnectionID,
 		FolderId:     f.FolderID,
 		TrashedAt:    f.TrashedAt,

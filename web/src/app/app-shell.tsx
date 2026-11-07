@@ -2,23 +2,24 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Activity,
-  ChevronDown,
   Check,
+  ChevronDown,
   Clock,
+  Copy,
   Database,
   Folder,
+  FolderUp,
+  Link2,
   ScrollText,
   Search,
   Settings,
   Star,
   Trash2,
-  FolderUp,
-  Link2,
+  type LucideIcon,
   Upload,
   UserRound,
   Users,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
@@ -37,14 +38,15 @@ import { ThemeButton } from "@/components/theme-button";
 import { ToastProvider } from "@/components/toast";
 import { DropZone, UploadPanel } from "@/features/files/components/upload-panel";
 import { treeFromPicked } from "@/features/files/folder-tree";
+import { fileChecksQuery } from "@/features/files/queries";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
 import { UsageCard } from "@/features/storage/components/usage-card";
-import { accountAlert, freeSpaceText, routingText, usableConnections } from "@/features/storage/pool";
+import { accountAlert, freeSpaceText, problemAlert, routingText, usableConnections } from "@/features/storage/pool";
 import { connectionsQuery, poolQuery, routingQuery, useFollowTransfers } from "@/features/storage/queries";
 import { recall, remember } from "@/lib/remember";
 import { keyIsTaken } from "@/lib/utils";
 
-function NavLink({ to, icon: Icon, label }: { to: "/" | "/recent" | "/starred" | "/trash" | "/links" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
+function NavLink({ to, icon: Icon, label }: { to: "/" | "/recent" | "/starred" | "/trash" | "/links" | "/duplicates" | "/storage" | "/admin/settings" | "/admin/users" | "/admin/status" | "/admin/audit"; icon: LucideIcon; label: string }) {
   return (
     <Link
       to={to}
@@ -116,6 +118,7 @@ function Sidebar() {
         <NavLink to="/starred" icon={Star} label="Starred" />
         <NavLink to="/trash" icon={Trash2} label="Trash" />
         <NavLink to="/links" icon={Link2} label="Links" />
+        <NavLink to="/duplicates" icon={Copy} label="Duplicates" />
         <NavLink to="/storage" icon={Database} label="Storage" />
       </nav>
       {user?.role === "admin" && (
@@ -278,8 +281,9 @@ const DISMISSED_KEY = "dextro.dismissed-alert";
 function AccountAlert() {
   const { pathname } = useLocation();
   const { data: pool } = useQuery(poolQuery);
+  const { data: checks } = useQuery(fileChecksQuery);
   const [dismissed, setDismissed] = useState(() => recall(DISMISSED_KEY));
-  const alert = accountAlert(pool);
+  const alert = accountAlert(pool) ?? problemAlert(checks?.problems.length ?? 0);
   if (!alert || alert.text === dismissed || pathname === "/storage") {
     return null;
   }

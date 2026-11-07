@@ -54,6 +54,37 @@ export interface components {
       /** Being emptied, so new files stay out of it. */
       draining: boolean;
     };
+    DuplicateFile: {
+      file: Schemas["File"];
+      /** The folders it's in, separated by slashes. Empty at the top level. */
+      location: string;
+    };
+    DuplicateGroup: {
+      hash: string;
+      size: number;
+      files: Schemas["DuplicateFile"][];
+    };
+    DuplicateList: {
+      groups: Schemas["DuplicateGroup"][];
+      /** What keeping one file of each group would free. */
+      reclaimable_bytes: number;
+    };
+    FileProblem: {
+      id: string;
+      /** Null for a missing file, because its record is gone. */
+      file_id: string | null;
+      connection_id: string;
+      name: string;
+      size: number;
+      kind: "missing" | "changed" | "damaged";
+      found_at: string;
+    };
+    FileChecks: {
+      checkable_files: number;
+      /** How many have been read back at least once. */
+      checked_files: number;
+      problems: Schemas["FileProblem"][];
+    };
     Usage: {
       photo_bytes: number;
       video_bytes: number;
@@ -257,7 +288,7 @@ export interface components {
       size: number;
       content_type: string;
       /** How the file can be shown inline, if at all. */
-      preview: "image" | "video" | "pdf" | "none";
+      preview: "image" | "video" | "pdf" | "text" | "none";
       connection_id: string;
       folder_id: string | null;
       starred: boolean;
@@ -617,6 +648,15 @@ export interface paths {
   };
   "/api/v1/starred": {
     get: Operation<{ 200: JsonBody<Schemas["FileList"]> }>;
+  };
+  "/api/v1/duplicates": {
+    get: Operation<{ 200: JsonBody<Schemas["DuplicateList"]> }>;
+  };
+  "/api/v1/file-checks": {
+    get: Operation<{ 200: JsonBody<Schemas["FileChecks"]> }>;
+  };
+  "/api/v1/file-checks/problems/{id}": {
+    delete: PathOperation;
   };
   "/api/v1/files/{id}/star": {
     put: PathOperation;

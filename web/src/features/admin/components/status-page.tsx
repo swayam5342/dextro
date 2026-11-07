@@ -17,6 +17,7 @@ const JOBS = [
   { name: "file_sync", label: "File sync", about: "Matches Tributary to each account every 5 minutes." },
   { name: "file_transfers", label: "File moves", about: "Moves files between accounts, checking every 30 seconds." },
   { name: "share_expiry", label: "Link expiry", about: "Ends Google links past their expiry, each minute." },
+  { name: "file_check", label: "File check", about: "Reads files back to confirm they're intact, about 1 GB each hour." },
   { name: "quota_sync", label: "Quota sync", about: "Checks every linked account each hour." },
   { name: "session_cleanup", label: "Session cleanup", about: "Clears expired sign-ins each day." },
   { name: "upload_cleanup", label: "Upload cleanup", about: "Clears uploads left idle for a day, each hour." },

@@ -37,6 +37,11 @@ export interface MenuEntry {
 
 const SHOW_ON_TOUCH = "[@media(hover:none)]:opacity-100";
 
+/** Text can be shown in the viewer, but it has no picture to show on a tile. */
+function hasThumbnail(file: File): boolean {
+  return file.preview !== "none" && file.preview !== "text";
+}
+
 export function Breadcrumbs({
   path,
   dropOn,
@@ -301,7 +306,7 @@ export function FileTile({
 }: TileProps<File> & { shared: boolean; onOpen: () => void }) {
   const [failed, setFailed] = useState(false);
   const [ratio, setRatio] = useState(1.3);
-  const hasPicture = file.preview !== "none" && !failed;
+  const hasPicture = hasThumbnail(file) && !failed;
   const Icon = fileIcon(file.content_type);
 
   function handleClick(event: MouseEvent) {
@@ -387,7 +392,7 @@ export function ListThumb({ file }: { file: File }) {
   const Icon = fileIcon(file.content_type);
   return (
     <span className="grid size-[38px] shrink-0 place-items-center overflow-hidden rounded-[7px] bg-card">
-      {file.preview !== "none" && !failed ? (
+      {hasThumbnail(file) && !failed ? (
         <img
           src={thumbnailUrl(file.id)}
           alt=""

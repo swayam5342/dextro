@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Download, ExternalLink, Trash2, X } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
 
@@ -7,16 +8,54 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBare, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { formatBytes, formatDate } from "@/lib/format";
 
-import { contentUrl } from "../queries";
+import { contentUrl, fileTextQuery, TEXT_PREVIEW_BYTES } from "../queries";
 import { fileIcon } from "./file-icon";
 
 type File = components["schemas"]["File"];
+
+function CantShow({ file, text }: { file: File; text: string }) {
+  const Icon = fileIcon(file.content_type);
+  return (
+    <div className="grid justify-items-center gap-3 text-center text-muted-foreground">
+      <Icon className="size-16" />
+      <p>{text}</p>
+    </div>
+  );
+}
+
+/** A text file, put on the page as text, so nothing in it can run. */
+function TextStage({ file }: { file: File }) {
+  const { data, isPending, isError } = useQuery(fileTextQuery(file.id));
+  if (isPending) {
+    return <p className="text-muted-foreground">Loading…</p>;
+  }
+  if (isError) {
+    return <CantShow file={file} text="This file couldn't be loaded from its account." />;
+  }
+  if (data === null) {
+    return <CantShow file={file} text="This file isn't text. Download it to open it." />;
+  }
+  return (
+    <div className="grid size-full grid-rows-[minmax(0,1fr)_auto] gap-2">
+      {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- so the keyboard can scroll it. */}
+      <pre tabIndex={0} className="overflow-auto rounded-[14px] bg-card px-14 py-4 font-mono text-[13px] leading-relaxed outline-none">
+        {data}
+      </pre>
+      {file.size > TEXT_PREVIEW_BYTES && (
+        <p className="text-center text-xs text-faint">Showing the first {formatBytes(TEXT_PREVIEW_BYTES)}. Download it to see the rest.</p>
+      )}
+    </div>
+  );
+}
 
 /** What can be shown of a file. It's keyed by file, so a failed load doesn't stick. */
 function Stage({ file }: { file: File }) {
   const [failed, setFailed] = useState(false);
   const url = contentUrl(file.id, true);
 
+  if (file.preview === "text") {
+    return <TextStage file={file} />;
+  }
   if (!failed && file.preview === "image") {
     return (
       <img src={url} alt={file.name} className="max-h-full max-w-full object-contain" onError={() => setFailed(true)} />

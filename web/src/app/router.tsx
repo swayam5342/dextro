@@ -15,7 +15,7 @@ import {
   registerRoute,
   signInRoute,
 } from "@/features/auth/routes";
-import { filesRoute, linksRoute, recentRoute, starredRoute, trashRoute } from "@/features/files/routes";
+import { duplicatesRoute, filesRoute, linksRoute, recentRoute, starredRoute, trashRoute } from "@/features/files/routes";
 import { storageRoute } from "@/features/storage/routes";
 
 import { rootRoute } from "./root-route";
@@ -36,6 +36,7 @@ export const router = createRouter({
       starredRoute,
       trashRoute,
       linksRoute,
+      duplicatesRoute,
       storageRoute,
       accountRoute,
       adminSettingsRoute,

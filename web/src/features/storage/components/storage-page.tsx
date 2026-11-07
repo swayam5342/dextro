@@ -10,6 +10,7 @@ import { authConfigQuery } from "@/features/auth/queries";
 import { RowButton } from "@/features/files/components/upload-panel";
 import { useRefreshFiles } from "@/features/files/queries";
 import { useUploads } from "@/features/files/uploads";
+import { FileChecksCard } from "@/features/storage/components/file-checks-card";
 import { count, formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -488,6 +489,7 @@ export function StoragePage({
       <Accounts pool={pool} queue={queue} />
       <UploadRouting />
       <Moves queue={queue} />
+      <FileChecksCard pool={pool} />
       {config?.google_enabled ? (
         <p className="max-w-[60ch] text-xs text-faint">
           Tributary keeps its files in a folder named dextro in each account, and can't see anything else in

@@ -16,6 +16,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (id === "tour") {
     return redirect(kind === "content" ? "/media/demo.mp4" : "/media/files-dark.webp");
   }
+  if (id === "rennell-copy") {
+    return redirect("/media/demo/rennell-survey.webp");
+  }
   if (PICTURES.has(id) && (kind === "content" || kind === "thumbnail")) {
     return redirect(`/media/demo/${id}.webp`);
   }

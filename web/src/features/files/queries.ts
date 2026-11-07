@@ -65,6 +65,64 @@ export const starredQuery = queryOptions({
   queryFn: () => listFiles("/api/v1/starred"),
 });
 
+/** Under the files key, so trashing a copy refreshes the list. */
+export const duplicatesQuery = queryOptions({
+  queryKey: [FILES_KEY, "duplicates"],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/duplicates");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
+export const fileChecksQuery = queryOptions({
+  queryKey: [FILES_KEY, "checks"],
+  queryFn: async () => {
+    const { data, error } = await api.GET("/api/v1/file-checks");
+    if (!data) {
+      throw toApiError(error);
+    }
+    return data;
+  },
+});
+
+export function useDismissProblem() {
+  const refresh = useRefreshFiles();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error, response } = await api.DELETE("/api/v1/file-checks/problems/{id}", { params: { path: { id } } });
+      if (!response.ok) {
+        throw toApiError(error);
+      }
+    },
+    onSuccess: refresh,
+  });
+}
+
+/** How much of a text file the viewer reads. Anything longer belongs in an editor. */
+export const TEXT_PREVIEW_BYTES = 512 * 1024;
+
+/**
+ * The start of a text file, as text, or null if it turns out not to be text. It's read
+ * rather than opened, so the server can keep serving it as a download.
+ */
+export function fileTextQuery(fileId: string) {
+  return queryOptions({
+    queryKey: [FILES_KEY, "text", fileId],
+    staleTime: Infinity,
+    queryFn: async () => {
+      const response = await fetch(contentUrl(fileId, false), { headers: { Range: `bytes=0-${TEXT_PREVIEW_BYTES - 1}` } });
+      if (!response.ok) {
+        throw new Error("The file couldn't be read.");
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return bytes.subarray(0, 8192).includes(0) ? null : new TextDecoder().decode(bytes);
+    },
+  });
+}
+
 export const trashQuery = queryOptions({
   queryKey: [TRASH_KEY],
   queryFn: async () => {

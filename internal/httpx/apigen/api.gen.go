@@ -70,6 +70,7 @@ const (
 	Image FilePreview = "image"
 	None  FilePreview = "none"
 	Pdf   FilePreview = "pdf"
+	Text  FilePreview = "text"
 	Video FilePreview = "video"
 )
 
@@ -81,6 +82,8 @@ func (e FilePreview) Valid() bool {
 	case None:
 		return true
 	case Pdf:
+		return true
+	case Text:
 		return true
 	case Video:
 		return true
@@ -412,7 +415,7 @@ type File struct {
 	Id       openapi_types.UUID  `json:"id"`
 	Name     string              `json:"name"`
 
-	// Preview How the file can be shown inline, if at all.
+	// Preview How the file can be shown, if at all. Text is read and shown as text by the app: it's never served inline.
 	Preview   FilePreview `json:"preview"`
 	Size      int64       `json:"size"`
 	Starred   bool        `json:"starred"`
@@ -420,7 +423,7 @@ type File struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
-// FilePreview How the file can be shown inline, if at all.
+// FilePreview How the file can be shown, if at all. Text is read and shown as text by the app: it's never served inline.
 type FilePreview string
 
 // FileChecks defines model for FileChecks.
