@@ -29,7 +29,10 @@ const (
 	chunkSize       = 8 << 20
 	defaultPageSize = 1000
 	tokenTimeout    = 30 * time.Second
-	fileFields      = "id,name,size,mimeType,modifiedTime,parents,md5Checksum"
+	// replyTimeout is how long Google can take to start answering. It's the only limit on a
+	// transfer, which can run for hours, and it's what stops a hung connection staying forever.
+	replyTimeout = 5 * time.Minute
+	fileFields   = "id,name,size,mimeType,modifiedTime,parents,md5Checksum"
 	// permissionAnyone is Drive's type for a public link.
 	permissionAnyone = "anyone"
 	// permissionPageSize is more than a file of Tributary's will ever have.
@@ -59,6 +62,8 @@ type Client struct {
 	config     oauth2.Config
 	apiBase    string
 	httpClient *http.Client
+	// transfers moves files, and has no overall time limit.
+	transfers *http.Client
 
 	mu sync.Mutex
 	// tokens holds one source per refresh token, in memory only. Every request opens
@@ -84,8 +89,21 @@ func newClient(clientID, clientSecret, redirectURL, authURL, tokenURL, apiBase s
 		},
 		apiBase:    apiBase,
 		httpClient: &http.Client{Timeout: tokenTimeout},
+		transfers:  newTransferClient(),
 		tokens:     map[string]oauth2.TokenSource{},
 	}
+}
+
+// newTransferClient makes the client that moves files. There's one, because every request
+// opens its account afresh and would otherwise never reuse a connection.
+func newTransferClient() *http.Client {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Client{}
+	}
+	transport = transport.Clone()
+	transport.ResponseHeaderTimeout = replyTimeout
+	return &http.Client{Transport: transport}
 }
 
 // tokenContext is what tokens are fetched with. It outlives any one request, because
@@ -164,9 +182,10 @@ func ensureFolder(ctx context.Context, service *drive.Service) (string, error) {
 
 // service builds an API client.
 func (c *Client) service(source oauth2.TokenSource) (*drive.Service, *http.Client, error) {
-	longLived := c.tokenContext()
-	// oauth2 takes only the transport from httpClient, so the timeout applies
-	// to fetching tokens and not to transfers, which can take hours.
+	// oauth2 copies the timeout of the client it's given, and a request's body counts towards
+	// a timeout, so this can't be the client tokens are fetched with: that would cut off
+	// anything taking longer than a token does. The source has its own for fetching those.
+	longLived := context.WithValue(context.Background(), oauth2.HTTPClient, c.transfers)
 	httpClient := oauth2.NewClient(longLived, source)
 	options := []option.ClientOption{option.WithHTTPClient(httpClient)}
 	if c.apiBase != "" {

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/oauth2"
+
 	"github.com/swayam5342/tributary/internal/provider"
 	"github.com/swayam5342/tributary/internal/provider/providertest"
 )
@@ -443,5 +445,21 @@ func TestDescribeTreatsTrashAsGone(t *testing.T) {
 	f.mu.Unlock()
 	if _, err := p.Describe(ctx, object.ID); !errors.Is(err, provider.ErrObjectNotFound) {
 		t.Errorf("error = %v, want ErrObjectNotFound", err)
+	}
+}
+
+// A big file takes far longer than a token does. oauth2 copies the timeout of the client it's
+// given, so a limit meant for fetching tokens must not reach the client that moves files.
+func TestTransfersHaveNoTimeLimit(t *testing.T) {
+	c := NewClient("id", "secret", "http://127.0.0.1/callback")
+	_, transfers, err := c.service(oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "token"}))
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+	if transfers.Timeout != 0 {
+		t.Errorf("transfers stop after %s", transfers.Timeout)
+	}
+	if c.httpClient.Timeout != tokenTimeout {
+		t.Errorf("fetching a token has a limit of %s", c.httpClient.Timeout)
 	}
 }

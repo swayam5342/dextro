@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Anything to or from Google that took over 30 seconds was cut off, which broke large downloads, zips and moves.
+
 ### Changed
 
 - Uploads are now limited to 3 per account rather than 3 in total, so a slow account only holds up its own files. Up to 4 run at once over plain HTTP, and up to 12 behind a proxy with HTTP/2.
