@@ -54,6 +54,8 @@ type uploadFixture struct {
 	accounts map[string]*providertest.Fake
 	// wrap, if set, changes the provider an account opens to.
 	wrap func(provider.Provider) provider.Provider
+	// reads counts downloads, for a wrap that wants to.
+	reads atomic.Int32
 }
 
 func (f *uploadFixture) account(email string) *providertest.Fake {

@@ -60,6 +60,40 @@ func TestSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("file checks start on and can be turned off", func(t *testing.T) {
+		before, err := service.Settings(ctx)
+		if err != nil {
+			t.Fatalf("Settings: %v", err)
+		}
+		if !before.FileChecks {
+			t.Error("file checks should start on")
+		}
+		off := false
+		got, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Update{FileChecks: &off})
+		if err != nil {
+			t.Fatalf("UpdateSettings: %v", err)
+		}
+		if got.FileChecks || got.MaxUploadBytes != before.MaxUploadBytes {
+			t.Errorf("settings = %+v", got)
+		}
+		stored, err := NewStore(pool).FileChecksEnabled(ctx)
+		if err != nil {
+			t.Fatalf("FileChecksEnabled: %v", err)
+		}
+		if stored {
+			t.Error("the change wasn't saved")
+		}
+		var count int
+		err = pool.QueryRow(ctx, `SELECT count(*) FROM audit_events
+			WHERE action = 'settings.updated' AND metadata->>'file_checks_enabled' = 'false'`).Scan(&count)
+		if err != nil {
+			t.Fatalf("count events: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("audit events = %d, want 1", count)
+		}
+	})
+
 	t.Run("a change is saved and audited", func(t *testing.T) {
 		limit := int64(7 << 20)
 		if _, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Update{MaxUploadBytes: &limit}); err != nil {

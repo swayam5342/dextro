@@ -51,6 +51,7 @@ type FileProblem struct {
 
 // FileChecks is how the checks are going for one user.
 type FileChecks struct {
+	Enabled   bool
 	Checkable int64
 	Checked   int64
 	Problems  []FileProblem
@@ -98,6 +99,10 @@ func (r *syncRun) compareChecksums(ctx context.Context, known map[string]fileRec
 // gone or replaced, so reading the bytes is the part only this can do. A file that can't be
 // reached right now isn't damaged, so that's only a failure for the logs.
 func (s *Service) CheckFiles(ctx context.Context) (CheckRun, error) {
+	enabled, err := s.store.Settings().FileChecksEnabled(ctx)
+	if err != nil || !enabled {
+		return CheckRun{}, err
+	}
 	items, err := s.store.FilesToCheck(ctx, checkBatch)
 	if err != nil {
 		return CheckRun{}, err
@@ -184,6 +189,9 @@ func (s *Service) checkFile(ctx context.Context, item checkItem, run *CheckRun) 
 func (s *Service) FileChecks(ctx context.Context, userID uuid.UUID) (FileChecks, error) {
 	checks, err := s.store.CountFileChecks(ctx, userID)
 	if err != nil {
+		return FileChecks{}, err
+	}
+	if checks.Enabled, err = s.store.Settings().FileChecksEnabled(ctx); err != nil {
 		return FileChecks{}, err
 	}
 	checks.Problems, err = s.store.FileProblems(ctx, userID)

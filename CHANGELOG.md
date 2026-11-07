@@ -15,7 +15,7 @@
 
 - An optional nginx service for HTTPS with HTTP/2, in the `https` Compose profile, with `make cert` for a local certificate.
 - Encrypted folders: new files in a folder you choose are encrypted before they reach Google, and everything but thumbnails and Google links keeps working. Back up `ENCRYPTION_KEYS`, because these files can't be recovered without it.
-- File checks: Tributary reads files back in the background and reports any that are damaged, changed or gone, on the Storage page and in a banner.
+- File checks: Tributary reads files back in the background and reports any that are damaged, changed or gone, on the Storage page and in a banner. It downloads about 1 GB an hour, and the admin can turn it off in Server settings.
 - A Duplicates page that finds files with the same content by their hash.
 - Text and code files now open in the viewer.
 

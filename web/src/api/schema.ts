@@ -80,6 +80,8 @@ export interface components {
       found_at: string;
     };
     FileChecks: {
+      /** Whether files are being read back. The admin can turn this off. */
+      enabled: boolean;
       checkable_files: number;
       /** How many have been read back at least once. */
       checked_files: number;
@@ -276,11 +278,14 @@ export interface components {
       max_upload_bytes: number;
       /** Whether people can make public Google links. Off until the admin says. */
       google_links_enabled: boolean;
+      /** Whether the server reads files back in the background to check them. */
+      file_checks_enabled: boolean;
     };
     /** Only the fields present are changed. */
     SettingsUpdate: {
       max_upload_bytes?: number;
       google_links_enabled?: boolean;
+      file_checks_enabled?: boolean;
     };
     File: {
       id: string;

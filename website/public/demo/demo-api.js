@@ -329,7 +329,7 @@
       found.encrypted = body.encrypted;
       return ok(found);
     }],
-    ["GET", /^\/api\/v1\/file-checks$/, () => ok({ checkable_files: files.length, checked_files: files.length, problems: [] })],
+    ["GET", /^\/api\/v1\/file-checks$/, () => ok({ enabled: true, checkable_files: files.length, checked_files: files.length, problems: [] })],
     ["GET", /^\/api\/v1\/uploads$/, () => ok([])],
     ["POST", /^\/api\/v1\/uploads$/, (_, body) => {
       const chosen = choose(body.connection_id, body.size, body.busy_connection_ids);

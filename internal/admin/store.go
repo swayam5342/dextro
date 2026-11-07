@@ -20,6 +20,7 @@ var ErrSettingNotFound = errors.New("setting not found")
 const (
 	settingMaxUploadBytes = "max_upload_bytes"
 	settingGoogleLinks    = "google_links_enabled"
+	settingFileChecks     = "file_checks_enabled"
 	defaultMaxUploadBytes = 10 << 30
 )
 
@@ -100,6 +101,13 @@ func (s *Store) MaxUploadBytes(ctx context.Context) (int64, error) {
 // admin says otherwise, because a public link is a decision for whoever runs the server.
 func (s *Store) GoogleLinksEnabled(ctx context.Context) (bool, error) {
 	return readSetting(ctx, s, settingGoogleLinks, false)
+}
+
+// FileChecksEnabled says whether files are read back in the background. It's on unless the
+// admin says otherwise, because it costs download bandwidth, which a metered connection
+// may not want to spend.
+func (s *Store) FileChecksEnabled(ctx context.Context) (bool, error) {
+	return readSetting(ctx, s, settingFileChecks, true)
 }
 
 // JobRun is the last finish of a background job.

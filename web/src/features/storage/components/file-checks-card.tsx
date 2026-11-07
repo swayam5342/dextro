@@ -42,8 +42,9 @@ export function FileChecksCard({ pool }: { pool: Pool | undefined }) {
         </Link>
       </div>
       <p className="text-sm text-muted-foreground">
-        Tributary reads your files back in the background, about 1 GB an hour. {data.checked_files} of{" "}
-        {data.checkable_files} have been checked so far.
+        {data.enabled
+          ? `Tributary reads your files back in the background, about 1 GB an hour. ${data.checked_files} of ${data.checkable_files} have been checked so far.`
+          : "Reading files back is turned off in server settings. Files that go missing or change in Drive are still noticed."}
       </p>
       <FormError message={dismiss.error?.message} />
       {data.problems.length > 0 && (

@@ -434,8 +434,11 @@ type FileChecks struct {
 	CheckableFiles int64 `json:"checkable_files"`
 
 	// CheckedFiles How many have been read back at least once.
-	CheckedFiles int64         `json:"checked_files"`
-	Problems     []FileProblem `json:"problems"`
+	CheckedFiles int64 `json:"checked_files"`
+
+	// Enabled Whether files are being read back. The admin can turn this off.
+	Enabled  bool          `json:"enabled"`
+	Problems []FileProblem `json:"problems"`
 }
 
 // FileList defines model for FileList.
@@ -696,6 +699,9 @@ type Session struct {
 
 // Settings defines model for Settings.
 type Settings struct {
+	// FileChecksEnabled Whether the server reads files back in the background to check them.
+	FileChecksEnabled bool `json:"file_checks_enabled"`
+
 	// GoogleLinksEnabled Whether people can make public Google links. Off until the admin says.
 	GoogleLinksEnabled bool `json:"google_links_enabled"`
 
@@ -705,6 +711,7 @@ type Settings struct {
 
 // SettingsUpdate Only the fields present are changed.
 type SettingsUpdate struct {
+	FileChecksEnabled  *bool  `json:"file_checks_enabled,omitempty"`
 	GoogleLinksEnabled *bool  `json:"google_links_enabled,omitempty"`
 	MaxUploadBytes     *int64 `json:"max_upload_bytes,omitempty"`
 }

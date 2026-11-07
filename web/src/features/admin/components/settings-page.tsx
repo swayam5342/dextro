@@ -62,6 +62,30 @@ function GoogleLinks({ enabled }: { enabled: boolean }) {
   );
 }
 
+function FileChecks({ enabled }: { enabled: boolean }) {
+  const update = useUpdateSettings();
+  return (
+    <section aria-label="File checks" className="space-y-3 rounded-2xl bg-card p-4">
+      <div>
+        <h2 className="font-semibold">File checks are {enabled ? "on" : "off"}</h2>
+        <p className="text-sm text-muted-foreground">
+          The server downloads about 1 GB of files each hour to confirm they're intact, which uses your internet
+          allowance. Turning this off stops those downloads. Files that go missing or change in Drive are still noticed,
+          but damage inside a file isn't.
+        </p>
+      </div>
+      <FormError message={update.error?.message} />
+      <Button
+        variant="soft"
+        disabled={update.isPending}
+        onClick={() => update.mutate({ file_checks_enabled: !enabled })}
+      >
+        {enabled ? "Turn off file checks" : "Turn on file checks"}
+      </Button>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const { data: settings, isPending, isError } = useQuery(settingsQuery);
 
@@ -72,6 +96,7 @@ export function SettingsPage() {
       {isError && <FormError message="Settings couldn't be loaded. Reload the page to try again." />}
       {settings && <UploadLimit current={settings.max_upload_bytes} />}
       {settings && <GoogleLinks enabled={settings.google_links_enabled} />}
+      {settings && <FileChecks enabled={settings.file_checks_enabled} />}
     </div>
   );
 }

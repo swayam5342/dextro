@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -54,6 +55,8 @@ func TestFileChecks(t *testing.T) {
 		{"a passing check clears an old report", testCheckClearsDamage},
 		{"an unreachable account isn't damage", testCheckSkipsUnreachable},
 		{"a check takes the longest unchecked file first", testCheckRotates},
+		{"turning checks off stops them reading anything", testChecksCanBeOff},
+		{"a sync still reports problems with checks off", testSyncReportsWithChecksOff},
 		{"problems are private to their owner", testProblemsAreScoped},
 		{"deleting a file takes its problems with it", testDeleteClearsProblems},
 	}
@@ -287,6 +290,63 @@ func testCheckRotates(t *testing.T, f *uploadFixture) {
 	}
 }
 
+func (f *uploadFixture) setChecks(t *testing.T, on string) {
+	t.Helper()
+	if err := f.service.store.Settings().SetSetting(f.ctx, "file_checks_enabled", []byte(on)); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+}
+
+func testChecksCanBeOff(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	f.link(t, user, "a@gmail.com", 1<<30)
+	file := f.recorded(t, user, "a@gmail.com", "bad.txt")
+	f.account("a@gmail.com").Damage(f.objectID(t, user, file.ID))
+
+	checks, err := f.service.FileChecks(f.ctx, user)
+	if err != nil {
+		t.Fatalf("FileChecks: %v", err)
+	}
+	if !checks.Enabled {
+		t.Error("checks should start on")
+	}
+
+	f.setChecks(t, "false")
+	f.wrap = countingGets(&f.reads)
+	if run := f.check(t); run.Checked != 0 || run.Damaged != 0 {
+		t.Errorf("run = %+v", run)
+	}
+	if got := f.reads.Load(); got != 0 {
+		t.Errorf("read %d files while off", got)
+	}
+	if got := f.count(t, `SELECT count(*) FROM files WHERE checked_at IS NOT NULL`); got != 0 {
+		t.Errorf("%d files were marked as checked", got)
+	}
+	if checks, err = f.service.FileChecks(f.ctx, user); err != nil {
+		t.Fatalf("FileChecks: %v", err)
+	}
+	if checks.Enabled {
+		t.Error("checks say they're on")
+	}
+
+	f.setChecks(t, "true")
+	if run := f.check(t); run.Damaged != 1 {
+		t.Errorf("turned back on: run = %+v", run)
+	}
+}
+
+func testSyncReportsWithChecksOff(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	connection := f.link(t, user, "a@gmail.com", 1<<30)
+	file := f.recorded(t, user, "a@gmail.com", "gone.txt")
+	f.setChecks(t, "false")
+	if err := f.account("a@gmail.com").Delete(f.ctx, f.objectID(t, user, file.ID)); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	f.sync(t, user, connection)
+	wantProblem(t, f.problems(t, user), ProblemMissing, "gone.txt")
+}
+
 func testProblemsAreScoped(t *testing.T, f *uploadFixture) {
 	user := f.user(t)
 	stranger := f.user(t)
@@ -409,3 +469,18 @@ func (getFailure) Get(context.Context, string, *provider.ByteRange) (io.ReadClos
 }
 
 func failingGets(p provider.Provider) provider.Provider { return getFailure{p} }
+
+// getCounter is an account that counts its downloads.
+type getCounter struct {
+	provider.Provider
+	reads *atomic.Int32
+}
+
+func (c getCounter) Get(ctx context.Context, id string, rng *provider.ByteRange) (io.ReadCloser, error) {
+	c.reads.Add(1)
+	return c.Provider.Get(ctx, id, rng)
+}
+
+func countingGets(reads *atomic.Int32) func(provider.Provider) provider.Provider {
+	return func(p provider.Provider) provider.Provider { return getCounter{p, reads} }
+}

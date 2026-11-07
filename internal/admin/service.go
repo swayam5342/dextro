@@ -24,12 +24,14 @@ var ErrInvalidSettings = errors.New("invalid settings")
 type Settings struct {
 	MaxUploadBytes int64
 	GoogleLinks    bool
+	FileChecks     bool
 }
 
 // Update is a change to Settings. Fields left nil stay as they are.
 type Update struct {
 	MaxUploadBytes *int64
 	GoogleLinks    *bool
+	FileChecks     *bool
 }
 
 // ErrUnknownJob means there's no background job by that name.
@@ -86,7 +88,11 @@ func readSettings(ctx context.Context, store *Store) (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{MaxUploadBytes: limit, GoogleLinks: links}, nil
+	checks, err := store.FileChecksEnabled(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
+	return Settings{MaxUploadBytes: limit, GoogleLinks: links, FileChecks: checks}, nil
 }
 
 // UpdateSettings saves new settings and records who changed them.
@@ -100,6 +106,9 @@ func (s *Service) UpdateSettings(ctx context.Context, actor uuid.UUID, ip string
 	}
 	if next.GoogleLinks != nil {
 		changes[settingGoogleLinks] = *next.GoogleLinks
+	}
+	if next.FileChecks != nil {
+		changes[settingFileChecks] = *next.FileChecks
 	}
 
 	var saved Settings

@@ -1975,7 +1975,7 @@ components:
             $ref: "#/components/schemas/File"
     Settings:
       type: object
-      required: [max_upload_bytes, google_links_enabled]
+      required: [max_upload_bytes, google_links_enabled, file_checks_enabled]
       properties:
         max_upload_bytes:
           type: integer
@@ -1984,6 +1984,9 @@ components:
         google_links_enabled:
           type: boolean
           description: Whether people can make public Google links. Off until the admin says.
+        file_checks_enabled:
+          type: boolean
+          description: Whether the server reads files back in the background to check them.
     SettingsUpdate:
       type: object
       description: Only the fields present are changed.
@@ -1992,6 +1995,8 @@ components:
           type: integer
           format: int64
         google_links_enabled:
+          type: boolean
+        file_checks_enabled:
           type: boolean
     ManagedUser:
       type: object
@@ -2140,8 +2145,11 @@ components:
           description: The folders it's in, separated by slashes. Empty at the top level.
     FileChecks:
       type: object
-      required: [checkable_files, checked_files, problems]
+      required: [enabled, checkable_files, checked_files, problems]
       properties:
+        enabled:
+          type: boolean
+          description: Whether files are being read back. The admin can turn this off.
         checkable_files:
           type: integer
           format: int64

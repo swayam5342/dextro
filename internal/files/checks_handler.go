@@ -47,6 +47,7 @@ func (h *Handler) GetFileChecks(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	httpx.WriteJSON(w, http.StatusOK, apigen.FileChecks{
+		Enabled:        checks.Enabled,
 		CheckableFiles: checks.Checkable,
 		CheckedFiles:   checks.Checked,
 		Problems:       problems,
