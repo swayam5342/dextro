@@ -31,6 +31,7 @@
     folder("survey", "Ganga survey", null, 40),
     folder("work", "Work", null, 30),
     folder("invoices", "Invoices", "work", 20),
+    { ...folder("private", "Private", null, 25), encrypted: true },
   ];
 
   const file = (id, name, size, type, preview, connection, parent, days) => ({
@@ -47,6 +48,7 @@
     file("notes", "Meeting notes.docx", 88 * 1024, "application/msword", "none", "north", "work", 6),
     file("rennell-copy", "Rennell, An Actual Survey (copy).jpg", 44 * MB, "image/jpeg", "image", "north", "work", 5),
     file("survey-notes", "Survey notes.md", 4 * 1024, "text/markdown", "text", "north", "work", 3),
+    { ...file("tax-2025", "Tax return 2025.pdf", 1.2 * MB, "application/pdf", "pdf", "south", "private", 25), encrypted: true },
     file("inv-1", "Invoice 1041.pdf", 210 * 1024, "application/octet-stream", "none", "creek", "invoices", 20),
     file("inv-2", "Invoice 1042.pdf", 196 * 1024, "application/octet-stream", "none", "north", "invoices", 18),
     file("backup", "Laptop backup.zip", 1.8 * GB, "application/zip", "none", "south", null, 3),

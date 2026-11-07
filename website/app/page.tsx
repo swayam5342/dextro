@@ -11,6 +11,7 @@ const step = (i: number) => ({ "--i": i }) as CSSProperties;
 
 const LEDGER = [
   ["Your files", "Your Google Drive", "You", "They stay in Drive"],
+  ["Encrypted files", "Your Google Drive, encrypted", "Your server", "They stay in Drive, unreadable without your key"],
   ["Folders", "Drive and your database", "You", "They stay in Drive"],
   ["The trash", "Your database", "You", "The list goes, the files stay"],
   ["Google tokens", "Your database, encrypted", "Your server", "Revoke them at Google"],
@@ -68,7 +69,7 @@ export default function Home() {
             </div>
             <div data-rise style={step(3)}>
               <h3>Keep your files</h3>
-              <p>Each file sits whole in one of your own accounts, so the largest upload is what one account can hold. Stop using Tributary and they're all still in Drive.</p>
+              <p>Each file sits whole in one of your own accounts, so the largest upload is what one account can hold. Stop using Tributary and they're all still in Drive, though anything you encrypted needs your server's key to read.</p>
             </div>
           </div>
         </section>

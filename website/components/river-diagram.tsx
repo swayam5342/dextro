@@ -14,19 +14,16 @@ export function RiverDiagram() {
         <text x="0" y="246" {...label}>15 GB</text>
         <text x="1050" y="172" textAnchor="middle" fill="#00263a" fontSize="64" fontWeight="700" letterSpacing="-2">45 GB</text>
       </svg>
-      <svg className="river tall" viewBox="0 0 360 290" role="img" aria-label="Three streams of 15 gigabytes each join into one river that opens into a pool of 45 gigabytes.">
-        <path d="M50 30 C 50 100 130 120 172 190" fill="none" stroke="#4cb3f0" strokeWidth="10" />
-        <path d="M180 30 C 165 90 195 130 180 190" fill="none" stroke="#4cb3f0" strokeWidth="10" />
-        <path d="M310 30 C 310 100 230 120 188 190" fill="none" stroke="#4cb3f0" strokeWidth="10" />
-        <path d="M160 175 C 150 212 100 222 0 232 L 0 290 L 360 290 L 360 232 C 260 222 210 212 200 175 Z" fill="#4cb3f0" />
-        {[50, 180, 310].map((x) => (
-          <text key={x} x={x} y="16" textAnchor="middle" fill="#fff" fontSize="15" fontWeight="600">
-            15 GB
-          </text>
-        ))}
-        <text x="180" y="274" textAnchor="middle" fill="#00263a" fontSize="34" fontWeight="700" letterSpacing="-1">
-          45 GB
-        </text>
+      {/* The same river for a small screen, shorter, so its labels stay readable. */}
+      <svg className="river compact" viewBox="0 0 720 300" role="img" aria-label="Three streams of 15 gigabytes each join into one river that opens into a pool of 45 gigabytes.">
+        <path d="M0 60 C 90 54 130 84 190 106 S 270 136 340 140" fill="none" stroke="#4cb3f0" strokeWidth="15" />
+        <path d="M0 158 C 80 146 140 170 200 156 S 280 150 340 150" fill="none" stroke="#4cb3f0" strokeWidth="15" />
+        <path d="M0 274 C 90 280 130 238 190 214 S 270 168 340 160" fill="none" stroke="#4cb3f0" strokeWidth="15" />
+        <path d="M320 128 C 380 126 420 112 470 92 C 505 78 525 40 550 0 L 720 0 L 720 300 L 550 300 C 525 260 505 222 470 208 C 420 188 380 174 320 172 Z" fill="#4cb3f0" />
+        <text x="0" y="34" fill="#fff" fontSize="32" fontWeight="600">15 GB</text>
+        <text x="0" y="134" fill="#fff" fontSize="32" fontWeight="600">15 GB</text>
+        <text x="0" y="250" fill="#fff" fontSize="32" fontWeight="600">15 GB</text>
+        <text x="630" y="172" textAnchor="middle" fill="#00263a" fontSize="60" fontWeight="700" letterSpacing="-2">45 GB</text>
       </svg>
     </>
   );

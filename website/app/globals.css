@@ -265,7 +265,7 @@ h2 {
   width: 100%;
 }
 
-.river.tall {
+.river.compact {
   display: none;
 }
 
@@ -966,6 +966,14 @@ code {
 }
 
 @media (max-width: 900px) {
+  .river.wide {
+    display: none;
+  }
+
+  .river.compact {
+    display: block;
+  }
+
   .nav {
     grid-template-columns: 1fr auto;
   }
@@ -1083,14 +1091,6 @@ code {
 }
 
 @media (max-width: 560px) {
-  .river.wide {
-    display: none;
-  }
-
-  .river.tall {
-    display: block;
-    margin-top: 32px;
-  }
 
   .zones {
     grid-template-columns: minmax(0, 1fr);

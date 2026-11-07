@@ -4,7 +4,7 @@ name: tributary
 services:
   # The address browsers use. It serves the app and passes API calls to the api service.
   web:
-    image: swayam5342/tributary-web:0.1.2
+    image: swayam5342/tributary-web:0.1.3
     environment:
       DEXTRO_API_URL: http://api:8080
       # A proxy on this machine reaches the web service from this address. Nothing else can,
@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: swayam5342/tributary-api:0.1.2
+    image: swayam5342/tributary-api:0.1.3
     environment:
       DEXTRO_DATABASE_URL: postgres://tributary:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/tributary?sslmode=disable
       DEXTRO_PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}

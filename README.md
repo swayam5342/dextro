@@ -23,6 +23,11 @@ Link your Drive accounts, then upload, organize, preview and share files from on
 - **Real folders.** Folders appear in every linked account, inside a Drive folder named `dextro`.
 - **Large uploads that survive problems.** Files go up in pieces, so an upload can pause, resume and recover from a lost connection. You can upload a whole folder, or drag one onto the page.
 - **File management.** Sort, search, star files, see what's recent, drag files onto folders, and move things to a trash with Undo. Keyboard shortcuts cover search (`/`), trash (Delete), rename (F2) and select all (Ctrl+A). Images, video and PDFs preview in the app.
+- **Search like Gmail.** Filter with `type:image`, `size:>10mb`, `after:2026-01-31`, `owner:work`, `in:folder`, `is:starred` and `-word`, or from a menu, and sort the results.
+- **Encrypted folders.** New files in a folder you choose are encrypted before they reach Google, so only your server can read them.
+- **File checks.** Hear when a file goes missing or changes in Drive, and optionally read files back on a schedule to confirm they're intact.
+- **Find duplicates.** See files with the same content, by their hash, and how much space you'd get back.
+- **Text and code preview.** Open them in the viewer, along with photos, video and PDFs.
 - **Zip downloads.** Download a folder or a selection as one zip.
 - **Moving between accounts.** Move files to rebalance your accounts, or empty one before unlinking it. Each file is copied and checked before the old copy is removed.
 - **Google links.** Share one file with a public link, choosing whether people can view, comment or edit, with an optional expiry. These are off until the admin turns them on.
@@ -262,6 +267,7 @@ Tributary is released under the [MIT licence](LICENSE).
 ## Good to know
 
 - **The name.** Tributary used to be called dextro. That's why the folder in your Drive, the database and the `DEXTRO_` settings still use the old name: changing them would lose track of data that's already there.
+- **Encrypted files need your key.** They stay in Drive if you stop using Tributary, but can't be read without `ENCRYPTION_KEYS`. Their names stay visible in Drive.
 - **A file lives whole in one account.** Free space adds up across accounts, but the largest file you can upload is limited by the account with the most room.
 - **Changes made by hand in Drive mostly aren't copied back.** Deletions are noticed, but renames and moves aren't.
 - **The trash is Tributary's own.** It doesn't appear in Drive, and it only empties when you tell it to.

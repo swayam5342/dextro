@@ -26,6 +26,8 @@ const GROUPS: DocGroup[] = [
   {
     title: "Run it",
     items: [
+      ["encrypt", "Encrypted folders"],
+      ["checks", "File checks"],
       ["admin", "Admin commands"],
       ["update", "Update and back up"],
     ],
@@ -79,7 +81,7 @@ export default function SelfHost() {
       <p>Create a <code>.env</code> file beside it, with its own random secrets:</p>
       <CodeTabs samples={[{ label: "Shell", code: ENV }]} />
       <p>
-        Keep a copy of <code>ENCRYPTION_KEYS</code> somewhere safe. Without it, every linked account has to be set up again.
+        Keep a copy of <code>ENCRYPTION_KEYS</code> somewhere safe. Without it, every linked account has to be set up again, and files in encrypted folders can never be read.
       </p>
       <p>Start it:</p>
       <CodeTabs samples={[{ label: "Shell", code: "docker compose up -d" }]} />
@@ -121,6 +123,29 @@ export default function SelfHost() {
         The compose file already trusts a proxy on the same machine, so the rate limits and the audit log see your visitors' real addresses.
         If your proxy runs somewhere else, add <code>TRUSTED_PROXIES</code> to <code>.env</code> with its address or range.
       </p>
+    </section>
+
+    <section>
+      <h2 id="encrypt">Encrypted folders</h2>
+      <p>
+        Choose <strong>Encrypt new files</strong> from a folder's menu, and new files in it and the folders inside are encrypted before they
+        reach Google. Files already there stay as they are. Google can't read what's encrypted, but your server can, because it holds the key.
+      </p>
+      <p>
+        Viewing, downloads, zips, moves and API keys all keep working. Names stay visible in Drive, and encrypted files have no thumbnails or
+        Google links. Each file's key is sealed with <code>ENCRYPTION_KEYS</code>, so back that up before you use this: if it's lost, so are
+        these files, even with a backup of the database.
+      </p>
+    </section>
+
+    <section>
+      <h2 id="checks">File checks</h2>
+      <p>
+        A sync notices files that go missing or change in Drive, at no cost. File checks go further, reading files back to confirm the bytes
+        are intact, which uses your download allowance. By default a check reads up to 200 MB every 6 hours. Change both in Server settings,
+        or turn it off. Files bigger than the limit aren't checked.
+      </p>
+      <p>Anything found shows on the Storage page, and in a banner on the other pages.</p>
     </section>
 
     <section>
