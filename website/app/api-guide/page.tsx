@@ -178,6 +178,12 @@ export default function ApiGuide() {
     <section>
       <h2 id="search">Search</h2>
       <p>Search finds files and folders by name, up to 100 of each. Anything in the trash is left out.</p>
+      <p>
+        The text can use the same filters as Gmail, and they combine. Try <code>type:image</code>, <code>size:&gt;10mb</code>,{" "}
+        <code>after:2026-01-31</code>, <code>older_than:1y</code>, <code>owner:name</code>, <code>in:folder</code>,{" "}
+        <code>is:starred</code>, <code>&quot;exact words&quot;</code> and <code>-word</code>. Add <code>sort=size-desc</code> to choose the
+        order, from <code>name</code>, <code>date</code> or <code>size</code> with <code>-asc</code> or <code>-desc</code>.
+      </p>
       <CodeTabs samples={samples("search")} />
     </section>
 

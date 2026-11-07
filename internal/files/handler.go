@@ -467,7 +467,11 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request, params apigen.S
 	if params.Q != nil {
 		query = *params.Q
 	}
-	results, err := h.service.Search(r.Context(), userID(r), query)
+	sort := ""
+	if params.Sort != nil {
+		sort = *params.Sort
+	}
+	results, err := h.service.Search(r.Context(), userID(r), query, sort)
 	if err != nil {
 		h.fail(w, r, err)
 		return

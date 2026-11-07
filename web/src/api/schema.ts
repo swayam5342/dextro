@@ -681,7 +681,7 @@ export interface paths {
   "/api/v1/search": {
     get: {
       parameters: {
-        query: { q: string };
+        query: { q: string; sort?: string };
         header?: never;
         path?: never;
         cookie?: never;

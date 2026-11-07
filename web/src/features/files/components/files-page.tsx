@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
@@ -66,6 +66,7 @@ import {
   SortMenu,
   type MenuEntry,
 } from "./file-items";
+import { SearchFilters } from "./search-filters";
 import { ShareDialog } from "./share-dialog";
 import { Viewer } from "./viewer";
 
@@ -117,8 +118,9 @@ function Browser({
   const navigate = useNavigate();
   /** A flat list of results has no folder of its own to add to or sync. */
   const flat = Boolean(query || list);
+  const [sort, setSort] = useState<SortId>(() => (list ? "date-desc" : loadSort()));
   const folder = useQuery({ ...folderQuery(folderId), enabled: !flat });
-  const search = useQuery({ ...searchQuery(query ?? ""), enabled: Boolean(query) });
+  const search = useQuery({ ...searchQuery(query ?? "", sort), placeholderData: keepPreviousData, enabled: Boolean(query) });
   const recent = useQuery({ ...recentQuery, enabled: list === "recent" });
   const starred = useQuery({ ...starredQuery, enabled: list === "starred" });
   const listed = list === "recent" ? recent : starred;
@@ -129,7 +131,6 @@ function Browser({
   const { data: links } = useQuery(sharesQuery);
 
   const [view, setView] = useState<View>(loadView);
-  const [sort, setSort] = useState<SortId>(() => (list ? "date-desc" : loadSort()));
   const [selected, setSelected] = useState<Item[]>([]);
   const [action, setAction] = useState<Action | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
@@ -531,6 +532,7 @@ function Browser({
           </div>
         </div>
       )}
+      {query && <SearchFilters query={query} />}
       {!flat && folder.data?.encrypted && (
         <p className="-mt-2.5 mb-[18px] flex items-center gap-1.5 text-[13px] text-muted-foreground">
           <Lock className="size-3.5" />

@@ -178,6 +178,45 @@
     folders.splice(folders.findIndex((f) => f.id === id), 1);
   }
 
+  /** A short version of parseSearch in internal/files/search_query.go. */
+  function parseSearch(raw) {
+    const kinds = { image: "image/", photo: "image/", photos: "image/", video: "video/", audio: "audio/", pdf: "pdf", text: "text/" };
+    const documents = ["pdf", "word", "msword", "text/"];
+    const bytes = (text) => {
+      const match = text.toLowerCase().match(/^(\d+(?:\.\d+)?)(k|kb|m|mb|g|gb)?$/);
+      return match ? Number(match[1]) * { k: 1024, kb: 1024, m: MB, mb: MB, g: GB, gb: GB }[match[2]] || Number(match[1]) : null;
+    };
+    const age = (text) => {
+      const match = text.match(/^(\d+)([dwmy])$/);
+      return match ? Date.now() - Number(match[1]) * { d: 1, w: 7, m: 30, y: 365 }[match[2]] * 86400000 : null;
+    };
+    const words = [];
+    const without = [];
+    const tests = [];
+    for (const piece of raw.match(/(?:[^\s"]+|"[^"]*")+/g) ?? []) {
+      const token = piece.replaceAll('"', "");
+      const at = token.indexOf(":");
+      const [key, value] = at > 0 ? [token.slice(0, at).toLowerCase(), token.slice(at + 1)] : ["", ""];
+      if (key === "type" && value === "document") tests.push((f) => documents.some((kind) => f.content_type.includes(kind)));
+      else if (key === "type" && kinds[value]) tests.push((f) => f.content_type.includes(kinds[value]));
+      else if ((key === "larger" || key === "size") && bytes(value.replace(/^>=?/, "")) !== null && !value.startsWith("<")) tests.push((f) => f.size >= bytes(value.replace(/^>=?/, "")));
+      else if ((key === "smaller" || key === "size") && bytes(value.replace(/^<=?/, "")) !== null) tests.push((f) => f.size <= bytes(value.replace(/^<=?/, "")));
+      else if (key === "newer_than" && age(value) !== null) tests.push((f) => Date.parse(f.created_at) >= age(value));
+      else if (key === "older_than" && age(value) !== null) tests.push((f) => Date.parse(f.created_at) < age(value));
+      else if (key === "after" && !Number.isNaN(Date.parse(value))) tests.push((f) => Date.parse(f.created_at) >= Date.parse(value));
+      else if (key === "before" && !Number.isNaN(Date.parse(value))) tests.push((f) => Date.parse(f.created_at) < Date.parse(value));
+      else if ((key === "account" || key === "owner") && value) tests.push((f) => accounts.find((a) => a.id === f.connection_id).summary.toLowerCase().includes(value.toLowerCase()));
+      else if (key === "is" && value === "starred") tests.push((f) => f.starred);
+      else if (key === "is" && value === "encrypted") tests.push((f) => f.encrypted);
+      else if (key === "is" && value === "shared") tests.push((f) => state.shares?.some?.((s) => s.file_id === f.id));
+      else if (key === "in" && value) tests.push((f) => folders.some((d) => d.id === f.folder_id && d.name.toLowerCase().includes(value.toLowerCase())));
+      else if (piece.length > 1 && piece.startsWith("-")) without.push(piece.slice(1).toLowerCase());
+      else words.push(token.toLowerCase());
+    }
+    const named = (name) => words.every((w) => name.includes(w)) && !without.some((w) => name.includes(w));
+    return { named, tests };
+  }
+
   /** The made-up files with the same content. */
   const COPIES = new Set(["rennell-survey", "rennell-copy"]);
   function duplicates() {
@@ -304,9 +343,12 @@
       return done();
     }],
     ["GET", /^\/api\/v1\/search$/, (_, __, query) => {
-      const q = (query.get("q") ?? "").toLowerCase();
-      const hit = (item) => !item.trashed_at && item.name.toLowerCase().includes(q);
-      return ok({ folders: folders.filter(hit), files: files.filter(hit) });
+      const { named, tests } = parseSearch(query.get("q") ?? "");
+      const hit = (item) => !item.trashed_at && named(item.name.toLowerCase());
+      return ok({
+        folders: tests.length > 0 ? [] : folders.filter(hit),
+        files: files.filter((f) => hit(f) && tests.every((test) => test(f))),
+      });
     }],
     ["GET", /^\/api\/v1\/zip$/, () => refused("Zip downloads are off in this demo.")],
 

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/swayam5342/tributary/internal/db"
 	"github.com/swayam5342/tributary/internal/db/dbtest"
 	"github.com/swayam5342/tributary/internal/httpx"
@@ -70,7 +72,7 @@ func TestSearchAndPool(t *testing.T) {
 
 func (f *fixture) search(t *testing.T, a account, query string) Listing {
 	t.Helper()
-	results, err := f.service.Search(f.ctx, a.id, query)
+	results, err := f.service.Search(f.ctx, a.id, query, "")
 	if err != nil {
 		t.Fatalf("Search(%q): %v", query, err)
 	}
@@ -166,7 +168,7 @@ func testSearchEscapesWildcards(t *testing.T, s *server) {
 func testSearchValidates(t *testing.T, s *server) {
 	a := s.account(t)
 	for _, query := range []string{"", "   ", strings.Repeat("x", 256)} {
-		if _, err := s.service.Search(s.ctx, a.id, query); !errors.Is(err, ErrInvalidSearch) {
+		if _, err := s.service.Search(s.ctx, a.id, query, ""); !errors.Is(err, ErrInvalidSearch) {
 			t.Errorf("Search(%q): error = %v, want ErrInvalidSearch", query, err)
 		}
 	}
@@ -334,4 +336,139 @@ func testThumbnailIsolation(t *testing.T, s *server) {
 	file := owner.upload("photo.png", "image/png", "data")
 	s.providers.forConnection(owner.a.connection).SetThumbnail("image/jpeg", []byte("small image"))
 	wantStatus(t, other.json(http.MethodGet, "/api/v1/files/"+file.Id.String()+"/thumbnail", nil), http.StatusNotFound)
+}
+
+func TestSearchFilters(t *testing.T) {
+	pool := dbtest.Start(t)
+	ctx := context.Background()
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	f := newUploadFixture(t, pool)
+	user := f.user(t)
+	stranger := f.user(t)
+	home := f.link(t, user, "home@gmail.com", 1<<30)
+	work := f.link(t, user, "work@gmail.com", 1<<30)
+	f.link(t, stranger, "theirs@gmail.com", 1<<30)
+
+	put := func(owner uuid.UUID, connection *uuid.UUID, folder *uuid.UUID, name, contentType string, size int, age time.Duration) File {
+		t.Helper()
+		file, err := f.service.Upload(ctx, owner, UploadInput{
+			ConnectionID: connection, FolderID: folder, Name: name, ContentType: contentType,
+			Size: int64(size), Body: strings.NewReader(strings.Repeat("x", size)),
+		})
+		if err != nil {
+			t.Fatalf("Upload: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE files SET created_at = $2 WHERE id = $1`, file.ID, time.Now().Add(-age)); err != nil {
+			t.Fatalf("age: %v", err)
+		}
+		return file
+	}
+	const day = 24 * time.Hour
+	trip, err := f.service.CreateFolder(ctx, user, nil, "Summer Trip")
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	beach, err := f.service.CreateFolder(ctx, user, &trip.ID, "Beach")
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	vault := f.vault(t, user, "Vault")
+	photo := put(user, &home, &beach.ID, "sunset.jpg", "image/jpeg", 3000, 2*day)
+	put(user, &work, nil, "report final.pdf", "application/pdf", 2000, 40*day)
+	put(user, &work, nil, "report draft.pdf", "application/pdf", 100, 400*day)
+	clip := put(user, &home, nil, "clip.mp4", "video/mp4", 5000, 10*day)
+	put(user, &home, nil, "trip plan.txt", "text/plain", 10, 1*day)
+	put(user, &home, &vault.ID, "locked.txt", "text/plain", 20, 1*day)
+	put(stranger, nil, nil, "report stranger.pdf", "application/pdf", 2000, day)
+	if err := f.service.SetStarred(ctx, user, photo.ID, true); err != nil {
+		t.Fatalf("SetStarred: %v", err)
+	}
+	f.allowLinks(t)
+	if _, err := f.service.ShareFile(ctx, user, clip.ID, ShareInput{Role: "viewer"}, ""); err != nil {
+		t.Fatalf("ShareFile: %v", err)
+	}
+
+	names := func(query, sort string) string {
+		t.Helper()
+		found, err := f.service.Search(ctx, user, query, sort)
+		if err != nil {
+			t.Fatalf("Search(%q): %v", query, err)
+		}
+		return fileNames(found.Files)
+	}
+	tests := []struct {
+		query string
+		want  string
+	}{
+		{"report", "report draft.pdf,report final.pdf"},
+		{"final report", "report final.pdf"},
+		{`"report final"`, "report final.pdf"},
+		{`"final report"`, ""},
+		{"report -draft", "report final.pdf"},
+		{"type:image", "sunset.jpg"},
+		{"type:video", "clip.mp4"},
+		{"type:pdf", "report draft.pdf,report final.pdf"},
+		{"type:document report", "report draft.pdf,report final.pdf"},
+		{"type:image type:video", "clip.mp4,sunset.jpg"},
+		{"larger:2500", "clip.mp4,sunset.jpg"},
+		{"size:>2500", "clip.mp4,sunset.jpg"},
+		{"size:<50", "locked.txt,trip plan.txt"},
+		{"smaller:50 type:text", "locked.txt,trip plan.txt"},
+		{"newer_than:5d type:image", "sunset.jpg"},
+		{"older_than:1y", "report draft.pdf"},
+		{"older_than:30d type:pdf", "report draft.pdf,report final.pdf"},
+		{"before:2020-01-01", ""},
+		{"after:2020-01-01 type:video", "clip.mp4"},
+		{"account:work", "report draft.pdf,report final.pdf"},
+		{"owner:WORK@gmail", "report draft.pdf,report final.pdf"},
+		{"owner:me type:video", "clip.mp4"},
+		{"account:nobody", ""},
+		{"in:summer", "sunset.jpg"},
+		{`in:"Summer Trip"`, "sunset.jpg"},
+		{"in:beach", "sunset.jpg"},
+		{"is:starred", "sunset.jpg"},
+		{"is:encrypted", "locked.txt"},
+		{"is:shared", "clip.mp4"},
+		{"report type:pdf larger:1000 owner:work -draft", "report final.pdf"},
+		{"100%", ""},
+	}
+	for _, tt := range tests {
+		if got := names(tt.query, ""); got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.query, got, tt.want)
+		}
+	}
+
+	// A folder can't have a type, and a word still finds one.
+	withWords, err := f.service.Search(ctx, user, "trip", "")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(withWords.Folders) != 1 || len(withWords.Files) != 1 {
+		t.Errorf("trip = %+v", withWords)
+	}
+	withType, err := f.service.Search(ctx, user, "trip type:text", "")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(withType.Folders) != 0 || len(withType.Files) != 1 {
+		t.Errorf("trip type:text = %+v", withType)
+	}
+
+	sorts := map[string]string{
+		"":          "report draft.pdf,report final.pdf",
+		"name-asc":  "report draft.pdf,report final.pdf",
+		"name-desc": "report final.pdf,report draft.pdf",
+		"size-desc": "report final.pdf,report draft.pdf",
+		"size-asc":  "report draft.pdf,report final.pdf",
+		"date-desc": "report final.pdf,report draft.pdf",
+		"date-asc":  "report draft.pdf,report final.pdf",
+		"; DROP":    "report draft.pdf,report final.pdf",
+	}
+	for sort, want := range sorts {
+		if got := names("type:pdf", sort); got != want {
+			t.Errorf("sort %q: got %q, want %q", sort, got, want)
+		}
+	}
 }

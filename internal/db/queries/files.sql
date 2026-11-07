@@ -121,21 +121,50 @@ ORDER BY trashed_at DESC, id;
 -- name: LockFolderTreeForOwner :exec
 SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(user_id)::uuid::text, 1));
 
--- Live files whose name matches. A file inside a trashed folder counts as trashed.
+-- Live files that match a search. A file inside a trashed folder counts as trashed. Every
+-- word has to be in the name, as plain text rather than a pattern. Sorted here, because the
+-- limit would otherwise cut off what a sort is looking for.
 -- name: SearchFilesForOwner :many
 WITH RECURSIVE hidden AS (
     SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+), inside AS (
+    SELECT f.id
+    FROM folders f
+    WHERE f.user_id = $1 AND strpos(lower(f.name), lower(sqlc.narg('in_folder')::text)) > 0
+    UNION
+    SELECT c.id FROM folders c JOIN inside ON c.parent_id = inside.id WHERE c.user_id = $1
 )
 SELECT files.*
 FROM files
 WHERE files.user_id = $1
   AND files.trashed_at IS NULL
   AND (files.folder_id IS NULL OR files.folder_id NOT IN (SELECT id FROM hidden))
-  AND files.name ILIKE sqlc.arg('pattern')::text ESCAPE '\'
-ORDER BY lower(files.name), files.id
-LIMIT 100;
+  AND NOT EXISTS (SELECT 1 FROM unnest(sqlc.arg('words')::text[]) AS word WHERE strpos(lower(files.name), lower(word)) = 0)
+  AND NOT EXISTS (SELECT 1 FROM unnest(sqlc.arg('without')::text[]) AS word WHERE strpos(lower(files.name), lower(word)) > 0)
+  AND (cardinality(sqlc.arg('types')::text[]) = 0
+       OR EXISTS (SELECT 1 FROM unnest(sqlc.arg('types')::text[]) AS kind WHERE files.content_type LIKE kind))
+  AND (sqlc.narg('min_size')::bigint IS NULL OR files.size >= sqlc.narg('min_size')::bigint)
+  AND (sqlc.narg('max_size')::bigint IS NULL OR files.size <= sqlc.narg('max_size')::bigint)
+  AND (sqlc.narg('after')::timestamptz IS NULL OR files.created_at >= sqlc.narg('after')::timestamptz)
+  AND (sqlc.narg('before')::timestamptz IS NULL OR files.created_at < sqlc.narg('before')::timestamptz)
+  AND (sqlc.narg('account')::text IS NULL OR files.connection_id IN (
+      SELECT c.id FROM storage_connections c
+      WHERE c.user_id = $1 AND strpos(lower(c.name), lower(sqlc.narg('account')::text)) > 0
+  ))
+  AND (sqlc.narg('in_folder')::text IS NULL OR files.folder_id IN (SELECT id FROM inside))
+  AND (NOT sqlc.arg('starred')::boolean OR files.starred_at IS NOT NULL)
+  AND (NOT sqlc.arg('encrypted')::boolean OR files.encrypted)
+  AND (NOT sqlc.arg('shared')::boolean OR EXISTS (SELECT 1 FROM file_shares s WHERE s.file_id = files.id))
+ORDER BY
+  CASE WHEN sqlc.arg('sort')::text = 'name-desc' THEN lower(files.name) END DESC,
+  CASE WHEN sqlc.arg('sort')::text = 'date-desc' THEN files.created_at END DESC,
+  CASE WHEN sqlc.arg('sort')::text = 'date-asc' THEN files.created_at END ASC,
+  CASE WHEN sqlc.arg('sort')::text = 'size-desc' THEN files.size END DESC,
+  CASE WHEN sqlc.arg('sort')::text = 'size-asc' THEN files.size END ASC,
+  lower(files.name), files.id
+LIMIT 500;
 
 -- Live folders whose name matches.
 -- name: SearchFoldersForOwner :many
@@ -148,7 +177,8 @@ SELECT folders.*
 FROM folders
 WHERE folders.user_id = $1
   AND folders.id NOT IN (SELECT id FROM hidden)
-  AND folders.name ILIKE sqlc.arg('pattern')::text ESCAPE '\'
+  AND NOT EXISTS (SELECT 1 FROM unnest(sqlc.arg('words')::text[]) AS word WHERE strpos(lower(folders.name), lower(word)) = 0)
+  AND NOT EXISTS (SELECT 1 FROM unnest(sqlc.arg('without')::text[]) AS word WHERE strpos(lower(folders.name), lower(word)) > 0)
 ORDER BY lower(folders.name), folders.id
 LIMIT 100;
 

@@ -887,6 +887,9 @@ type DownloadFileParamsDisposition string
 type SearchParams struct {
 	// Q Required. Not marked so, because generated checks would run before access checks.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort name-asc, name-desc, date-desc, date-asc, size-desc or size-asc. Anything else means name-asc.
+	Sort *string `form:"sort,omitempty" json:"sort,omitempty"`
 }
 
 // GoogleDriveCallbackParams defines parameters for GoogleDriveCallback.
@@ -1113,7 +1116,7 @@ type ServerInterface interface {
 	// ListRecentFiles List the newest files, wherever they are
 	// (GET /api/v1/recent)
 	ListRecentFiles(w http.ResponseWriter, r *http.Request)
-	// Search Find files and folders by name
+	// Search Find files and folders
 	// (GET /api/v1/search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 	// ListShares See every Google link on your files
@@ -1497,7 +1500,7 @@ func (_ Unimplemented) ListRecentFiles(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Search Find files and folders by name
+// Search Find files and folders
 // (GET /api/v1/search)
 func (_ Unimplemented) Search(w http.ResponseWriter, r *http.Request, params SearchParams) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2808,6 +2811,19 @@ func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
 		}
 		return
 	}

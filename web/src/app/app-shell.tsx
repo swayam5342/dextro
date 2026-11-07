@@ -13,6 +13,7 @@ import {
   ScrollText,
   Search,
   Settings,
+  SlidersHorizontal,
   Star,
   Trash2,
   type LucideIcon,
@@ -140,6 +141,17 @@ function Sidebar() {
   );
 }
 
+/** A way into filters without typing, because a search has to start from something. */
+const QUICK_SEARCHES = [
+  { label: "Photos", query: "type:image" },
+  { label: "Videos", query: "type:video" },
+  { label: "Documents", query: "type:document" },
+  { label: "Over 100 MB", query: "larger:100mb" },
+  { label: "Added in the last 7 days", query: "newer_than:7d" },
+  { label: "Starred", query: "is:starred" },
+  { label: "Encrypted", query: "is:encrypted" },
+];
+
 function SearchBox() {
   const navigate = useNavigate();
   const { q } = useSearch({ strict: false });
@@ -169,14 +181,14 @@ function SearchBox() {
   }
 
   return (
-    <form role="search" onSubmit={handleSubmit} className="min-w-0 flex-1 md:max-w-[560px]">
-      <label className="flex h-[38px] items-center gap-2.5 rounded-full bg-card px-3.5 text-muted-foreground transition-colors focus-within:bg-raised">
+    <form role="search" onSubmit={handleSubmit} className="relative min-w-0 flex-1 md:max-w-[560px]">
+      <label className="flex h-[38px] items-center gap-2.5 rounded-full bg-card pr-10 pl-3.5 text-muted-foreground transition-colors focus-within:bg-raised">
         <Search className="size-[18px] shrink-0" />
         <input
           ref={box}
           type="search"
           aria-label="Search your files"
-          placeholder="Search your files"
+          placeholder="Search, or try type:image size:>10mb"
           value={text}
           onChange={(event) => {
             setText(event.target.value);
@@ -187,6 +199,20 @@ function SearchBox() {
           className="w-full min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-faint"
         />
       </label>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Search filters" className="absolute top-1/2 right-1 size-8 -translate-y-1/2 rounded-full">
+            <SlidersHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {QUICK_SEARCHES.map(({ label, query }) => (
+            <DropdownMenuItem key={query} onSelect={() => search(query)}>
+              {label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </form>
   );
 }

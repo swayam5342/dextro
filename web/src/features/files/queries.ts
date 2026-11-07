@@ -34,11 +34,11 @@ export function folderQuery(folderId: string | undefined) {
   });
 }
 
-export function searchQuery(query: string) {
+export function searchQuery(query: string, sort: string) {
   return queryOptions({
-    queryKey: [FILES_KEY, "search", query],
+    queryKey: [FILES_KEY, "search", query, sort],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/v1/search", { params: { query: { q: query } } });
+      const { data, error } = await api.GET("/api/v1/search", { params: { query: { q: query, sort } } });
       if (!data) {
         throw toApiError(error);
       }

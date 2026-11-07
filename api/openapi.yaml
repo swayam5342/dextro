@@ -770,8 +770,14 @@ paths:
   /api/v1/search:
     get:
       operationId: search
-      summary: Find files and folders by name
-      description: Trashed items, and anything inside a trashed folder, aren't included.
+      summary: Find files and folders
+      description: >
+        Trashed items, and anything inside a trashed folder, aren't included. The text can
+        use operators, like Gmail: `type:image`, `size:>10mb`, `larger:`, `smaller:`,
+        `after:2026-01-31`, `before:`, `newer_than:7d`, `older_than:1y`, `account:` or `owner:`,
+        `in:folder`, `is:starred`, `is:encrypted`, `is:shared`, `"exact words"` and `-word`.
+        Anything else is looked for in names. Only files can match an operator, so a search
+        with one has no folders.
       tags: [files]
       parameters:
         - name: q
@@ -779,9 +785,14 @@ paths:
           description: Required. Not marked so, because generated checks would run before access checks.
           schema:
             type: string
+        - name: sort
+          in: query
+          description: name-asc, name-desc, date-desc, date-asc, size-desc or size-asc. Anything else means name-asc.
+          schema:
+            type: string
       responses:
         "200":
-          description: What matched, up to 100 of each.
+          description: What matched, up to 500 files and 100 folders.
           content:
             application/json:
               schema:

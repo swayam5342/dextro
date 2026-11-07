@@ -18,6 +18,7 @@
 - File checks: Tributary reads files back in the background and reports any that are damaged, changed or gone, on the Storage page and in a banner. It downloads about 1 GB an hour, and the admin can turn it off in Server settings.
 - A Duplicates page that finds files with the same content by their hash.
 - Text and code files now open in the viewer.
+- Search takes Gmail-style filters, such as `type:image`, `size:>10mb`, `after:2026-01-31`, `owner:name`, `in:folder`, `is:starred` and `-word`, with menus for the common ones, and results sort properly however many there are.
 
 ## 0.1.2 (7 November 2026)
 

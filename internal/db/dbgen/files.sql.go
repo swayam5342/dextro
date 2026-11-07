@@ -916,25 +916,81 @@ WITH RECURSIVE hidden AS (
     SELECT f.id FROM folders f WHERE f.user_id = $1 AND f.trashed_at IS NOT NULL
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
+), inside AS (
+    SELECT f.id
+    FROM folders f
+    WHERE f.user_id = $1 AND strpos(lower(f.name), lower($10::text)) > 0
+    UNION
+    SELECT c.id FROM folders c JOIN inside ON c.parent_id = inside.id WHERE c.user_id = $1
 )
 SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at, files.checksum, files.content_hash, files.checked_at, files.encrypted, files.key_id, files.key_ciphertext
 FROM files
 WHERE files.user_id = $1
   AND files.trashed_at IS NULL
   AND (files.folder_id IS NULL OR files.folder_id NOT IN (SELECT id FROM hidden))
-  AND files.name ILIKE $2::text ESCAPE '\'
-ORDER BY lower(files.name), files.id
-LIMIT 100
+  AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) AS word WHERE strpos(lower(files.name), lower(word)) = 0)
+  AND NOT EXISTS (SELECT 1 FROM unnest($3::text[]) AS word WHERE strpos(lower(files.name), lower(word)) > 0)
+  AND (cardinality($4::text[]) = 0
+       OR EXISTS (SELECT 1 FROM unnest($4::text[]) AS kind WHERE files.content_type LIKE kind))
+  AND ($5::bigint IS NULL OR files.size >= $5::bigint)
+  AND ($6::bigint IS NULL OR files.size <= $6::bigint)
+  AND ($7::timestamptz IS NULL OR files.created_at >= $7::timestamptz)
+  AND ($8::timestamptz IS NULL OR files.created_at < $8::timestamptz)
+  AND ($9::text IS NULL OR files.connection_id IN (
+      SELECT c.id FROM storage_connections c
+      WHERE c.user_id = $1 AND strpos(lower(c.name), lower($9::text)) > 0
+  ))
+  AND ($10::text IS NULL OR files.folder_id IN (SELECT id FROM inside))
+  AND (NOT $11::boolean OR files.starred_at IS NOT NULL)
+  AND (NOT $12::boolean OR files.encrypted)
+  AND (NOT $13::boolean OR EXISTS (SELECT 1 FROM file_shares s WHERE s.file_id = files.id))
+ORDER BY
+  CASE WHEN $14::text = 'name-desc' THEN lower(files.name) END DESC,
+  CASE WHEN $14::text = 'date-desc' THEN files.created_at END DESC,
+  CASE WHEN $14::text = 'date-asc' THEN files.created_at END ASC,
+  CASE WHEN $14::text = 'size-desc' THEN files.size END DESC,
+  CASE WHEN $14::text = 'size-asc' THEN files.size END ASC,
+  lower(files.name), files.id
+LIMIT 500
 `
 
 type SearchFilesForOwnerParams struct {
-	UserID  uuid.UUID
-	Pattern string
+	UserID    uuid.UUID
+	Words     []string
+	Without   []string
+	Types     []string
+	MinSize   pgtype.Int8
+	MaxSize   pgtype.Int8
+	After     *time.Time
+	Before    *time.Time
+	Account   pgtype.Text
+	InFolder  pgtype.Text
+	Starred   bool
+	Encrypted bool
+	Shared    bool
+	Sort      string
 }
 
-// Live files whose name matches. A file inside a trashed folder counts as trashed.
+// Live files that match a search. A file inside a trashed folder counts as trashed. Every
+// word has to be in the name, as plain text rather than a pattern. Sorted here, because the
+// limit would otherwise cut off what a sort is looking for.
 func (q *Queries) SearchFilesForOwner(ctx context.Context, arg SearchFilesForOwnerParams) ([]File, error) {
-	rows, err := q.db.Query(ctx, searchFilesForOwner, arg.UserID, arg.Pattern)
+	rows, err := q.db.Query(ctx, searchFilesForOwner,
+		arg.UserID,
+		arg.Words,
+		arg.Without,
+		arg.Types,
+		arg.MinSize,
+		arg.MaxSize,
+		arg.After,
+		arg.Before,
+		arg.Account,
+		arg.InFolder,
+		arg.Starred,
+		arg.Encrypted,
+		arg.Shared,
+		arg.Sort,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -983,19 +1039,21 @@ SELECT folders.id, folders.user_id, folders.parent_id, folders.name, folders.tra
 FROM folders
 WHERE folders.user_id = $1
   AND folders.id NOT IN (SELECT id FROM hidden)
-  AND folders.name ILIKE $2::text ESCAPE '\'
+  AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) AS word WHERE strpos(lower(folders.name), lower(word)) = 0)
+  AND NOT EXISTS (SELECT 1 FROM unnest($3::text[]) AS word WHERE strpos(lower(folders.name), lower(word)) > 0)
 ORDER BY lower(folders.name), folders.id
 LIMIT 100
 `
 
 type SearchFoldersForOwnerParams struct {
 	UserID  uuid.UUID
-	Pattern string
+	Words   []string
+	Without []string
 }
 
 // Live folders whose name matches.
 func (q *Queries) SearchFoldersForOwner(ctx context.Context, arg SearchFoldersForOwnerParams) ([]Folder, error) {
-	rows, err := q.db.Query(ctx, searchFoldersForOwner, arg.UserID, arg.Pattern)
+	rows, err := q.db.Query(ctx, searchFoldersForOwner, arg.UserID, arg.Words, arg.Without)
 	if err != nil {
 		return nil, err
 	}
