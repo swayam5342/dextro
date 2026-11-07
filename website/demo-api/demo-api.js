@@ -472,7 +472,9 @@
    */
   addEventListener("DOMContentLoaded", () => {
     const style = document.createElement("style");
-    style.textContent = "body{box-sizing:border-box;padding-top:32px}#root{height:100%}";
+    // Opening a menu or dialog locks scrolling by zeroing the body's padding, which would slide
+    // the page up under the banner. The real app has no banner, so it's only needed here.
+    style.textContent = "body{box-sizing:border-box;padding-top:32px}html body[data-scroll-locked]{padding-top:32px!important}#root{height:100%}";
     const bar = document.createElement("div");
     bar.setAttribute("role", "note");
     bar.style.cssText = "position:fixed;inset:0 0 auto 0;height:32px;z-index:40;display:flex;gap:12px;align-items:center;justify-content:center;white-space:nowrap;background:#0d3a55;color:#fff;font:500 13px 'Instrument Sans',system-ui,sans-serif";
