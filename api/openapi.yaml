@@ -655,6 +655,55 @@ paths:
                 $ref: "#/components/schemas/FileList"
         default:
           $ref: "#/components/responses/Error"
+  /api/v1/duplicates:
+    get:
+      operationId: listDuplicates
+      summary: List files with the same content
+      description: >
+        Live files grouped by hash, the biggest first. Anything in the trash is left out,
+        and files with no hash yet can't match.
+      tags: [files]
+      responses:
+        "200":
+          description: The groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateList"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/file-checks:
+    get:
+      operationId: getFileChecks
+      summary: Say how the background file checks are going, and what they found
+      tags: [files]
+      responses:
+        "200":
+          description: The checks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileChecks"
+        default:
+          $ref: "#/components/responses/Error"
+  /api/v1/file-checks/problems/{id}:
+    delete:
+      operationId: dismissFileProblem
+      summary: Dismiss a problem
+      description: For a file that changed, this accepts it as it is now.
+      tags: [files]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Dismissed.
+        default:
+          $ref: "#/components/responses/Error"
   /api/v1/starred:
     get:
       operationId: listStarredFiles
@@ -2013,6 +2062,81 @@ components:
           type: string
           nullable: true
           description: Pass this as `before` for the next page. Null on the last page.
+    DuplicateList:
+      type: object
+      required: [groups, reclaimable_bytes]
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/DuplicateGroup"
+        reclaimable_bytes:
+          type: integer
+          format: int64
+          description: What keeping one file of each group would free.
+    DuplicateGroup:
+      type: object
+      required: [hash, size, files]
+      properties:
+        hash:
+          type: string
+        size:
+          type: integer
+          format: int64
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/DuplicateFile"
+    DuplicateFile:
+      type: object
+      required: [file, location]
+      properties:
+        file:
+          $ref: "#/components/schemas/File"
+        location:
+          type: string
+          description: The folders it's in, separated by slashes. Empty at the top level.
+    FileChecks:
+      type: object
+      required: [checkable_files, checked_files, problems]
+      properties:
+        checkable_files:
+          type: integer
+          format: int64
+        checked_files:
+          type: integer
+          format: int64
+          description: How many have been read back at least once.
+        problems:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileProblem"
+    FileProblem:
+      type: object
+      required: [id, file_id, connection_id, name, size, kind, found_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null for a missing file, because its record is gone.
+        connection_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          enum: [missing, changed, damaged]
+        found_at:
+          type: string
+          format: date-time
     NewUpload:
       type: object
       required: [name, size]

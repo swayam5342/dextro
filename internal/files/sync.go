@@ -141,6 +141,9 @@ func (s *Service) SyncConnection(ctx context.Context, userID, connectionID uuid.
 	var result SyncResult
 	err = run.importEverything(ctx, known, &result)
 	if err == nil {
+		err = run.compareChecksums(ctx, known)
+	}
+	if err == nil {
 		err = run.removeGoneFiles(ctx, known, &result)
 	}
 	if err == nil {
@@ -256,8 +259,7 @@ func (r *syncRun) removeGoneFiles(ctx context.Context, known map[string]fileReco
 		if exists {
 			continue
 		}
-		// By its object, because a file that moved during this sync left this one behind.
-		err = r.s.store.DeleteFileForObject(ctx, r.userID, record.ID, r.connectionID, objectID)
+		err = r.s.forgetGoneFile(ctx, r.userID, r.connectionID, objectID, record)
 		if errors.Is(err, ErrFileNotFound) {
 			continue
 		}
@@ -267,6 +269,21 @@ func (r *syncRun) removeGoneFiles(ctx context.Context, known map[string]fileReco
 		result.Removed++
 	}
 	return nil
+}
+
+// forgetGoneFile removes the record of a file that's gone, and says so, because the
+// record was the only sign it ever existed. Something in the trash was on its way out.
+func (s *Service) forgetGoneFile(ctx context.Context, userID, connectionID uuid.UUID, objectID string, record fileRecord) error {
+	return s.store.InTx(ctx, func(tx *Store) error {
+		// By its object, because a file that moved during this sync left this one behind.
+		if err := tx.DeleteFileForObject(ctx, userID, record.ID, connectionID, objectID); err != nil {
+			return err
+		}
+		if record.TrashedAt != nil {
+			return nil
+		}
+		return tx.RecordFileProblem(ctx, userID, FileProblem{ConnectionID: connectionID, Name: record.Name, Size: record.Size, Kind: ProblemMissing}, "")
+	})
 }
 
 // removeGoneFolders forgets folders deleted in Drive. A folder leaves Tributary once it's
@@ -400,7 +417,9 @@ func (s *Service) importObject(ctx context.Context, userID, connectionID uuid.UU
 			ContentType:  cleanContentType(object.ContentType),
 			External:     external,
 		},
-		objectID: object.ID,
+		objectID:    object.ID,
+		checksum:    object.Checksum,
+		contentHash: object.Checksum,
 	})
 }
 

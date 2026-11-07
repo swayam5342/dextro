@@ -54,6 +54,10 @@ func (f *fakeFiles) ExpireShares(context.Context) (files.ShareRun, error) {
 	return files.ShareRun{}, nil
 }
 
+func (f *fakeFiles) CheckFiles(context.Context) (files.CheckRun, error) {
+	return files.CheckRun{}, nil
+}
+
 func (f *fakeFiles) RunTransfers(context.Context) (files.TransferRun, error) {
 	f.transfers.Add(1)
 	return files.TransferRun{}, nil

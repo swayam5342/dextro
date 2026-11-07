@@ -444,7 +444,7 @@ func (h *Handler) noContent(w http.ResponseWriter, r *http.Request, err error) {
 // logs only, because the reason can name internal addresses.
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, ErrFileNotFound), errors.Is(err, ErrFolderNotFound), errors.Is(err, ErrUploadNotFound):
+	case errors.Is(err, ErrFileNotFound), errors.Is(err, ErrFolderNotFound), errors.Is(err, ErrUploadNotFound), errors.Is(err, ErrProblemNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, httpx.CodeNotFound, "Not found.")
 	case errors.Is(err, storage.ErrConnectionNotFound):
 		httpx.WriteError(w, r, http.StatusNotFound, codeConnectionNotFound, "That storage connection doesn't exist.")

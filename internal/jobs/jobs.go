@@ -27,6 +27,7 @@ const (
 	KindFileSync       = "file_sync"
 	KindFileTransfers  = "file_transfers"
 	KindShareExpiry    = "share_expiry"
+	KindFileCheck      = "file_check"
 )
 
 const (
@@ -48,6 +49,10 @@ const (
 	fileTransfersEvery = 30 * time.Second
 	// One file can take hours. River won't rescue a job inside this time.
 	fileTransfersTimeout = 12 * time.Hour
+	// Hourly, and each run reads a limited amount, so this stays in the background. It
+	// downloads, so it can take a while on a slow connection.
+	fileCheckEvery   = time.Hour
+	fileCheckTimeout = time.Hour
 	// Its own queue, with one worker, so moves run one at a time and a long copy doesn't
 	// hold up the other jobs. Runs aren't kept unique, because a crashed one would then
 	// block the next until river rescued it. Runs that pile up behind a long one find
@@ -75,6 +80,7 @@ type Files interface {
 	SyncAll(ctx context.Context) (files.SyncResult, error)
 	RunTransfers(ctx context.Context) (files.TransferRun, error)
 	ExpireShares(ctx context.Context) (files.ShareRun, error)
+	CheckFiles(ctx context.Context) (files.CheckRun, error)
 }
 
 // Runs remembers when each job last finished.
@@ -121,6 +127,10 @@ func (fileTransfersArgs) InsertOpts() river.InsertOpts {
 type shareExpiryArgs struct{}
 
 func (shareExpiryArgs) Kind() string { return KindShareExpiry }
+
+type fileCheckArgs struct{}
+
+func (fileCheckArgs) Kind() string { return KindFileCheck }
 
 type quotaSyncWorker struct {
 	river.WorkerDefaults[quotaSyncArgs]
@@ -219,6 +229,22 @@ func (w *shareExpiryWorker) Work(ctx context.Context, _ *river.Job[shareExpiryAr
 	return finish(ctx, w.deps, KindShareExpiry, err)
 }
 
+type fileCheckWorker struct {
+	river.WorkerDefaults[fileCheckArgs]
+	deps Deps
+}
+
+func (w *fileCheckWorker) Timeout(*river.Job[fileCheckArgs]) time.Duration {
+	return fileCheckTimeout
+}
+
+func (w *fileCheckWorker) Work(ctx context.Context, _ *river.Job[fileCheckArgs]) error {
+	run, err := w.deps.Files.CheckFiles(ctx)
+	w.deps.Logger.InfoContext(ctx, "file check ran", "checked", run.Checked, "damaged", run.Damaged, "failed", len(run.Failures))
+	logFailures(ctx, w.deps, "file couldn't be checked", run.Failures)
+	return finish(ctx, w.deps, KindFileCheck, err)
+}
+
 func logFailures(ctx context.Context, d Deps, message string, failures []error) {
 	for _, failure := range failures {
 		d.Logger.WarnContext(ctx, message, "error", failure)
@@ -271,6 +297,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 	river.AddWorker(workers, &fileSyncWorker{deps: d})
 	river.AddWorker(workers, &fileTransfersWorker{deps: d})
 	river.AddWorker(workers, &shareExpiryWorker{deps: d})
+	river.AddWorker(workers, &fileCheckWorker{deps: d})
 	client, err := river.NewClient(driver, &river.Config{
 		Logger: d.Logger,
 		Queues: map[string]river.QueueConfig{
@@ -285,6 +312,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 			every(fileSyncEvery, fileSyncArgs{}),
 			every(shareExpiryEvery, shareExpiryArgs{}),
 			every(fileTransfersEvery, fileTransfersArgs{}),
+			every(fileCheckEvery, fileCheckArgs{}),
 		},
 	})
 	if err != nil {
@@ -299,7 +327,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 // RunNow starts a job straight away, alongside its schedule. A job that's already running
 // runs twice, which every job here can take.
 func (r *Runner) RunNow(ctx context.Context, name string) error {
-	for _, args := range []river.JobArgs{quotaSyncArgs{}, sessionCleanupArgs{}, uploadCleanupArgs{}, fileSyncArgs{}, fileTransfersArgs{}, shareExpiryArgs{}} {
+	for _, args := range []river.JobArgs{quotaSyncArgs{}, sessionCleanupArgs{}, uploadCleanupArgs{}, fileSyncArgs{}, fileTransfersArgs{}, shareExpiryArgs{}, fileCheckArgs{}} {
 		if args.Kind() == name {
 			if _, err := r.client.Insert(ctx, args, &river.InsertOpts{MaxAttempts: maxAttempts}); err != nil {
 				return fmt.Errorf("start job %s: %w", name, err)

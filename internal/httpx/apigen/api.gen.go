@@ -89,6 +89,27 @@ func (e FilePreview) Valid() bool {
 	}
 }
 
+// Defines values for FileProblemKind.
+const (
+	Changed FileProblemKind = "changed"
+	Damaged FileProblemKind = "damaged"
+	Missing FileProblemKind = "missing"
+)
+
+// Valid indicates whether the value is a known member of the FileProblemKind enum.
+func (e FileProblemKind) Valid() bool {
+	switch e {
+	case Changed:
+		return true
+	case Damaged:
+		return true
+	case Missing:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Ok          HealthStatus = "ok"
@@ -342,6 +363,29 @@ type Credentials struct {
 	Password string `json:"password"`
 }
 
+// DuplicateFile defines model for DuplicateFile.
+type DuplicateFile struct {
+	File File `json:"file"`
+
+	// Location The folders it's in, separated by slashes. Empty at the top level.
+	Location string `json:"location"`
+}
+
+// DuplicateGroup defines model for DuplicateGroup.
+type DuplicateGroup struct {
+	Files []DuplicateFile `json:"files"`
+	Hash  string          `json:"hash"`
+	Size  int64           `json:"size"`
+}
+
+// DuplicateList defines model for DuplicateList.
+type DuplicateList struct {
+	Groups []DuplicateGroup `json:"groups"`
+
+	// ReclaimableBytes What keeping one file of each group would free.
+	ReclaimableBytes int64 `json:"reclaimable_bytes"`
+}
+
 // Error Body of every error response.
 type Error struct {
 	Error struct {
@@ -379,10 +423,35 @@ type File struct {
 // FilePreview How the file can be shown inline, if at all.
 type FilePreview string
 
+// FileChecks defines model for FileChecks.
+type FileChecks struct {
+	CheckableFiles int64 `json:"checkable_files"`
+
+	// CheckedFiles How many have been read back at least once.
+	CheckedFiles int64         `json:"checked_files"`
+	Problems     []FileProblem `json:"problems"`
+}
+
 // FileList defines model for FileList.
 type FileList struct {
 	Files []File `json:"files"`
 }
+
+// FileProblem defines model for FileProblem.
+type FileProblem struct {
+	ConnectionId openapi_types.UUID `json:"connection_id"`
+
+	// FileId Null for a missing file, because its record is gone.
+	FileId  *openapi_types.UUID `json:"file_id"`
+	FoundAt time.Time           `json:"found_at"`
+	Id      openapi_types.UUID  `json:"id"`
+	Kind    FileProblemKind     `json:"kind"`
+	Name    string              `json:"name"`
+	Size    int64               `json:"size"`
+}
+
+// FileProblemKind defines model for FileProblem.Kind.
+type FileProblemKind string
 
 // Folder defines model for Folder.
 type Folder struct {
@@ -940,6 +1009,15 @@ type ServerInterface interface {
 	// RevokeSession End one of the signed-in user's sessions
 	// (DELETE /api/v1/auth/sessions/{id})
 	RevokeSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ListDuplicates List files with the same content
+	// (GET /api/v1/duplicates)
+	ListDuplicates(w http.ResponseWriter, r *http.Request)
+	// GetFileChecks Say how the background file checks are going, and what they found
+	// (GET /api/v1/file-checks)
+	GetFileChecks(w http.ResponseWriter, r *http.Request)
+	// DismissFileProblem Dismiss a problem
+	// (DELETE /api/v1/file-checks/problems/{id})
+	DismissFileProblem(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// ListFolder List a folder, or the top level if none is given
 	// (GET /api/v1/files)
 	ListFolder(w http.ResponseWriter, r *http.Request, params ListFolderParams)
@@ -1234,6 +1312,24 @@ func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request) {
 // RevokeSession End one of the signed-in user's sessions
 // (DELETE /api/v1/auth/sessions/{id})
 func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListDuplicates List files with the same content
+// (GET /api/v1/duplicates)
+func (_ Unimplemented) ListDuplicates(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFileChecks Say how the background file checks are going, and what they found
+// (GET /api/v1/file-checks)
+func (_ Unimplemented) GetFileChecks(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DismissFileProblem Dismiss a problem
+// (DELETE /api/v1/file-checks/problems/{id})
+func (_ Unimplemented) DismissFileProblem(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1989,6 +2085,60 @@ func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RevokeSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDuplicates operation middleware
+func (siw *ServerInterfaceWrapper) ListDuplicates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDuplicates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFileChecks operation middleware
+func (siw *ServerInterfaceWrapper) GetFileChecks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFileChecks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissFileProblem operation middleware
+func (siw *ServerInterfaceWrapper) DismissFileProblem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissFileProblem(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3463,6 +3613,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/recent", wrapper.ListRecentFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/duplicates", wrapper.ListDuplicates)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/file-checks", wrapper.GetFileChecks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/file-checks/problems/{id}", wrapper.DismissFileProblem)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/starred", wrapper.ListStarredFiles)

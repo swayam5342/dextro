@@ -1,6 +1,6 @@
 -- name: CreateFile :one
-INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, checksum, content_hash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, sqlc.narg('checksum')::text, sqlc.narg('content_hash')::text)
 RETURNING *;
 
 -- name: GetFileForOwner :one
@@ -189,8 +189,8 @@ FROM files
 WHERE user_id = $1 AND connection_id = $2;
 
 -- name: ImportFile :execrows
-INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external, checksum, content_hash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, sqlc.narg('checksum')::text, sqlc.narg('content_hash')::text)
 ON CONFLICT (connection_id, object_id) DO NOTHING;
 
 -- Only if the file is still where the copy was taken from, so a file deleted or moved

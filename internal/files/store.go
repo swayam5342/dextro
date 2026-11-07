@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/swayam5342/tributary/internal/admin"
 	"github.com/swayam5342/tributary/internal/audit"
@@ -25,6 +26,10 @@ type database interface {
 type fileRecord struct {
 	File
 	objectID string
+	// checksum is what the account says about the object, and contentHash identifies
+	// what's in the file. Either can be empty.
+	checksum    string
+	contentHash string
 }
 
 // Store reads and writes files and folders. Every function takes the owner's ID.
@@ -66,6 +71,8 @@ func (s *Store) CreateFile(ctx context.Context, userID uuid.UUID, r fileRecord) 
 		Name:         r.Name,
 		Size:         r.Size,
 		ContentType:  r.ContentType,
+		Checksum:     optional(r.checksum),
+		ContentHash:  optional(r.contentHash),
 	})
 	if err != nil {
 		return File{}, fmt.Errorf("create file: %w", err)
@@ -309,6 +316,11 @@ func pointer(id uuid.NullUUID) *uuid.UUID {
 	return &id.UUID
 }
 
+// optional is a value the database keeps as NULL when it's empty.
+func optional(value string) pgtype.Text {
+	return pgtype.Text{String: value, Valid: value != ""}
+}
+
 func toRecord(row dbgen.File) fileRecord {
 	return fileRecord{
 		File: File{
@@ -324,7 +336,9 @@ func toRecord(row dbgen.File) fileRecord {
 			CreatedAt:    row.CreatedAt,
 			UpdatedAt:    row.UpdatedAt,
 		},
-		objectID: row.ObjectID,
+		objectID:    row.ObjectID,
+		checksum:    row.Checksum.String,
+		contentHash: row.ContentHash.String,
 	}
 }
 
@@ -373,6 +387,8 @@ func (s *Store) ImportFile(ctx context.Context, userID uuid.UUID, r fileRecord) 
 		Size:         r.Size,
 		ContentType:  r.ContentType,
 		External:     r.External,
+		Checksum:     optional(r.checksum),
+		ContentHash:  optional(r.contentHash),
 	})
 	if err != nil {
 		return false, fmt.Errorf("import file: %w", err)

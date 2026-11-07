@@ -46,6 +46,21 @@ type File struct {
 	UpdatedAt    time.Time
 	External     bool
 	StarredAt    *time.Time
+	Checksum     pgtype.Text
+	ContentHash  pgtype.Text
+	CheckedAt    *time.Time
+}
+
+type FileProblem struct {
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	FileID           uuid.NullUUID
+	ConnectionID     uuid.UUID
+	Name             string
+	Size             int64
+	Kind             string
+	ReportedChecksum pgtype.Text
+	FoundAt          time.Time
 }
 
 type FileShare struct {

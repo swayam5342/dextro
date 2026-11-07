@@ -352,6 +352,27 @@ func (f *Fake) Unlist(id string) {
 	f.unlisted[id] = true
 }
 
+// Damage changes an object's bytes behind the account's back: it still reports the
+// checksum it had.
+func (f *Fake) Damage(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	object := f.objects[id]
+	object.body = append(bytes.Clone(object.body), '!')
+	f.objects[id] = object
+}
+
+// Replace changes an object's bytes the way an edit in Drive would, checksum included.
+func (f *Fake) Replace(id string, body []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	object := f.objects[id]
+	object.body = body
+	object.Size = int64(len(body))
+	object.Checksum = checksum(body)
+	f.objects[id] = object
+}
+
 // Describe implements provider.Provider.
 func (f *Fake) Describe(_ context.Context, id string) (provider.Object, error) {
 	f.mu.Lock()

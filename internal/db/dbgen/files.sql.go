@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createFile = `-- name: CreateFile :one
-INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, checksum, content_hash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::text, $10::text)
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at
 `
 
 type CreateFileParams struct {
@@ -27,6 +28,8 @@ type CreateFileParams struct {
 	Name         string
 	Size         int64
 	ContentType  string
+	Checksum     pgtype.Text
+	ContentHash  pgtype.Text
 }
 
 func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, error) {
@@ -39,6 +42,8 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 		arg.Name,
 		arg.Size,
 		arg.ContentType,
+		arg.Checksum,
+		arg.ContentHash,
 	)
 	var i File
 	err := row.Scan(
@@ -55,6 +60,9 @@ func (q *Queries) CreateFile(ctx context.Context, arg CreateFileParams) (File, e
 		&i.UpdatedAt,
 		&i.External,
 		&i.StarredAt,
+		&i.Checksum,
+		&i.ContentHash,
+		&i.CheckedAt,
 	)
 	return i, err
 }
@@ -148,7 +156,7 @@ func (q *Queries) DeleteFolderForOwner(ctx context.Context, arg DeleteFolderForO
 }
 
 const getFileForOwner = `-- name: GetFileForOwner :one
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at FROM files WHERE user_id = $1 AND id = $2
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at FROM files WHERE user_id = $1 AND id = $2
 `
 
 type GetFileForOwnerParams struct {
@@ -173,6 +181,9 @@ func (q *Queries) GetFileForOwner(ctx context.Context, arg GetFileForOwnerParams
 		&i.UpdatedAt,
 		&i.External,
 		&i.StarredAt,
+		&i.Checksum,
+		&i.ContentHash,
+		&i.CheckedAt,
 	)
 	return i, err
 }
@@ -228,8 +239,8 @@ func (q *Queries) GetFolderForOwner(ctx context.Context, arg GetFolderForOwnerPa
 }
 
 const importFile = `-- name: ImportFile :execrows
-INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO files (id, user_id, connection_id, folder_id, object_id, name, size, content_type, external, checksum, content_hash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text, $11::text)
 ON CONFLICT (connection_id, object_id) DO NOTHING
 `
 
@@ -243,6 +254,8 @@ type ImportFileParams struct {
 	Size         int64
 	ContentType  string
 	External     bool
+	Checksum     pgtype.Text
+	ContentHash  pgtype.Text
 }
 
 func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, error) {
@@ -256,6 +269,8 @@ func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, 
 		arg.Size,
 		arg.ContentType,
 		arg.External,
+		arg.Checksum,
+		arg.ContentHash,
 	)
 	if err != nil {
 		return 0, err
@@ -264,7 +279,7 @@ func (q *Queries) ImportFile(ctx context.Context, arg ImportFileParams) (int64, 
 }
 
 const listFilesInFolderForOwner = `-- name: ListFilesInFolderForOwner :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at
 FROM files
 WHERE user_id = $1
   AND folder_id IS NOT DISTINCT FROM $2::uuid
@@ -300,6 +315,9 @@ func (q *Queries) ListFilesInFolderForOwner(ctx context.Context, arg ListFilesIn
 			&i.UpdatedAt,
 			&i.External,
 			&i.StarredAt,
+			&i.Checksum,
+			&i.ContentHash,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -318,7 +336,7 @@ WITH RECURSIVE tree AS (
     UNION
     SELECT c.id FROM folders c JOIN tree ON c.parent_id = tree.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at, files.checksum, files.content_hash, files.checked_at
 FROM files
 JOIN tree ON files.folder_id = tree.id
 WHERE files.user_id = $1
@@ -353,6 +371,9 @@ func (q *Queries) ListFilesUnderFolderForOwner(ctx context.Context, arg ListFile
 			&i.UpdatedAt,
 			&i.External,
 			&i.StarredAt,
+			&i.Checksum,
+			&i.ContentHash,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -467,7 +488,7 @@ func (q *Queries) ListFoldersInFolderForOwner(ctx context.Context, arg ListFolde
 }
 
 const listObjectsForConnection = `-- name: ListObjectsForConnection :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at
 FROM files
 WHERE user_id = $1 AND connection_id = $2
 `
@@ -500,6 +521,9 @@ func (q *Queries) ListObjectsForConnection(ctx context.Context, arg ListObjectsF
 			&i.UpdatedAt,
 			&i.External,
 			&i.StarredAt,
+			&i.Checksum,
+			&i.ContentHash,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -517,7 +541,7 @@ WITH RECURSIVE hidden AS (
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at, files.checksum, files.content_hash, files.checked_at
 FROM files
 WHERE files.user_id = $1
   AND files.trashed_at IS NULL
@@ -550,6 +574,9 @@ func (q *Queries) ListRecentFilesForOwner(ctx context.Context, userID uuid.UUID)
 			&i.UpdatedAt,
 			&i.External,
 			&i.StarredAt,
+			&i.Checksum,
+			&i.ContentHash,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -567,7 +594,7 @@ WITH RECURSIVE hidden AS (
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at, files.checksum, files.content_hash, files.checked_at
 FROM files
 WHERE files.user_id = $1
   AND files.starred_at IS NOT NULL
@@ -601,6 +628,9 @@ func (q *Queries) ListStarredFilesForOwner(ctx context.Context, userID uuid.UUID
 			&i.UpdatedAt,
 			&i.External,
 			&i.StarredAt,
+			&i.Checksum,
+			&i.ContentHash,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -613,7 +643,7 @@ func (q *Queries) ListStarredFilesForOwner(ctx context.Context, userID uuid.UUID
 }
 
 const listTrashedFilesForOwner = `-- name: ListTrashedFilesForOwner :many
-SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
+SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at
 FROM files
 WHERE user_id = $1 AND trashed_at IS NOT NULL
 ORDER BY trashed_at DESC, id
@@ -642,6 +672,9 @@ func (q *Queries) ListTrashedFilesForOwner(ctx context.Context, userID uuid.UUID
 			&i.UpdatedAt,
 			&i.External,
 			&i.StarredAt,
+			&i.Checksum,
+			&i.ContentHash,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -702,7 +735,7 @@ const moveFileForOwner = `-- name: MoveFileForOwner :one
 UPDATE files
 SET folder_id = $3::uuid, updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at
 `
 
 type MoveFileForOwnerParams struct {
@@ -728,6 +761,9 @@ func (q *Queries) MoveFileForOwner(ctx context.Context, arg MoveFileForOwnerPara
 		&i.UpdatedAt,
 		&i.External,
 		&i.StarredAt,
+		&i.Checksum,
+		&i.ContentHash,
+		&i.CheckedAt,
 	)
 	return i, err
 }
@@ -764,7 +800,7 @@ const renameFileForOwner = `-- name: RenameFileForOwner :one
 UPDATE files
 SET name = $3, updated_at = now()
 WHERE user_id = $1 AND id = $2
-RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at
+RETURNING id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at
 `
 
 type RenameFileForOwnerParams struct {
@@ -790,6 +826,9 @@ func (q *Queries) RenameFileForOwner(ctx context.Context, arg RenameFileForOwner
 		&i.UpdatedAt,
 		&i.External,
 		&i.StarredAt,
+		&i.Checksum,
+		&i.ContentHash,
+		&i.CheckedAt,
 	)
 	return i, err
 }
@@ -828,7 +867,7 @@ WITH RECURSIVE hidden AS (
     UNION
     SELECT c.id FROM folders c JOIN hidden ON c.parent_id = hidden.id WHERE c.user_id = $1
 )
-SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at
+SELECT files.id, files.user_id, files.connection_id, files.folder_id, files.object_id, files.name, files.size, files.content_type, files.trashed_at, files.created_at, files.updated_at, files.external, files.starred_at, files.checksum, files.content_hash, files.checked_at
 FROM files
 WHERE files.user_id = $1
   AND files.trashed_at IS NULL
@@ -867,6 +906,9 @@ func (q *Queries) SearchFilesForOwner(ctx context.Context, arg SearchFilesForOwn
 			&i.UpdatedAt,
 			&i.External,
 			&i.StarredAt,
+			&i.Checksum,
+			&i.ContentHash,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}

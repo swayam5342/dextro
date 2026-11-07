@@ -30,15 +30,16 @@ const (
 
 // Errors the handlers turn into stable API error codes.
 var (
-	ErrInvalidName    = errors.New("invalid name")
-	ErrFileNotFound   = errors.New("file not found")
-	ErrFolderNotFound = errors.New("folder not found")
-	ErrFileTooLarge   = errors.New("file too large")
-	ErrInvalidMove    = errors.New("a folder can't move into itself")
-	ErrNotInTrash     = errors.New("not in the trash")
-	ErrProviderFailed = errors.New("storage account failed")
-	ErrObjectMissing  = errors.New("stored object is missing")
-	ErrInvalidSearch  = errors.New("invalid search")
+	ErrInvalidName     = errors.New("invalid name")
+	ErrFileNotFound    = errors.New("file not found")
+	ErrProblemNotFound = errors.New("file problem not found")
+	ErrFolderNotFound  = errors.New("folder not found")
+	ErrFileTooLarge    = errors.New("file too large")
+	ErrInvalidMove     = errors.New("a folder can't move into itself")
+	ErrNotInTrash      = errors.New("not in the trash")
+	ErrProviderFailed  = errors.New("storage account failed")
+	ErrObjectMissing   = errors.New("stored object is missing")
+	ErrInvalidSearch   = errors.New("invalid search")
 )
 
 // File is a stored file as its owner sees it.
@@ -244,7 +245,9 @@ func (s *Service) Upload(ctx context.Context, userID uuid.UUID, in UploadInput) 
 			Size:         object.Size,
 			ContentType:  contentType,
 		},
-		objectID: object.ID,
+		objectID:    object.ID,
+		checksum:    object.Checksum,
+		contentHash: object.Checksum,
 	})
 	if err != nil {
 		// Without a record nothing could ever find this object again. The request

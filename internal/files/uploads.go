@@ -262,7 +262,9 @@ func (s *Service) finishUpload(ctx context.Context, userID uuid.UUID, r uploadRe
 				Size:         object.Size,
 				ContentType:  r.contentType,
 			},
-			objectID: object.ID,
+			objectID:    object.ID,
+			checksum:    object.Checksum,
+			contentHash: object.Checksum,
 		})
 		if err != nil {
 			return err
