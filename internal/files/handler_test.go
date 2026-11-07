@@ -198,7 +198,7 @@ func TestHandlers(t *testing.T) {
 func testHandlerUpload(t *testing.T, s *server) {
 	c := s.client(t)
 	file := c.upload("notes.txt", "text/plain; charset=utf-8", "hello")
-	if file.Name != "notes.txt" || file.Size != 5 || file.ContentType != "text/plain" || file.Preview != apigen.None {
+	if file.Name != "notes.txt" || file.Size != 5 || file.ContentType != "text/plain" || file.Preview != apigen.Text {
 		t.Errorf("file = %+v", file)
 	}
 	contents := decode[apigen.FolderContents](t, c.json(http.MethodGet, "/api/v1/files", nil))
