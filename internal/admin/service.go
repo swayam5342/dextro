@@ -17,6 +17,12 @@ const (
 	maxUploadBytes = 5 << 40
 )
 
+// The most a file check can be set to: a month between runs, and about a terabyte a run.
+const (
+	maxFileCheckHours = 720
+	maxFileCheckMB    = 1_000_000
+)
+
 // ErrInvalidSettings means a new value is out of range.
 var ErrInvalidSettings = errors.New("invalid settings")
 
@@ -25,6 +31,8 @@ type Settings struct {
 	MaxUploadBytes int64
 	GoogleLinks    bool
 	FileChecks     bool
+	FileCheckHours int
+	FileCheckMB    int
 }
 
 // Update is a change to Settings. Fields left nil stay as they are.
@@ -32,6 +40,8 @@ type Update struct {
 	MaxUploadBytes *int64
 	GoogleLinks    *bool
 	FileChecks     *bool
+	FileCheckHours *int
+	FileCheckMB    *int
 }
 
 // ErrUnknownJob means there's no background job by that name.
@@ -92,12 +102,26 @@ func readSettings(ctx context.Context, store *Store) (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{MaxUploadBytes: limit, GoogleLinks: links, FileChecks: checks}, nil
+	hours, err := store.FileCheckHours(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
+	megabytes, err := store.FileCheckMB(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
+	return Settings{MaxUploadBytes: limit, GoogleLinks: links, FileChecks: checks, FileCheckHours: hours, FileCheckMB: megabytes}, nil
 }
 
 // UpdateSettings saves new settings and records who changed them.
 func (s *Service) UpdateSettings(ctx context.Context, actor uuid.UUID, ip string, next Update) (Settings, error) {
 	if next.MaxUploadBytes != nil && (*next.MaxUploadBytes < minUploadBytes || *next.MaxUploadBytes > maxUploadBytes) {
+		return Settings{}, ErrInvalidSettings
+	}
+	if next.FileCheckHours != nil && (*next.FileCheckHours < 1 || *next.FileCheckHours > maxFileCheckHours) {
+		return Settings{}, ErrInvalidSettings
+	}
+	if next.FileCheckMB != nil && (*next.FileCheckMB < 1 || *next.FileCheckMB > maxFileCheckMB) {
 		return Settings{}, ErrInvalidSettings
 	}
 	changes := map[string]any{}
@@ -109,6 +133,12 @@ func (s *Service) UpdateSettings(ctx context.Context, actor uuid.UUID, ip string
 	}
 	if next.FileChecks != nil {
 		changes[settingFileChecks] = *next.FileChecks
+	}
+	if next.FileCheckHours != nil {
+		changes[settingFileCheckHours] = *next.FileCheckHours
+	}
+	if next.FileCheckMB != nil {
+		changes[settingFileCheckMB] = *next.FileCheckMB
 	}
 
 	var saved Settings

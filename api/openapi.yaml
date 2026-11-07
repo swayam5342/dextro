@@ -1986,7 +1986,7 @@ components:
             $ref: "#/components/schemas/File"
     Settings:
       type: object
-      required: [max_upload_bytes, google_links_enabled, file_checks_enabled]
+      required: [max_upload_bytes, google_links_enabled, file_checks_enabled, file_check_every_hours, file_check_limit_mb]
       properties:
         max_upload_bytes:
           type: integer
@@ -1998,6 +1998,12 @@ components:
         file_checks_enabled:
           type: boolean
           description: Whether the server reads files back in the background to check them.
+        file_check_every_hours:
+          type: integer
+          description: How long the file check waits between runs.
+        file_check_limit_mb:
+          type: integer
+          description: How much one run can read. Bigger files aren't checked.
     SettingsUpdate:
       type: object
       description: Only the fields present are changed.
@@ -2009,6 +2015,10 @@ components:
           type: boolean
         file_checks_enabled:
           type: boolean
+        file_check_every_hours:
+          type: integer
+        file_check_limit_mb:
+          type: integer
     ManagedUser:
       type: object
       description: An account as the admin sees it. It says nothing about the person's files.
@@ -2156,8 +2166,15 @@ components:
           description: The folders it's in, separated by slashes. Empty at the top level.
     FileChecks:
       type: object
-      required: [enabled, checkable_files, checked_files, problems]
+      required: [enabled, every_hours, limit_bytes, checkable_files, checked_files, problems]
       properties:
+        every_hours:
+          type: integer
+          description: How long the check waits between runs.
+        limit_bytes:
+          type: integer
+          format: int64
+          description: How much one run can read. Bigger files aren't counted here.
         enabled:
           type: boolean
           description: Whether files are being read back. The admin can turn this off.

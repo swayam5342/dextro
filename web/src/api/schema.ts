@@ -82,6 +82,10 @@ export interface components {
     FileChecks: {
       /** Whether files are being read back. The admin can turn this off. */
       enabled: boolean;
+      /** How long the check waits between runs. */
+      every_hours: number;
+      /** How much one run can read. Bigger files aren't counted here. */
+      limit_bytes: number;
       checkable_files: number;
       /** How many have been read back at least once. */
       checked_files: number;
@@ -280,12 +284,18 @@ export interface components {
       google_links_enabled: boolean;
       /** Whether the server reads files back in the background to check them. */
       file_checks_enabled: boolean;
+      /** How long the file check waits between runs. */
+      file_check_every_hours: number;
+      /** How much one run can read. Bigger files aren't checked. */
+      file_check_limit_mb: number;
     };
     /** Only the fields present are changed. */
     SettingsUpdate: {
       max_upload_bytes?: number;
       google_links_enabled?: boolean;
       file_checks_enabled?: boolean;
+      file_check_every_hours?: number;
+      file_check_limit_mb?: number;
     };
     File: {
       id: string;

@@ -28,8 +28,8 @@ func (s *Store) SetFileChecksumForObject(ctx context.Context, userID, id, connec
 
 // FilesToCheck returns the files that have waited longest for a check, anyone's: only
 // the background check calls this.
-func (s *Store) FilesToCheck(ctx context.Context, limit int32) ([]checkItem, error) {
-	rows, err := s.queries.ListFilesToCheck(ctx, limit)
+func (s *Store) FilesToCheck(ctx context.Context, largest int64, count int32) ([]checkItem, error) {
+	rows, err := s.queries.ListFilesToCheck(ctx, dbgen.ListFilesToCheckParams{Largest: largest, Count: count})
 	if err != nil {
 		return nil, fmt.Errorf("list files to check: %w", err)
 	}
@@ -139,8 +139,8 @@ func (s *Store) AcceptFileChecksum(ctx context.Context, userID, id uuid.UUID, ch
 }
 
 // CountFileChecks says how many of a user's files can be checked and have been.
-func (s *Store) CountFileChecks(ctx context.Context, userID uuid.UUID) (FileChecks, error) {
-	row, err := s.queries.CountFileChecksForOwner(ctx, userID)
+func (s *Store) CountFileChecks(ctx context.Context, userID uuid.UUID, largest int64) (FileChecks, error) {
+	row, err := s.queries.CountFileChecksForOwner(ctx, dbgen.CountFileChecksForOwnerParams{UserID: userID, Largest: largest})
 	if err != nil {
 		return FileChecks{}, fmt.Errorf("count file checks: %w", err)
 	}

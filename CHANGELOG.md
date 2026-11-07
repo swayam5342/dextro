@@ -14,12 +14,13 @@
 
 - Uploads are now limited to 3 per account rather than 3 in total, so a slow account only holds up its own files. Up to 4 run at once over plain HTTP, and up to 12 behind a proxy with HTTP/2.
 - Round robin passes over an account that already has 3 uploads going, while another has room.
+- The Upload button's menu can now set the upload routing, and shows the routing you really have instead of always saying Most free space.
 
 ### Added
 
 - An optional nginx service for HTTPS with HTTP/2, in the `https` Compose profile, with `make cert` for a local certificate.
 - Encrypted folders: new files in a folder you choose are encrypted before they reach Google, and everything but thumbnails and Google links keeps working. Back up `ENCRYPTION_KEYS`, because these files can't be recovered without it.
-- File checks: Tributary reads files back in the background and reports any that are damaged, changed or gone, on the Storage page and in a banner. It downloads about 1 GB an hour, and the admin can turn it off in Server settings.
+- File checks: Tributary reads files back in the background and reports any that are damaged, changed or gone, on the Storage page and in a banner. It reads up to 200 MB every 6 hours by default, and the admin can change both or turn it off in Server settings.
 - A Duplicates page that finds files with the same content by their hash.
 - Text and code files now open in the viewer.
 - Search takes Gmail-style filters, such as `type:image`, `size:>10mb`, `after:2026-01-31`, `owner:name`, `in:folder`, `is:starred` and `-word`, with menus for the common ones, and results sort properly however many there are.

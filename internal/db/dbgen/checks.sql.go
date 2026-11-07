@@ -47,18 +47,23 @@ func (q *Queries) ClearFileProblemForOwner(ctx context.Context, arg ClearFilePro
 
 const countFileChecksForOwner = `-- name: CountFileChecksForOwner :one
 SELECT count(*) FILTER (WHERE checksum IS NOT NULL AND NOT external) AS checkable,
-       count(*) FILTER (WHERE checked_at IS NOT NULL) AS checked
+       count(*) FILTER (WHERE checked_at IS NOT NULL AND checksum IS NOT NULL AND NOT external) AS checked
 FROM files
-WHERE user_id = $1
+WHERE user_id = $1 AND size <= $2
 `
+
+type CountFileChecksForOwnerParams struct {
+	UserID  uuid.UUID
+	Largest int64
+}
 
 type CountFileChecksForOwnerRow struct {
 	Checkable int64
 	Checked   int64
 }
 
-func (q *Queries) CountFileChecksForOwner(ctx context.Context, userID uuid.UUID) (CountFileChecksForOwnerRow, error) {
-	row := q.db.QueryRow(ctx, countFileChecksForOwner, userID)
+func (q *Queries) CountFileChecksForOwner(ctx context.Context, arg CountFileChecksForOwnerParams) (CountFileChecksForOwnerRow, error) {
+	row := q.db.QueryRow(ctx, countFileChecksForOwner, arg.UserID, arg.Largest)
 	var i CountFileChecksForOwnerRow
 	err := row.Scan(&i.Checkable, &i.Checked)
 	return i, err
@@ -249,15 +254,20 @@ func (q *Queries) ListFileProblemsForOwner(ctx context.Context, userID uuid.UUID
 const listFilesToCheck = `-- name: ListFilesToCheck :many
 SELECT id, user_id, connection_id, folder_id, object_id, name, size, content_type, trashed_at, created_at, updated_at, external, starred_at, checksum, content_hash, checked_at, encrypted, key_id, key_ciphertext
 FROM files
-WHERE checksum IS NOT NULL AND NOT external
+WHERE checksum IS NOT NULL AND NOT external AND size <= $1
 ORDER BY checked_at NULLS FIRST, id
-LIMIT $1
+LIMIT $2
 `
+
+type ListFilesToCheckParams struct {
+	Largest int64
+	Count   int32
+}
 
 // Instance-wide on purpose: only the background check calls this. Files added from Drive
 // are left out, because they're someone's own and can change whenever they like.
-func (q *Queries) ListFilesToCheck(ctx context.Context, limit int32) ([]File, error) {
-	rows, err := q.db.Query(ctx, listFilesToCheck, limit)
+func (q *Queries) ListFilesToCheck(ctx context.Context, arg ListFilesToCheckParams) ([]File, error) {
+	rows, err := q.db.Query(ctx, listFilesToCheck, arg.Largest, arg.Count)
 	if err != nil {
 		return nil, err
 	}

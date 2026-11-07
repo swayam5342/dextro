@@ -49,8 +49,8 @@ const (
 	fileTransfersEvery = 30 * time.Second
 	// One file can take hours. River won't rescue a job inside this time.
 	fileTransfersTimeout = 12 * time.Hour
-	// Hourly, and each run reads a limited amount, so this stays in the background. It
-	// downloads, so it can take a while on a slow connection.
+	// This only looks in: how often it really reads files is a server setting, and it decides
+	// that itself. It downloads, so a run can take a while on a slow connection.
 	fileCheckEvery   = time.Hour
 	fileCheckTimeout = time.Hour
 	// Its own queue, with one worker, so moves run one at a time and a long copy doesn't
@@ -80,7 +80,7 @@ type Files interface {
 	SyncAll(ctx context.Context) (files.SyncResult, error)
 	RunTransfers(ctx context.Context) (files.TransferRun, error)
 	ExpireShares(ctx context.Context) (files.ShareRun, error)
-	CheckFiles(ctx context.Context) (files.CheckRun, error)
+	CheckFiles(ctx context.Context, force bool) (files.CheckRun, error)
 }
 
 // Runs remembers when each job last finished.
@@ -128,7 +128,10 @@ type shareExpiryArgs struct{}
 
 func (shareExpiryArgs) Kind() string { return KindShareExpiry }
 
-type fileCheckArgs struct{}
+// fileCheckArgs says to go now, for the admin's button, rather than wait for the schedule.
+type fileCheckArgs struct {
+	Force bool `json:"force"`
+}
 
 func (fileCheckArgs) Kind() string { return KindFileCheck }
 
@@ -238,9 +241,11 @@ func (w *fileCheckWorker) Timeout(*river.Job[fileCheckArgs]) time.Duration {
 	return fileCheckTimeout
 }
 
-func (w *fileCheckWorker) Work(ctx context.Context, _ *river.Job[fileCheckArgs]) error {
-	run, err := w.deps.Files.CheckFiles(ctx)
-	w.deps.Logger.InfoContext(ctx, "file check ran", "checked", run.Checked, "damaged", run.Damaged, "failed", len(run.Failures))
+func (w *fileCheckWorker) Work(ctx context.Context, job *river.Job[fileCheckArgs]) error {
+	run, err := w.deps.Files.CheckFiles(ctx, job.Args.Force)
+	if run.Checked > 0 || run.Damaged > 0 || len(run.Failures) > 0 {
+		w.deps.Logger.InfoContext(ctx, "file check ran", "checked", run.Checked, "damaged", run.Damaged, "failed", len(run.Failures))
+	}
 	logFailures(ctx, w.deps, "file couldn't be checked", run.Failures)
 	return finish(ctx, w.deps, KindFileCheck, err)
 }
@@ -327,7 +332,7 @@ func Start(ctx context.Context, d Deps) (*Runner, error) {
 // RunNow starts a job straight away, alongside its schedule. A job that's already running
 // runs twice, which every job here can take.
 func (r *Runner) RunNow(ctx context.Context, name string) error {
-	for _, args := range []river.JobArgs{quotaSyncArgs{}, sessionCleanupArgs{}, uploadCleanupArgs{}, fileSyncArgs{}, fileTransfersArgs{}, shareExpiryArgs{}, fileCheckArgs{}} {
+	for _, args := range []river.JobArgs{quotaSyncArgs{}, sessionCleanupArgs{}, uploadCleanupArgs{}, fileSyncArgs{}, fileTransfersArgs{}, shareExpiryArgs{}, fileCheckArgs{Force: true}} {
 		if args.Kind() == name {
 			if _, err := r.client.Insert(ctx, args, &river.InsertOpts{MaxAttempts: maxAttempts}); err != nil {
 				return fmt.Errorf("start job %s: %w", name, err)

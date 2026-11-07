@@ -14,7 +14,7 @@ import { FileChecksCard } from "@/features/storage/components/file-checks-card";
 import { count, formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { nextAccount, room, syncText, usableConnections } from "../pool";
+import { nextAccount, room, ROUTING_MODES, syncText, usableConnections } from "../pool";
 import {
   connectionsQuery,
   poolQuery,
@@ -36,7 +36,6 @@ type AccountFiles = components["schemas"]["AccountFiles"];
 type Connection = components["schemas"]["Connection"];
 type Pool = components["schemas"]["Pool"];
 type PoolAccount = components["schemas"]["PoolAccount"];
-type RoutingMode = components["schemas"]["RoutingMode"];
 type Transfer = components["schemas"]["Transfer"];
 type TransferQueue = components["schemas"]["TransferQueue"];
 
@@ -83,12 +82,6 @@ function removeText(files: AccountFiles | undefined): string {
   }
   return `Tributary will forget its token and stop showing the ${count(held, "file")} stored in it, trash included. They stay in that Drive. To keep them in Tributary, empty the account first.`;
 }
-
-const ROUTING_MODES: { mode: RoutingMode; label: string; text: string }[] = [
-  { mode: "most_space", label: "Most space", text: "Each file goes to the account with the most free space." },
-  { mode: "round_robin", label: "Round robin", text: "Files take turns, so they spread evenly across your accounts." },
-  { mode: "priority", label: "Priority order", text: "Files fill your first account, then move on when one won't fit." },
-];
 
 /** How uploads choose an account. With one account there's nothing to choose. */
 function UploadRouting() {

@@ -42,8 +42,8 @@ import { treeFromPicked } from "@/features/files/folder-tree";
 import { fileChecksQuery } from "@/features/files/queries";
 import { UploadsProvider, useUploads } from "@/features/files/uploads";
 import { UsageCard } from "@/features/storage/components/usage-card";
-import { accountAlert, freeSpaceText, problemAlert, routingText, usableConnections } from "@/features/storage/pool";
-import { connectionsQuery, poolQuery, routingQuery, useFollowTransfers } from "@/features/storage/queries";
+import { accountAlert, freeSpaceText, problemAlert, ROUTING_MODES, routingText, usableConnections } from "@/features/storage/pool";
+import { connectionsQuery, poolQuery, routingQuery, useFollowTransfers, useSetRouting } from "@/features/storage/queries";
 import { recall, remember } from "@/lib/remember";
 import { keyIsTaken } from "@/lib/utils";
 
@@ -221,6 +221,8 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
   const { add, addTree, target, setTarget } = useUploads();
   const { data: connections } = useQuery(connectionsQuery);
   const { data: pool } = useQuery(poolQuery);
+  const { data: routing } = useQuery(routingQuery);
+  const saveRouting = useSetRouting();
   const picker = useRef<HTMLInputElement>(null);
   const folderPicker = useRef<HTMLInputElement | null>(null);
   // An account being emptied takes nothing new.
@@ -282,12 +284,25 @@ function UploadButton({ folderId }: { folderId: string | undefined }) {
             Upload a folder
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>Upload to</DropdownMenuLabel>
-          <DropdownMenuItem onSelect={() => setTarget("")}>
-            <span className="flex-1">Most free space</span>
-            {!chosen && <Check className="text-water" />}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          {routing && usable.length > 1 ? (
+            <>
+              <DropdownMenuLabel>Upload routing</DropdownMenuLabel>
+              {ROUTING_MODES.map(({ mode, label }) => (
+                <DropdownMenuItem
+                  key={mode}
+                  onSelect={() => {
+                    setTarget("");
+                    saveRouting.mutate({ mode, order: routing.order });
+                  }}
+                >
+                  <span className="flex-1">{label}</span>
+                  {!chosen && routing.mode === mode && <Check className="text-water" />}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+          <DropdownMenuLabel>Upload to one account</DropdownMenuLabel>
           {usable.map((connection) => (
             <DropdownMenuItem key={connection.id} onSelect={() => setTarget(connection.id)}>
               <span className="min-w-0 flex-1 truncate">{connection.summary}</span>

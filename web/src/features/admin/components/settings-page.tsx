@@ -62,18 +62,60 @@ function GoogleLinks({ enabled }: { enabled: boolean }) {
   );
 }
 
-function FileChecks({ enabled }: { enabled: boolean }) {
+function FileChecks({ enabled, hours, megabytes }: { enabled: boolean; hours: number; megabytes: number }) {
+  const [everyHours, setEveryHours] = useState(String(hours));
+  const [limit, setLimit] = useState(String(megabytes));
   const update = useUpdateSettings();
+  const schedule = useUpdateSettings();
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    schedule.mutate({ file_check_every_hours: Number(everyHours), file_check_limit_mb: Number(limit) });
+  }
+
   return (
     <section aria-label="File checks" className="space-y-3 rounded-2xl bg-card p-4">
       <div>
         <h2 className="font-semibold">File checks are {enabled ? "on" : "off"}</h2>
         <p className="text-sm text-muted-foreground">
-          The server downloads about 1 GB of files each hour to confirm they're intact, which uses your internet
-          allowance. Turning this off stops those downloads. Files that go missing or change in Drive are still noticed,
-          but damage inside a file isn't.
+          The server downloads some of your files now and then to confirm they're intact, which uses your internet
+          allowance. Files bigger than the limit aren't checked. Turning this off stops those downloads. Files that go
+          missing or change in Drive are still noticed, but damage inside a file isn't.
         </p>
       </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="flex flex-wrap gap-3">
+          <Field
+            id="file-check-hours"
+            label="Check every, in hours"
+            className="max-w-36 bg-raised"
+            type="number"
+            min="1"
+            max="720"
+            step="1"
+            required
+            value={everyHours}
+            onChange={(event) => setEveryHours(event.target.value)}
+          />
+          <Field
+            id="file-check-limit"
+            label="Read up to, in MB"
+            className="max-w-36 bg-raised"
+            type="number"
+            min="1"
+            max="1000000"
+            step="1"
+            required
+            value={limit}
+            onChange={(event) => setLimit(event.target.value)}
+          />
+        </div>
+        <FormError message={schedule.error?.message} />
+        {schedule.isSuccess && <p className="text-sm">Schedule saved.</p>}
+        <Button type="submit" variant="soft" disabled={schedule.isPending}>
+          Save schedule
+        </Button>
+      </form>
       <FormError message={update.error?.message} />
       <Button
         variant="soft"
@@ -96,7 +138,13 @@ export function SettingsPage() {
       {isError && <FormError message="Settings couldn't be loaded. Reload the page to try again." />}
       {settings && <UploadLimit current={settings.max_upload_bytes} />}
       {settings && <GoogleLinks enabled={settings.google_links_enabled} />}
-      {settings && <FileChecks enabled={settings.file_checks_enabled} />}
+      {settings && (
+        <FileChecks
+          enabled={settings.file_checks_enabled}
+          hours={settings.file_check_every_hours}
+          megabytes={settings.file_check_limit_mb}
+        />
+      )}
     </div>
   );
 }

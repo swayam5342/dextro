@@ -94,6 +94,40 @@ func TestSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("file checks default to a little, now and then", func(t *testing.T) {
+		got, err := service.Settings(ctx)
+		if err != nil {
+			t.Fatalf("Settings: %v", err)
+		}
+		if got.FileCheckHours != 6 || got.FileCheckMB != 200 {
+			t.Errorf("settings = %+v", got)
+		}
+	})
+
+	t.Run("the file check schedule can change", func(t *testing.T) {
+		hours, megabytes := 24, 1000
+		got, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Update{FileCheckHours: &hours, FileCheckMB: &megabytes})
+		if err != nil {
+			t.Fatalf("UpdateSettings: %v", err)
+		}
+		if got.FileCheckHours != 24 || got.FileCheckMB != 1000 {
+			t.Errorf("settings = %+v", got)
+		}
+	})
+
+	t.Run("the file check schedule refuses nonsense", func(t *testing.T) {
+		for _, bad := range []Update{
+			{FileCheckHours: pointerTo(0)},
+			{FileCheckHours: pointerTo(721)},
+			{FileCheckMB: pointerTo(0)},
+			{FileCheckMB: pointerTo(1_000_001)},
+		} {
+			if _, err := service.UpdateSettings(ctx, actor, "203.0.113.7", bad); !errors.Is(err, ErrInvalidSettings) {
+				t.Errorf("%+v: err = %v", bad, err)
+			}
+		}
+	})
+
 	t.Run("a change is saved and audited", func(t *testing.T) {
 		limit := int64(7 << 20)
 		if _, err := service.UpdateSettings(ctx, actor, "203.0.113.7", Update{MaxUploadBytes: &limit}); err != nil {
@@ -112,3 +146,5 @@ func TestSettings(t *testing.T) {
 		}
 	})
 }
+
+func pointerTo(value int) *int { return &value }

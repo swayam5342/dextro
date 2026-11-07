@@ -48,6 +48,8 @@ func (h *Handler) GetFileChecks(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.WriteJSON(w, http.StatusOK, apigen.FileChecks{
 		Enabled:        checks.Enabled,
+		EveryHours:     checks.EveryHours,
+		LimitBytes:     checks.LimitBytes,
 		CheckableFiles: checks.Checkable,
 		CheckedFiles:   checks.Checked,
 		Problems:       problems,

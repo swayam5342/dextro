@@ -21,6 +21,12 @@ const (
 	settingMaxUploadBytes = "max_upload_bytes"
 	settingGoogleLinks    = "google_links_enabled"
 	settingFileChecks     = "file_checks_enabled"
+	settingFileCheckHours = "file_check_every_hours"
+	settingFileCheckMB    = "file_check_limit_mb"
+	settingFileCheckRun   = "file_check_last_run"
+	// A little, now and then: a full read of everything isn't worth anyone's internet allowance.
+	defaultFileCheckHours = 6
+	defaultFileCheckMB    = 200
 	defaultMaxUploadBytes = 10 << 30
 )
 
@@ -108,6 +114,31 @@ func (s *Store) GoogleLinksEnabled(ctx context.Context) (bool, error) {
 // may not want to spend.
 func (s *Store) FileChecksEnabled(ctx context.Context) (bool, error) {
 	return readSetting(ctx, s, settingFileChecks, true)
+}
+
+// FileCheckHours says how long the file check waits between runs.
+func (s *Store) FileCheckHours(ctx context.Context) (int, error) {
+	return readSetting(ctx, s, settingFileCheckHours, defaultFileCheckHours)
+}
+
+// FileCheckMB says how much one run of the file check can read, in MiB.
+func (s *Store) FileCheckMB(ctx context.Context) (int, error) {
+	return readSetting(ctx, s, settingFileCheckMB, defaultFileCheckMB)
+}
+
+// LastFileCheck says when the file check last read anything. It's kept here because the job
+// looks in at every startup, and a restart mustn't count as the schedule coming round.
+func (s *Store) LastFileCheck(ctx context.Context) (time.Time, error) {
+	return readSetting(ctx, s, settingFileCheckRun, time.Time{})
+}
+
+// MarkFileCheck notes that the file check is starting.
+func (s *Store) MarkFileCheck(ctx context.Context, at time.Time) error {
+	encoded, err := json.Marshal(at)
+	if err != nil {
+		return fmt.Errorf("encode time: %w", err)
+	}
+	return s.SetSetting(ctx, settingFileCheckRun, encoded)
 }
 
 // JobRun is the last finish of a background job.

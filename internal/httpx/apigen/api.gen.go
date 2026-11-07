@@ -437,8 +437,14 @@ type FileChecks struct {
 	CheckedFiles int64 `json:"checked_files"`
 
 	// Enabled Whether files are being read back. The admin can turn this off.
-	Enabled  bool          `json:"enabled"`
-	Problems []FileProblem `json:"problems"`
+	Enabled bool `json:"enabled"`
+
+	// EveryHours How long the check waits between runs.
+	EveryHours int `json:"every_hours"`
+
+	// LimitBytes How much one run can read. Bigger files aren't counted here.
+	LimitBytes int64         `json:"limit_bytes"`
+	Problems   []FileProblem `json:"problems"`
 }
 
 // FileList defines model for FileList.
@@ -699,6 +705,12 @@ type Session struct {
 
 // Settings defines model for Settings.
 type Settings struct {
+	// FileCheckEveryHours How long the file check waits between runs.
+	FileCheckEveryHours int `json:"file_check_every_hours"`
+
+	// FileCheckLimitMb How much one run can read. Bigger files aren't checked.
+	FileCheckLimitMb int `json:"file_check_limit_mb"`
+
 	// FileChecksEnabled Whether the server reads files back in the background to check them.
 	FileChecksEnabled bool `json:"file_checks_enabled"`
 
@@ -711,9 +723,11 @@ type Settings struct {
 
 // SettingsUpdate Only the fields present are changed.
 type SettingsUpdate struct {
-	FileChecksEnabled  *bool  `json:"file_checks_enabled,omitempty"`
-	GoogleLinksEnabled *bool  `json:"google_links_enabled,omitempty"`
-	MaxUploadBytes     *int64 `json:"max_upload_bytes,omitempty"`
+	FileCheckEveryHours *int   `json:"file_check_every_hours,omitempty"`
+	FileCheckLimitMb    *int   `json:"file_check_limit_mb,omitempty"`
+	FileChecksEnabled   *bool  `json:"file_checks_enabled,omitempty"`
+	GoogleLinksEnabled  *bool  `json:"google_links_enabled,omitempty"`
+	MaxUploadBytes      *int64 `json:"max_upload_bytes,omitempty"`
 }
 
 // Share A public Google link on one file.

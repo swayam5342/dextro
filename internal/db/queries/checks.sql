@@ -14,9 +14,9 @@ WHERE user_id = sqlc.arg(user_id)
 -- name: ListFilesToCheck :many
 SELECT *
 FROM files
-WHERE checksum IS NOT NULL AND NOT external
+WHERE checksum IS NOT NULL AND NOT external AND size <= sqlc.arg(largest)
 ORDER BY checked_at NULLS FIRST, id
-LIMIT $1;
+LIMIT sqlc.arg(count);
 
 -- name: MarkFileCheckedForOwner :exec
 UPDATE files SET checked_at = now() WHERE user_id = $1 AND id = $2;
@@ -51,9 +51,9 @@ WHERE user_id = sqlc.arg(user_id) AND id = sqlc.arg(id);
 
 -- name: CountFileChecksForOwner :one
 SELECT count(*) FILTER (WHERE checksum IS NOT NULL AND NOT external) AS checkable,
-       count(*) FILTER (WHERE checked_at IS NOT NULL) AS checked
+       count(*) FILTER (WHERE checked_at IS NOT NULL AND checksum IS NOT NULL AND NOT external) AS checked
 FROM files
-WHERE user_id = $1;
+WHERE user_id = $1 AND size <= sqlc.arg(largest);
 
 -- Live files that share their content with another, biggest first. An empty file matches
 -- every other empty file, which says nothing.

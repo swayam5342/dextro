@@ -5,7 +5,7 @@ import type { components } from "@/api/schema";
 import { FormError } from "@/components/field";
 import { Button } from "@/components/ui/button";
 import { fileChecksQuery, useDismissProblem } from "@/features/files/queries";
-import { formatBytes, formatDate } from "@/lib/format";
+import { count, formatBytes, formatDate } from "@/lib/format";
 
 type Pool = components["schemas"]["Pool"];
 type FileProblem = components["schemas"]["FileProblem"];
@@ -43,7 +43,7 @@ export function FileChecksCard({ pool }: { pool: Pool | undefined }) {
       </div>
       <p className="text-sm text-muted-foreground">
         {data.enabled
-          ? `Tributary reads your files back in the background, about 1 GB an hour. ${data.checked_files} of ${data.checkable_files} have been checked so far.`
+          ? `Every ${count(data.every_hours, "hour")}, Tributary reads back up to ${formatBytes(data.limit_bytes)} of your files. ${data.checked_files} of ${data.checkable_files} have been checked so far. Larger files aren't checked.`
           : "Reading files back is turned off in server settings. Files that go missing or change in Drive are still noticed."}
       </p>
       <FormError message={dismiss.error?.message} />

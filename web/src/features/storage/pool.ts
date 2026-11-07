@@ -21,6 +21,13 @@ export function room(account: PoolAccount): number {
 }
 
 /** Where an upload goes when no account was picked. */
+/** The ways uploads can choose an account, for the Storage page and the upload menu. */
+export const ROUTING_MODES: { mode: RoutingMode; label: string; text: string }[] = [
+  { mode: "most_space", label: "Most space", text: "Each file goes to the account with the most free space." },
+  { mode: "round_robin", label: "Round robin", text: "Files take turns, so they spread evenly across your accounts." },
+  { mode: "priority", label: "Priority order", text: "Files fill your first account, then move on when one won't fit." },
+];
+
 export function routingText(mode: RoutingMode | undefined): string {
   switch (mode) {
     case "round_robin":

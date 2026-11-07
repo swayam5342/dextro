@@ -40,13 +40,20 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &body) {
 		return
 	}
-	if body.MaxUploadBytes == nil && body.GoogleLinksEnabled == nil && body.FileChecksEnabled == nil {
+	if body.MaxUploadBytes == nil && body.GoogleLinksEnabled == nil && body.FileChecksEnabled == nil &&
+		body.FileCheckEveryHours == nil && body.FileCheckLimitMb == nil {
 		httpx.WriteError(w, r, http.StatusBadRequest, httpx.CodeBadRequest, "The request is not valid.")
 		return
 	}
 	principal, _ := httpx.PrincipalFrom(r.Context())
 	settings, err := h.service.UpdateSettings(r.Context(), principal.UserID, httpx.ClientIP(r.Context()),
-		Update{MaxUploadBytes: body.MaxUploadBytes, GoogleLinks: body.GoogleLinksEnabled, FileChecks: body.FileChecksEnabled})
+		Update{
+			MaxUploadBytes: body.MaxUploadBytes,
+			GoogleLinks:    body.GoogleLinksEnabled,
+			FileChecks:     body.FileChecksEnabled,
+			FileCheckHours: body.FileCheckEveryHours,
+			FileCheckMB:    body.FileCheckLimitMb,
+		})
 	if errors.Is(err, ErrInvalidSettings) {
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_settings", "Choose an upload limit between 1 MiB and 5 TiB.")
 		return
@@ -138,7 +145,13 @@ func (h *Handler) ListAuditEvents(w http.ResponseWriter, r *http.Request, params
 }
 
 func toAPI(s Settings) apigen.Settings {
-	return apigen.Settings{MaxUploadBytes: s.MaxUploadBytes, GoogleLinksEnabled: s.GoogleLinks, FileChecksEnabled: s.FileChecks}
+	return apigen.Settings{
+		MaxUploadBytes:      s.MaxUploadBytes,
+		GoogleLinksEnabled:  s.GoogleLinks,
+		FileChecksEnabled:   s.FileChecks,
+		FileCheckEveryHours: s.FileCheckHours,
+		FileCheckLimitMb:    s.FileCheckMB,
+	}
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {

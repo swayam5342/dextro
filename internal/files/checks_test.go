@@ -1,12 +1,15 @@
 package files
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -56,6 +59,10 @@ func TestFileChecks(t *testing.T) {
 		{"an unreachable account isn't damage", testCheckSkipsUnreachable},
 		{"a check takes the longest unchecked file first", testCheckRotates},
 		{"turning checks off stops them reading anything", testChecksCanBeOff},
+		{"checks wait for their schedule", testChecksFollowSchedule},
+		{"a restart doesn't start a check", testChecksSurviveRestart},
+		{"a run stops at its limit", testCheckStopsAtLimit},
+		{"a file over the limit is left out", testCheckSkipsOversized},
 		{"a sync still reports problems with checks off", testSyncReportsWithChecksOff},
 		{"problems are private to their owner", testProblemsAreScoped},
 		{"deleting a file takes its problems with it", testDeleteClearsProblems},
@@ -205,11 +212,46 @@ func testExternalChangeIsQuiet(t *testing.T, f *uploadFixture) {
 
 func (f *uploadFixture) check(t *testing.T) CheckRun {
 	t.Helper()
-	run, err := f.service.CheckFiles(f.ctx)
+	run, err := f.service.CheckFiles(f.ctx, true)
 	if err != nil {
 		t.Fatalf("CheckFiles: %v", err)
 	}
 	return run
+}
+
+// tick is the job's hourly look at whether a check is due.
+func (f *uploadFixture) tick(t *testing.T) CheckRun {
+	t.Helper()
+	run, err := f.service.CheckFiles(f.ctx, false)
+	if err != nil {
+		t.Fatalf("CheckFiles: %v", err)
+	}
+	return run
+}
+
+func (f *uploadFixture) setting(t *testing.T, key, value string) {
+	t.Helper()
+	if err := f.service.store.Settings().SetSetting(f.ctx, key, []byte(value)); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+}
+
+func (f *uploadFixture) lastCheckWas(t *testing.T, ago time.Duration) {
+	t.Helper()
+	stamp, err := json.Marshal(time.Now().Add(-ago))
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	f.setting(t, "file_check_last_run", string(stamp))
+}
+
+func (f *uploadFixture) sized(t *testing.T, userID uuid.UUID, name string, size int) File {
+	t.Helper()
+	file, err := f.service.Upload(f.ctx, userID, UploadInput{Name: name, Size: int64(size), Body: bytes.NewReader(make([]byte, size))})
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	return file
 }
 
 func testCheckPasses(t *testing.T, f *uploadFixture) {
@@ -281,7 +323,7 @@ func testCheckRotates(t *testing.T, f *uploadFixture) {
 	if _, err := f.pool.Exec(f.ctx, `UPDATE files SET checked_at = now() WHERE id = $1`, recent.ID); err != nil {
 		t.Fatalf("stamp: %v", err)
 	}
-	records, err := f.service.store.FilesToCheck(f.ctx, 1)
+	records, err := f.service.store.FilesToCheck(f.ctx, 1<<30, 1)
 	if err != nil {
 		t.Fatalf("FilesToCheck: %v", err)
 	}
@@ -332,6 +374,91 @@ func testChecksCanBeOff(t *testing.T, f *uploadFixture) {
 	f.setChecks(t, "true")
 	if run := f.check(t); run.Damaged != 1 {
 		t.Errorf("turned back on: run = %+v", run)
+	}
+}
+
+func testChecksFollowSchedule(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	f.link(t, user, "a@gmail.com", 1<<30)
+	f.recorded(t, user, "a@gmail.com", "a.txt")
+
+	if run := f.tick(t); run.Checked != 1 {
+		t.Fatalf("the first run should go ahead: %+v", run)
+	}
+	if run := f.tick(t); run.Checked != 0 {
+		t.Errorf("ran again straight away: %+v", run)
+	}
+	f.lastCheckWas(t, 5*time.Hour)
+	if run := f.tick(t); run.Checked != 0 {
+		t.Errorf("ran after 5 hours of 6: %+v", run)
+	}
+	f.lastCheckWas(t, 6*time.Hour)
+	if run := f.tick(t); run.Checked != 1 {
+		t.Errorf("didn't run after 6 hours: %+v", run)
+	}
+	// Someone can choose their own schedule.
+	f.setting(t, "file_check_every_hours", "1")
+	f.lastCheckWas(t, time.Hour)
+	if run := f.tick(t); run.Checked != 1 {
+		t.Errorf("didn't follow a shorter schedule: %+v", run)
+	}
+	// Asking for one doesn't wait.
+	if run := f.check(t); run.Checked != 1 {
+		t.Errorf("a run on demand waited: %+v", run)
+	}
+}
+
+// The job looks in at startup too, so the schedule has to outlive the server.
+func testChecksSurviveRestart(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	f.link(t, user, "a@gmail.com", 1<<30)
+	f.recorded(t, user, "a@gmail.com", "a.txt")
+	f.tick(t)
+	restarted := newUploadFixture(t, f.pool)
+	restarted.accounts = f.accounts
+	if run := restarted.tick(t); run.Checked != 0 {
+		t.Errorf("a new server ran it again: %+v", run)
+	}
+}
+
+func testCheckStopsAtLimit(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	f.link(t, user, "a@gmail.com", 1<<30)
+	for _, name := range []string{"a", "b", "c"} {
+		f.sized(t, user, name, 400<<10)
+	}
+	f.setting(t, "file_check_limit_mb", "1")
+	if run := f.check(t); run.Checked != 2 {
+		t.Errorf("run = %+v, want 2 of 3 inside 1 MB", run)
+	}
+	if run := f.check(t); run.Checked != 2 {
+		t.Errorf("the next run should take the one left, and start again: %+v", run)
+	}
+	if got := f.count(t, `SELECT count(*) FROM files WHERE checked_at IS NULL`); got != 0 {
+		t.Errorf("%d files never reached", got)
+	}
+}
+
+func testCheckSkipsOversized(t *testing.T, f *uploadFixture) {
+	user := f.user(t)
+	f.link(t, user, "a@gmail.com", 1<<30)
+	f.sized(t, user, "huge", 2<<20)
+	f.sized(t, user, "small", 100)
+	f.setting(t, "file_check_limit_mb", "1")
+	f.reads.Store(0)
+	f.wrap = countingGets(&f.reads)
+	if run := f.check(t); run.Checked != 1 {
+		t.Errorf("run = %+v", run)
+	}
+	if got := f.reads.Load(); got != 1 {
+		t.Errorf("read %d files, want only the small one", got)
+	}
+	checks, err := f.service.FileChecks(f.ctx, user)
+	if err != nil {
+		t.Fatalf("FileChecks: %v", err)
+	}
+	if checks.Checkable != 1 || checks.Checked != 1 || checks.LimitBytes != 1<<20 || checks.EveryHours != 6 {
+		t.Errorf("checks = %+v", checks)
 	}
 }
 

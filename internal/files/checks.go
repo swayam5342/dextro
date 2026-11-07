@@ -18,11 +18,10 @@ import (
 )
 
 const (
-	// checkBudget is how much a run reads, so that a check never competes with someone
-	// using the app for long.
-	checkBudget int64 = 1 << 30
 	// checkBatch is how many files a run looks at, for a pool of mostly small files.
 	checkBatch = 500
+	// checkSlack allows for the job looking in on the hour, a moment before the time is up.
+	checkSlack = 5 * time.Minute
 )
 
 // ProblemKind is what's wrong with a file.
@@ -51,10 +50,14 @@ type FileProblem struct {
 
 // FileChecks is how the checks are going for one user.
 type FileChecks struct {
-	Enabled   bool
-	Checkable int64
-	Checked   int64
-	Problems  []FileProblem
+	Enabled bool
+	// EveryHours and LimitBytes are the schedule. Files over the limit are left out of the
+	// counts, because they can't be checked.
+	EveryHours int
+	LimitBytes int64
+	Checkable  int64
+	Checked    int64
+	Problems   []FileProblem
 }
 
 // CheckRun says what one run of the check found.
@@ -98,19 +101,37 @@ func (r *syncRun) compareChecksums(ctx context.Context, known map[string]fileRec
 // the checksum the account gave when they were stored. A sync already notices a file that's
 // gone or replaced, so reading the bytes is the part only this can do. A file that can't be
 // reached right now isn't damaged, so that's only a failure for the logs.
-func (s *Service) CheckFiles(ctx context.Context) (CheckRun, error) {
-	enabled, err := s.store.Settings().FileChecksEnabled(ctx)
+//
+// The job looks in every hour and this decides whether it's time, unless force says to go
+// now. What the admin set as the limit is a real limit, so a file bigger than it isn't read.
+func (s *Service) CheckFiles(ctx context.Context, force bool) (CheckRun, error) {
+	settings := s.store.Settings()
+	enabled, err := settings.FileChecksEnabled(ctx)
 	if err != nil || !enabled {
 		return CheckRun{}, err
 	}
-	items, err := s.store.FilesToCheck(ctx, checkBatch)
+	if !force {
+		due, err := s.checkIsDue(ctx)
+		if err != nil || !due {
+			return CheckRun{}, err
+		}
+	}
+	megabytes, err := settings.FileCheckMB(ctx)
+	if err != nil {
+		return CheckRun{}, err
+	}
+	if err := settings.MarkFileCheck(ctx, time.Now()); err != nil {
+		return CheckRun{}, err
+	}
+	budget := int64(megabytes) << 20
+	items, err := s.store.FilesToCheck(ctx, budget, checkBatch)
 	if err != nil {
 		return CheckRun{}, err
 	}
 	var run CheckRun
 	var read int64
 	for _, item := range items {
-		if read >= checkBudget {
+		if read+item.Size > budget {
 			break
 		}
 		if err := ctx.Err(); err != nil {
@@ -126,6 +147,19 @@ func (s *Service) CheckFiles(ctx context.Context) (CheckRun, error) {
 		}
 	}
 	return run, nil
+}
+
+func (s *Service) checkIsDue(ctx context.Context) (bool, error) {
+	settings := s.store.Settings()
+	hours, err := settings.FileCheckHours(ctx)
+	if err != nil {
+		return false, err
+	}
+	last, err := settings.LastFileCheck(ctx)
+	if err != nil {
+		return false, err
+	}
+	return time.Since(last) >= time.Duration(hours)*time.Hour-checkSlack, nil
 }
 
 func hashObject(ctx context.Context, stored provider.Provider, objectID string) (string, error) {
@@ -187,11 +221,21 @@ func (s *Service) checkFile(ctx context.Context, item checkItem, run *CheckRun) 
 
 // FileChecks says how the checks are going for a user, and what they've found.
 func (s *Service) FileChecks(ctx context.Context, userID uuid.UUID) (FileChecks, error) {
-	checks, err := s.store.CountFileChecks(ctx, userID)
+	settings := s.store.Settings()
+	megabytes, err := settings.FileCheckMB(ctx)
 	if err != nil {
 		return FileChecks{}, err
 	}
-	if checks.Enabled, err = s.store.Settings().FileChecksEnabled(ctx); err != nil {
+	limit := int64(megabytes) << 20
+	checks, err := s.store.CountFileChecks(ctx, userID, limit)
+	if err != nil {
+		return FileChecks{}, err
+	}
+	checks.LimitBytes = limit
+	if checks.EveryHours, err = settings.FileCheckHours(ctx); err != nil {
+		return FileChecks{}, err
+	}
+	if checks.Enabled, err = settings.FileChecksEnabled(ctx); err != nil {
 		return FileChecks{}, err
 	}
 	checks.Problems, err = s.store.FileProblems(ctx, userID)
